@@ -1,0 +1,7 @@
+{
+  "admin_user_ids": [],
+  "poll_timeout": 25,
+  "announce_on_join": true,
+  "web_port": 8077,
+  "db_path": "iigbot.sqlite3"
+}

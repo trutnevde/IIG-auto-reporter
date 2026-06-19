@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>IIG Reporter</title>
+<style>
+  :root{
+    --bg:#f4f6f9;--panel:#fff;--ink:#1f2733;--muted:#7b8794;--line:#e6eaf0;
+    --accent:#229ed9;--accent-d:#1b86ba;--green:#138a4a;--green-bg:#e6f6ec;
+    --amber:#9a6700;--amber-bg:#fff5e0;--red:#b3261e;--red-bg:#fde8e6;--grey-bg:#eef1f5;
+    --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.1);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;font-family:system-ui,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  a{color:var(--accent);text-decoration:none;cursor:pointer}
+  .app{display:grid;grid-template-columns:240px 1fr;height:100vh}
+  .side{background:#10202b;color:#cdd8e0;padding:18px 14px;display:flex;flex-direction:column;gap:4px}
+  .brand{display:flex;align-items:center;gap:10px;padding:6px 8px 16px;font-weight:700;color:#fff;font-size:16px}
+  .brand .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#33c4f5,#1b86ba);display:flex;align-items:center;justify-content:center;font-size:15px}
+  .nav{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+  .nav a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:#cdd8e0;font-weight:500}
+  .nav a .ic{width:18px;text-align:center;opacity:.9}
+  .nav a:hover{background:#1b3140;color:#fff}
+  .nav a.active{background:var(--accent);color:#fff}
+  .side .spacer{flex:1}
+  .side .mini{font-size:12px;color:#7d93a2;padding:8px}
+  .btn-connect{margin:10px 4px 2px;display:block;text-align:center;background:var(--accent);color:#fff;padding:10px;border-radius:8px;font-weight:600;cursor:pointer}
+  .btn-connect:hover{background:var(--accent-d)}
+  .main{display:flex;flex-direction:column;min-width:0;overflow:hidden}
+  .top{height:58px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 22px;flex:0 0 auto}
+  .top h1{font-size:16px;margin:0;font-weight:650}
+  .top .grow{flex:1}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:999px;background:var(--green-bg);color:var(--green)}
+  .pill .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+  .pill.grey{background:var(--grey-bg);color:var(--muted)}.pill.grey .dot{background:var(--muted)}
+  .content{padding:22px;max-width:1180px;overflow:auto}
+  section[data-view]{display:none}
+  section[data-view].on{display:block}
+  h2.title{font-size:18px;margin:0 0 4px}
+  .sub{color:var(--muted);margin:0 0 18px}
+  .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:var(--shadow)}
+  .card .k{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.02em}
+  .card .v{font-size:24px;font-weight:700;margin-top:6px}
+  .card.warn .v{color:var(--amber)}.card.bad .v{color:var(--red)}.card.good .v{color:var(--green)}
+  .grid2{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+  .panel h3{margin:0;padding:14px 16px;border-bottom:1px solid var(--line);font-size:14px}
+  .panel .body{padding:14px 16px}
+  .alert{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:9px;margin-bottom:8px;font-size:13.5px}
+  .alert.amber{background:var(--amber-bg);color:#6b4a00}.alert.red{background:var(--red-bg);color:#7a1a14}
+  .alert.grey{background:var(--grey-bg);color:#42505e}.alert b{font-weight:650}
+  table{width:100%;border-collapse:collapse}
+  .panel table th,.panel table td{padding:10px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.02em;color:var(--muted);background:#fafbfc}
+  tbody tr:hover{background:#f7fafc}
+  tbody tr.click{cursor:pointer}
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+  input,select,textarea{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+  input[type=search]{min-width:240px}
+  .btn{font:inherit;font-weight:600;padding:8px 13px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer}
+  .btn:hover{background:#f3f6f9}.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}.btn.primary:hover{background:var(--accent-d)}
+  .btn.sm{padding:5px 9px;font-size:12.5px}.btn:disabled{opacity:.5;cursor:default}
+  .badge{display:inline-block;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px}
+  .b-green{background:var(--green-bg);color:var(--green)}.b-amber{background:var(--amber-bg);color:var(--amber)}
+  .b-red{background:var(--red-bg);color:var(--red)}.b-grey{background:var(--grey-bg);color:var(--muted)}
+  .muted{color:var(--muted)}.right{text-align:right}.nowrap{white-space:nowrap}
+  .chip{display:inline-block;background:var(--grey-bg);border-radius:6px;padding:2px 7px;font-size:12px;margin:1px 2px}
+  .matchrow{display:grid;grid-template-columns:1fr 90px 1fr 150px;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:#fff;margin-bottom:10px}
+  .matchrow .arrow{text-align:center;color:var(--muted)}
+  .conf{font-size:12px;font-weight:700}.conf.hi{color:var(--green)}.conf.mid{color:var(--amber)}.conf.lo{color:var(--muted)}
+  .src{font-weight:600}.src small{display:block;color:var(--muted);font-weight:400}
+  .drawer-bg,.modal-bg{position:fixed;inset:0;background:rgba(16,24,40,.45);display:none;z-index:40}
+  .drawer-bg.on,.modal-bg.on{display:block}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:460px;background:#fff;box-shadow:-8px 0 24px rgba(16,24,40,.18);transform:translateX(100%);transition:transform .2s;z-index:41;display:flex;flex-direction:column}
+  .drawer.on{transform:translateX(0)}
+  .drawer header,.modal header{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center}
+  .drawer header h3,.modal header h3{margin:0;font-size:15px}
+  .drawer .body{padding:18px;overflow:auto;flex:1}
+  .drawer footer,.modal footer{padding:14px 18px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end}
+  .x{margin-left:auto;cursor:pointer;color:var(--muted);font-size:20px;line-height:1}
+  .field{margin-bottom:16px}.field label{display:block;font-weight:600;margin-bottom:6px;font-size:13px}
+  .field .hint{color:var(--muted);font-size:12px;margin-top:5px}
+  .field select,.field input,.field textarea{width:100%}
+  .modal{position:fixed;z-index:41;left:50%;top:50%;transform:translate(-50%,-50%);width:560px;max-width:94vw;background:#fff;border-radius:14px;box-shadow:var(--shadow);display:none;flex-direction:column;overflow:hidden}
+  .modal.on{display:flex}.modal .body{padding:18px}
+  .link-box{display:flex;gap:8px;margin-top:8px}.link-box input{flex:1;font-family:ui-monospace,monospace;font-size:12.5px}
+  .goalrow{display:grid;grid-template-columns:120px 1fr 32px;gap:8px;margin-bottom:6px}
+  .tg{background:#cfe3f2;border-radius:12px;padding:18px;min-height:120px}
+  .tg .bubble{background:#fff;border-radius:12px;padding:14px 16px;max-width:460px;box-shadow:var(--shadow);white-space:pre-wrap;font-size:13.5px;line-height:1.5}
+  .tg .meta{font-size:11px;color:#5a728a;margin-top:6px}
+  .tabs{display:flex;gap:6px;margin-bottom:14px}
+  .tabs .t{padding:7px 13px;border-radius:8px;font-weight:600;cursor:pointer;color:var(--muted)}
+  .tabs .t.on{background:var(--panel);color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow)}
+  .kvs{display:grid;grid-template-columns:170px 1fr;gap:10px 14px}.kvs .k{color:var(--muted)}
+  .note{background:#f0f7fc;border:1px solid #d3e7f4;border-radius:10px;padding:12px 14px;color:#23485f;font-size:13px}
+  #toast{position:fixed;right:18px;bottom:18px;z-index:60;display:flex;flex-direction:column;gap:8px}
+  .toast{background:#10202b;color:#fff;padding:11px 15px;border-radius:9px;box-shadow:var(--shadow);font-size:13.5px;max-width:360px}
+  .toast.err{background:#7a1a14}.toast.ok{background:#0f6d3b}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid #cfe3f2;border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .empty{color:var(--muted);padding:18px;text-align:center}
+  /* --- визуальная полировка --- */
+  .nav a{transition:background .12s,color .12s}
+  .btn{transition:background .12s,border-color .12s,box-shadow .12s}
+  .btn.primary{box-shadow:0 1px 2px rgba(34,158,217,.35)}
+  .card{transition:box-shadow .15s ease,transform .15s ease}
+  .card:hover{box-shadow:0 6px 16px rgba(16,24,40,.10);transform:translateY(-1px)}
+  .panel{transition:box-shadow .15s ease}
+  .panel h3{display:flex;align-items:center;gap:8px;font-weight:650;background:#fcfdfe;border-radius:12px 12px 0 0}
+  .matchrow{transition:border-color .12s,box-shadow .12s}
+  .matchrow:hover{border-color:#cfe0ee;box-shadow:var(--shadow)}
+  tbody tr{transition:background .1s}
+  .brand{letter-spacing:.2px}
+  .side{background:linear-gradient(180deg,#13283a 0%,#0e1c27 100%)}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:#cbd5e0;border-radius:8px;border:2px solid var(--bg)}
+  ::-webkit-scrollbar-thumb:hover{background:#b3c0cf}
+  .pill{box-shadow:var(--shadow)}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="logo">📊</span> IIG Reporter</div>
+    <nav class="nav" id="nav">
+      <a data-go="dashboard" class="active"><span class="ic">🏠</span> Обзор</a>
+      <a data-go="clients"><span class="ic">👥</span> Клиенты</a>
+      <a data-go="chats"><span class="ic">💬</span> Чаты</a>
+      <a data-go="match"><span class="ic">🔗</span> Привязки <span class="badge b-amber" id="navMatch" style="margin-left:auto;display:none">0</span></a>
+      <a data-go="reports"><span class="ic">📨</span> Отчёты</a>
+      <a data-go="settings"><span class="ic">⚙️</span> Настройки</a>
+    </nav>
+    <div class="btn-connect" onclick="openOnboard()">＋ Подключить клиента</div>
+    <div class="spacer"></div>
+    <div class="mini" id="botInfo">Загрузка…</div>
+  </aside>
+
+  <div class="main">
+    <div class="top">
+      <h1 id="crumb">Обзор</h1>
+      <div class="grow"></div>
+      <span class="pill" id="botPill"><span class="dot"></span> Слушатель</span>
+      <button class="btn sm" onclick="refresh()">⟳ Обновить</button>
+    </div>
+    <div class="content">
+      <section data-view="dashboard" class="on"><div id="v_dashboard" class="empty">…</div></section>
+      <section data-view="clients"><div id="v_clients"></div></section>
+      <section data-view="chats"><div id="v_chats"></div></section>
+      <section data-view="match"><div id="v_match"></div></section>
+      <section data-view="reports"><div id="v_reports"></div></section>
+      <section data-view="settings"><div id="v_settings"></div></section>
+    </div>
+  </div>
+</div>
+
+<!-- DRAWER: client -->
+<div class="drawer-bg" id="drawerBg" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <header><h3 id="drTitle">Клиент</h3><span class="x" onclick="closeDrawer()">×</span></header>
+  <div class="body" id="drBody"></div>
+  <footer>
+    <button class="btn" onclick="drawerTest()">📨 Тестовый отчёт</button>
+    <button class="btn primary" onclick="drawerSave()">Сохранить</button>
+  </footer>
+</div>
+
+<!-- MODAL: onboarding -->
+<div class="modal-bg" id="modalBg" onclick="closeOnboard()"></div>
+<div class="modal" id="modal">
+  <header><h3>Подключить клиента</h3><span class="x" onclick="closeOnboard()">×</span></header>
+  <div class="body" id="obBody"></div>
+  <footer><button class="btn" onclick="closeOnboard()">Закрыть</button></footer>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ---------- инфраструктура ---------- */
+let READY=false, CLIENTS=[], CHATS=[];
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function toast(msg,kind){const w=document.getElementById('toast');const d=document.createElement('div');d.className='toast'+(kind?(' '+kind):'');d.textContent=msg;w.appendChild(d);setTimeout(()=>d.remove(),kind==='err'?6000:3500);}
+async function callBackend(method,args){
+  // Десктоп: pywebview.api.<method>(...args).  Веб: POST /api/<method> с JSON-массивом аргументов.
+  if(window.pywebview&&window.pywebview.api){return await window.pywebview.api[method](...args);}
+  const resp=await fetch('/api/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(args)});
+  return await resp.json();
+}
+async function api(method,...args){
+  let r;
+  try{r=await callBackend(method,args);}
+  catch(e){toast('Нет связи с backend: '+e.message,'err');throw e;}
+  if(!r||r.ok!==true){const e=(r&&r.error)||'Неизвестная ошибка';toast(e,'err');throw new Error(e);}
+  return r.data;
+}
+function el(id){return document.getElementById(id);}
+
+/* ---------- роутинг ---------- */
+const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',settings:'Настройки'};
+function go(v){
+  document.querySelectorAll('section[data-view]').forEach(s=>s.classList.toggle('on',s.dataset.view===v));
+  document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active',a.dataset.go===v));
+  el('crumb').textContent=NAMES[v]||'';
+  render(v);
+}
+document.getElementById('nav').addEventListener('click',e=>{const a=e.target.closest('a');if(a)go(a.dataset.go);});
+let CURRENT='dashboard';
+function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,settings:renderSettings}[v]||(()=>{}))();}
+function refresh(){render(CURRENT);loadBadges();}
+
+/* ---------- бейджи/статус ---------- */
+async function loadBadges(){
+  try{const d=await api('dashboard');const b=el('navMatch');if(d.unbound_chats>0){b.style.display='inline-block';b.textContent=d.unbound_chats;}else{b.style.display='none';}}catch(e){}
+}
+
+/* ---------- DASHBOARD ---------- */
+async function renderDashboard(){
+  const host=el('v_dashboard');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
+  let d;try{d=await api('dashboard');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  host.innerHTML=`
+    <h2 class="title">Обзор</h2><p class="sub">Сводка по клиентам, чатам и рассылке.</p>
+    <div class="cards">
+      <div class="card"><div class="k">Клиентов</div><div class="v">${d.clients}</div></div>
+      <div class="card"><div class="k">Чатов</div><div class="v">${d.chats}</div></div>
+      <div class="card good"><div class="k">Привязано</div><div class="v">${d.bound}</div></div>
+      <div class="card ${d.unbound_chats?'warn':''}"><div class="k">Без привязки</div><div class="v">${d.unbound_chats}</div></div>
+      <div class="card ${d.clients_no_chat?'warn':''}"><div class="k">Клиентов без чата</div><div class="v">${d.clients_no_chat}</div></div>
+      <div class="card ${d.errors?'bad':'good'}"><div class="k">Ошибок</div><div class="v">${d.errors}</div></div>
+    </div>
+    <div class="grid2">
+      <div class="panel"><h3>Требует внимания</h3><div class="body" id="dashAlerts"></div></div>
+      <div class="panel"><h3>Рассылка</h3><div class="body">
+        <p class="muted">Сформировать и отправить отчёты во все привязанные чаты за прошлую неделю.</p>
+        <button class="btn primary" onclick="runWeekly()">📨 Запустить рассылку сейчас</button>
+        <button class="btn" onclick="go('reports')" style="margin-left:8px">История</button>
+      </div></div>
+    </div>`;
+  const a=el('dashAlerts');let h='';
+  if(d.unbound_chats>0)h+=`<div class="alert amber">⚠️ <div><b>${d.unbound_chats} чат(ов) без привязки</b> — бот добавлен, но не знает клиента. <a onclick="go('match')">Сопоставить →</a></div></div>`;
+  if(d.clients_no_chat>0)h+=`<div class="alert grey">📇 <div><b>${d.clients_no_chat} клиент(ов) без чата</b>. <a onclick="openOnboard()">Подключить →</a></div></div>`;
+  if(d.errors>0)h+=`<div class="alert red">❌ <div><b>${d.errors}</b> ошибок отправки в истории. <a onclick="go('reports')">Открыть →</a></div></div>`;
+  a.innerHTML=h||'<div class="muted">Всё в порядке ✅</div>';
+}
+
+/* ---------- CLIENTS ---------- */
+async function renderClients(){
+  const host=el('v_clients');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
+  try{CLIENTS=await api('clients');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  host.innerHTML=`
+    <h2 class="title">Клиенты</h2><p class="sub">Клик по строке — настройки клиента (цели, атрибуция, чат).</p>
+    <div class="toolbar">
+      <input type="search" id="clSearch" placeholder="Поиск по названию или логину…" oninput="drawClients()">
+      <select id="clFilter" onchange="drawClients()"><option value="">Все</option><option value="bound">С привязкой</option><option value="unbound">Без чата</option></select>
+      <div style="flex:1"></div>
+      <button class="btn" onclick="doSync()">🔄 Подтянуть из Директа</button>
+      <button class="btn" onclick="doImport()">⬇ Импорт config.json</button>
+    </div>
+    <div class="panel"><table>
+      <thead><tr><th>Клиент</th><th>Логин</th><th>Чат</th><th>Цели</th><th>Атрибуция</th><th>Источник</th></tr></thead>
+      <tbody id="clBody"></tbody></table></div>`;
+  drawClients();
+}
+function drawClients(){
+  const q=(el('clSearch').value||'').toLowerCase(),f=el('clFilter').value;
+  const rows=CLIENTS.filter(c=>{
+    if(q&&!(String(c.name).toLowerCase().includes(q)||String(c.login).toLowerCase().includes(q)))return false;
+    if(f==='bound'&&!c.chat_id)return false;
+    if(f==='unbound'&&c.chat_id)return false;return true;});
+  const b=el('clBody');
+  if(!rows.length){b.innerHTML='<tr><td colspan="6" class="empty">Нет клиентов. Нажми «Подтянуть из Директа» или «Импорт config.json».</td></tr>';return;}
+  b.innerHTML=rows.map(c=>`
+    <tr class="click" onclick="openClient('${esc(c.login)}')">
+      <td><b>${esc(c.name)}</b></td><td class="muted">${esc(c.login)}</td>
+      <td>${c.chat_title?('💬 '+esc(c.chat_title)):'<span class="muted">— не привязан</span>'}</td>
+      <td>${(c.goals&&c.goals.length)?c.goals.map(g=>'<span class="chip">'+esc(g.name||g.id)+'</span>').join(''):'<span class="muted">— нет</span>'}</td>
+      <td>${esc(c.attribution||'LSC')}</td><td class="muted">${esc(c.source||'')}</td>
+    </tr>`).join('');
+}
+async function doSync(){try{toast('Запрашиваю клиентов из Директа…');const r=await api('sync_clients');toast('Синхронизировано: '+r.synced,'ok');refresh();}catch(e){}}
+async function doImport(){try{const r=await api('import_config');toast('Импорт: клиентов '+r.clients+', привязок '+r.bindings,'ok');refresh();}catch(e){}}
+
+/* ---------- CHATS ---------- */
+async function renderChats(){
+  const host=el('v_chats');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
+  let chats,cls;try{chats=await api('chats');cls=await api('clients');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  CHATS=chats;
+  const opts=cls.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
+  host.innerHTML=`
+    <h2 class="title">Чаты</h2><p class="sub">Чаты появляются автоматически, когда бота туда добавляют. Сопоставь чат с клиентом.</p>
+    <div class="panel"><table>
+      <thead><tr><th>Чат</th><th>ID</th><th>Тип</th><th>Статус</th><th>Привязка</th><th></th></tr></thead>
+      <tbody>${chats.length?chats.map(c=>`
+        <tr>
+          <td>${esc(c.title)}</td><td class="muted">${c.chat_id}</td><td>${esc(c.type||'')}</td>
+          <td>${c.status==='active'?'<span class="badge b-green">активен</span>':'<span class="badge b-grey">удалён</span>'}</td>
+          <td><select id="bind_${c.chat_id}"><option value="">— не привязан —</option>${opts}</select></td>
+          <td class="right"><button class="btn sm primary" onclick="doBind(${c.chat_id})">Сохранить</button></td>
+        </tr>`).join(''):'<tr><td colspan="6" class="empty">Пока нет чатов. Запусти бота и добавь его в чат.</td></tr>'}
+      </tbody></table></div>`;
+  chats.forEach(c=>{if(c.login){const s=el('bind_'+c.chat_id);if(s)s.value=c.login;}});
+}
+async function doBind(chatId){const sel=el('bind_'+chatId);try{await api('bind',chatId,sel.value);toast(sel.value?'Привязано':'Привязка снята','ok');refresh();}catch(e){}}
+
+/* ---------- MATCH ---------- */
+async function renderMatch(){
+  const host=el('v_match');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
+  let d;try{d=await api('suggestions');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const opts=d.free_clients.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
+  let rows=d.matches.map(m=>{
+    const cc=m.confidence>=70?'hi':(m.confidence>=45?'mid':'lo');
+    const right=m.suggest_login
+      ? `<div class="src">🏢 ${esc(m.suggest_name)}<small>${esc(m.suggest_login)}</small></div>`
+      : `<div><select id="mansel_${m.chat_id}" style="width:100%"><option value="">— выбрать клиента —</option>${opts}</select></div>`;
+    const act=m.suggest_login
+      ? `<div><button class="btn primary sm" onclick="doBind2(${m.chat_id},'${esc(m.suggest_login)}')">Привязать</button></div>`
+      : `<div><button class="btn primary sm" onclick="doBindManual(${m.chat_id})">Привязать</button></div>`;
+    return `<div class="matchrow">
+      <div class="src">💬 ${esc(m.chat_title)}<small>чат ${m.chat_id}</small></div>
+      <div class="arrow">↔ <div class="conf ${cc}">${m.suggest_login?(m.confidence+'%'):'нет совпадений'}</div></div>
+      ${right}${act}</div>`;}).join('');
+  host.innerHTML=`
+    <h2 class="title">Привязки</h2>
+    <p class="sub">Главный ручной шаг — сопоставить «чат ↔ клиент». Система предлагает совпадение, тебе остаётся подтвердить.</p>
+    <div class="panel"><div class="body">
+      ${d.matches.length?rows:'<div class="empty">Нет чатов без привязки 🎉</div>'}
+      <div class="note" style="margin-top:6px">🔒 В Telegram привязку командой /bind подтверждает только администратор (защита от ошибочной привязки чужого чата).</div>
+    </div></div>`;
+}
+async function doBind2(chatId,login){try{await api('bind',chatId,login);toast('Привязано','ok');refresh();}catch(e){}}
+async function doBindManual(chatId){const s=el('mansel_'+chatId);if(!s.value){toast('Выбери клиента','err');return;}try{await api('bind',chatId,s.value);toast('Привязано','ok');refresh();}catch(e){}}
+
+/* ---------- REPORTS ---------- */
+let RTAB='prev';
+async function renderReports(){
+  const host=el('v_reports');
+  let cls;try{cls=await api('clients');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const bound=cls.filter(c=>c.chat_id);
+  const opts=(bound.length?bound:cls).map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
+  host.innerHTML=`
+    <h2 class="title">Отчёты</h2><p class="sub">Предпросмотр сообщения и история рассылок.</p>
+    <div class="tabs"><div class="t ${RTAB==='prev'?'on':''}" onclick="setRtab('prev')">Предпросмотр</div><div class="t ${RTAB==='hist'?'on':''}" onclick="setRtab('hist')">История</div></div>
+    <div id="rpane"></div>`;
+  if(RTAB==='prev'){
+    el('rpane').innerHTML=`<div class="grid2">
+      <div class="panel"><h3>Параметры</h3><div class="body">
+        <div class="field"><label>Клиент</label><select id="rpClient">${opts||'<option>нет клиентов</option>'}</select></div>
+        <div class="field"><label>Период</label><input value="Прошлая неделя (Пн–Вс)" disabled></div>
+        <div style="display:flex;gap:10px">
+          <button class="btn primary" onclick="doPreview()">👁 Сформировать превью</button>
+          <button class="btn" onclick="doSendTest()">📨 Отправить тест в чат</button>
+        </div>
+        <div class="note" style="margin-top:14px">Формат 1:1 как у текущего отчёта: итог по аккаунту + кампании, цели, спящие, расход с НДС, приписка специалиста.</div>
+      </div></div>
+      <div class="panel"><h3>Как увидит клиент</h3><div class="body"><div class="tg"><div class="bubble" id="rpBubble"><span class="muted">Нажми «Сформировать превью».</span></div><div class="meta" id="rpMeta"></div></div></div></div>
+    </div>`;
+  }else{
+    el('rpane').innerHTML='<div class="panel"><div id="histBody" class="empty"><span class="spin"></span> загрузка…</div></div>';
+    try{const h=await api('history');el('histBody').outerHTML=histTable(h);}catch(e){el('histBody').innerHTML='Ошибка: '+esc(e.message);}
+  }
+}
+function setRtab(t){RTAB=t;renderReports();}
+function histTable(h){
+  if(!h.length)return '<table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th></tr></thead><tbody><tr><td colspan="5" class="empty">Пока нет отправок.</td></tr></tbody></table>';
+  const badge=s=>s==='sent'?'<span class="badge b-green">отправлено</span>':(s==='error'?'<span class="badge b-red">ошибка</span>':'<span class="badge b-grey">'+esc(s)+'</span>');
+  return '<table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th></tr></thead><tbody>'+
+    h.map(r=>`<tr><td class="nowrap">${esc((r.sent_at||'').replace('T',' ').slice(0,16))}</td><td>${esc(r.client_name)}</td><td>${r.chat_title?esc(r.chat_title):'<span class="muted">—</span>'}</td><td class="muted nowrap">${esc(r.period_from)}…${esc(r.period_to)}</td><td>${badge(r.status)}${r.error?(' <span class="muted">'+esc(r.error)+'</span>'):''}</td></tr>`).join('')+
+    '</tbody></table>';
+}
+async function doPreview(){
+  const login=el('rpClient').value;if(!login)return;
+  el('rpBubble').innerHTML='<span class="spin"></span> запрашиваю данные из Директа…';el('rpMeta').textContent='';
+  try{const r=await api('preview',login);
+    if(r.text===null){el('rpBubble').innerHTML='<span class="muted">'+esc(r.reason)+'</span>';}
+    else{el('rpBubble').textContent=r.text;el('rpMeta').textContent='кампаний: '+r.campaigns+' · предпросмотр, не отправлено';}
+  }catch(e){el('rpBubble').innerHTML='<span class="muted">Ошибка: '+esc(e.message)+'</span>';}
+}
+async function doSendTest(){
+  const login=el('rpClient').value;if(!login)return;
+  if(!confirm('Отправить тестовый отчёт в привязанный чат клиента?'))return;
+  try{const r=await api('send_test',login);
+    if(r.status==='sent')toast('Отправлено в чатов: '+r.chats,'ok');
+    else if(r.status==='no_chat')toast('У клиента нет привязанного чата','err');
+    else toast('Пропущено: '+(r.reason||r.status),'err');
+    if(RTAB==='hist')renderReports();
+  }catch(e){}
+}
+async function runWeekly(){
+  if(!confirm('Запустить рассылку по ВСЕМ привязанным клиентам за прошлую неделю?'))return;
+  toast('Запускаю рассылку…');
+  try{const r=await api('run_weekly');toast(`Готово: отправлено ${r.sent}, пропущено ${r.skipped}, без чата ${r.no_chat}, ошибок ${r.errors}`,'ok');}catch(e){}
+}
+
+/* ---------- SETTINGS ---------- */
+async function renderSettings(){
+  const host=el('v_settings');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
+  let s;try{s=await api('settings');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const tgOk=s.telegram.status==='ок';
+  host.innerHTML=`
+    <h2 class="title">Настройки</h2><p class="sub">Токены, доступы, тексты и расписание.</p>
+    <div class="grid2">
+      <div class="panel"><h3>Подключения</h3><div class="body"><div class="kvs">
+        <div class="k">Telegram бот</div><div>${tgOk?('<span class="badge b-green">✓ @'+esc(s.telegram.username||'')+'</span>'):('<span class="badge b-red">'+esc(s.telegram.status)+'</span>')}</div>
+        <div class="k">Яндекс OAuth</div><div>${s.yandex.status==='ок'?'<span class="badge b-green">✓ подключён</span>':'<span class="badge b-red">нет токена</span>'}</div>
+        <div class="k">Метрика</div><div><span class="badge b-grey">цели задаются вручную (авто-подгрузка — позже)</span></div>
+      </div><p class="muted" style="margin-top:12px">Токены хранятся в secrets.json и здесь не показываются.</p></div></div>
+      <div class="panel"><h3>Доступ к привязкам</h3><div class="body">
+        <div class="field"><label>Администраторы (Telegram ID, через запятую)</label><input id="stAdmins" value="${esc((s.admin_user_ids||[]).join(', '))}"><div class="hint">Только они могут /bind в Telegram. Свой id — у @userinfobot.</div></div>
+      </div></div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h3>Тексты и расписание</h3><div class="body">
+      <div class="field"><label>Вступление</label><input id="stIntro" value="${esc(s.intro)}"></div>
+      <div class="field"><label>Приписка специалиста</label><input id="stNote" value="${esc(s.specialist_note)}"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+        <div class="field"><label>Атрибуция по умолчанию</label><select id="stAttr">${['LSC','LC','FC','LYDC'].map(a=>`<option ${a===s.attribution_model?'selected':''}>${a}</option>`).join('')}</select></div>
+        <div class="field"><label>День рассылки</label><input id="stDay" value="${esc(s.report_day)}"></div>
+        <div class="field"><label>Время</label><input id="stTime" value="${esc(s.report_time)}"></div>
+      </div>
+      <div class="note" style="margin-bottom:14px">Время рассылки — справочно. Запуск по расписанию настраивается в «Планировщике задач» Windows (запуск этой программы/скрипта). Кнопка «Запустить рассылку сейчас» работает в любой момент.</div>
+      <button class="btn primary" onclick="saveSettings()">Сохранить</button>
+    </div></div>`;
+}
+async function saveSettings(){
+  const admins=(el('stAdmins').value||'').split(/[,\s]+/).filter(Boolean);
+  try{await api('save_settings',el('stIntro').value,el('stNote').value,el('stAttr').value,admins,el('stDay').value,el('stTime').value);
+    toast('Сохранено','ok');}catch(e){}
+}
+
+/* ---------- DRAWER (client) ---------- */
+let DR_LOGIN=null;
+async function openClient(login){
+  DR_LOGIN=login;el('drawerBg').classList.add('on');el('drawer').classList.add('on');
+  el('drTitle').textContent=login;el('drBody').innerHTML='<div class="empty"><span class="spin"></span></div>';
+  let c;try{c=await api('client',login);}catch(e){el('drBody').innerHTML='Ошибка';return;}
+  el('drTitle').innerHTML=esc(c.name)+' <span class="muted" style="font-weight:400">· '+esc(c.login)+'</span>';
+  el('drBody').innerHTML=`
+    <div class="field"><label>Название</label><input id="dName" value="${esc(c.name)}"></div>
+    <div class="field"><label>Привязанные чаты</label><div>${c.chats.length?c.chats.map(ch=>'<span class="chip">💬 '+esc(ch.title)+'</span>').join(''):'<span class="muted">— нет. Привяжи во вкладке «Чаты»/«Привязки».</span>'}</div></div>
+    <div class="field"><label>Модель атрибуции</label><select id="dAttr">${['LSC','LC','FC','LYDC'].map(a=>`<option ${a===c.attribution?'selected':''}>${a}</option>`).join('')}</select></div>
+    <div class="field"><label>Цели Метрики (конверсии)</label><div id="dGoals"></div>
+      <button class="btn sm" onclick="addGoal()">＋ Добавить цель</button>
+      <div class="hint">ID цели из Яндекс.Метрики и понятное название. Авто-подгрузку из Метрики добавим позже.</div></div>`;
+  const g=el('dGoals');g.innerHTML='';(c.goals||[]).forEach(x=>addGoal(x.id,x.name));
+}
+function addGoal(id,name){
+  const row=document.createElement('div');row.className='goalrow';
+  row.innerHTML=`<input placeholder="ID" value="${esc(id||'')}"><input placeholder="Название" value="${esc(name||'')}"><button class="btn sm" onclick="this.parentNode.remove()">✕</button>`;
+  el('dGoals').appendChild(row);
+}
+function collectGoals(){return [...document.querySelectorAll('#dGoals .goalrow')].map(r=>{const i=r.querySelectorAll('input');return {id:i[0].value.trim(),name:i[1].value.trim()};}).filter(g=>g.id);}
+async function drawerSave(){
+  try{await api('save_client',DR_LOGIN,el('dName').value,collectGoals(),el('dAttr').value);toast('Сохранено','ok');closeDrawer();if(CURRENT==='clients')renderClients();}catch(e){}
+}
+async function drawerTest(){
+  if(!confirm('Отправить тестовый отчёт в чат клиента?'))return;
+  try{const r=await api('send_test',DR_LOGIN);toast(r.status==='sent'?('Отправлено: '+r.chats):('Статус: '+(r.reason||r.status)),r.status==='sent'?'ok':'err');}catch(e){}
+}
+function closeDrawer(){el('drawerBg').classList.remove('on');el('drawer').classList.remove('on');}
+
+/* ---------- ONBOARDING ---------- */
+async function openOnboard(){
+  el('modalBg').classList.add('on');el('modal').classList.add('on');
+  el('obBody').innerHTML='<div class="empty"><span class="spin"></span></div>';
+  let cls;try{cls=await api('clients');}catch(e){el('obBody').innerHTML='Ошибка';return;}
+  const free=cls.filter(c=>!c.chat_id);
+  const opts=(free.length?free:cls).map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
+  el('obBody').innerHTML=`
+    <div class="field"><label>1 · Клиент</label><select id="obClient">${opts||'<option>нет клиентов</option>'}</select></div>
+    <div class="field"><label>2 · Ссылка для подключения</label>
+      <div class="note">Добавь бота в чат клиента по этой ссылке — чат привяжется автоматически (deep-link). Либо привяжи уже добавленный чат во вкладке «Чаты».</div>
+      <div class="link-box"><input id="obLink" readonly placeholder="нажми «Получить ссылку»"><button class="btn" onclick="genLink()">Получить ссылку</button></div>
+      <div class="hint" id="obHint"></div></div>`;
+}
+async function genLink(){
+  const login=el('obClient').value;if(!login)return;
+  try{const r=await api('connect_link',login);el('obLink').value=r.link;el('obLink').select();document.execCommand&&document.execCommand('copy');el('obHint').textContent='Ссылка скопирована. Открой её и выбери чат клиента.';}catch(e){}
+}
+function closeOnboard(){el('modalBg').classList.remove('on');el('modal').classList.remove('on');}
+
+/* ---------- init ---------- */
+function init(){
+  if(READY)return;READY=true;
+  el('botInfo').textContent='Готово';
+  go('dashboard');loadBadges();
+  api('settings').then(s=>{el('botInfo').innerHTML='Бот: @'+esc((s.telegram&&s.telegram.username)||'?')+'<br>Десктоп · ПК-режим';
+    el('botPill').innerHTML='<span class="dot"></span> '+(s.telegram.status==='ок'?'Подключён':'Нет связи');
+    if(s.telegram.status!=='ок')el('botPill').classList.add('grey');}).catch(()=>{});
+}
+window.addEventListener('pywebviewready',init);                                  // десктоп
+setTimeout(()=>{if(!READY&&location.protocol.indexOf('http')===0)init();},120);  // веб (браузер)
+setTimeout(()=>{if(!READY&&window.pywebview&&window.pywebview.api)init();},600);  // десктоп (запас)
+setTimeout(()=>{if(!READY)el('v_dashboard').innerHTML='<div class="empty">Нет связи с backend.<br>Десктоп: запусти IIGReporter.exe. Веб: открой адрес веб-версии в браузере.</div>';},2500);
+</script>
+</body>
+</html>

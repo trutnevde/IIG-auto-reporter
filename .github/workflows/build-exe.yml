@@ -1,0 +1,51 @@
+name: Сборка Windows .exe
+
+on:
+  push:
+    branches: [ "claude/jolly-davinci-art2im", "main" ]
+    paths:
+      - "app/**"
+      - ".github/workflows/build-exe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Установка зависимостей
+        working-directory: app
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Сборка IIGReporter.exe
+        working-directory: app
+        run: pyinstaller --noconfirm --clean iigreporter.spec
+
+      - name: Загрузить артефакт (скачивается из вкладки Actions)
+        uses: actions/upload-artifact@v4
+        with:
+          name: IIGReporter
+          path: app/dist/IIGReporter.exe
+
+      - name: Опубликовать в релиз "latest" (постоянная ссылка для скачивания)
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Последняя сборка — IIGReporter.exe
+          body: |
+            Автоматическая сборка из ветки `${{ github.ref_name }}`.
+            Скачай **IIGReporter.exe** ниже, положи рядом `secrets.json` и запусти.
+          files: app/dist/IIGReporter.exe

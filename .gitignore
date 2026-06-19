@@ -20,3 +20,14 @@ __pycache__/
 *.pyc
 .DS_Store
 Thumbs.db
+
+# --- Python-бот (app/): локальные настройки и база, в git не нужны ---
+app/app_config.json
+app/iigbot.sqlite3
+app/iigbot.sqlite3-wal
+app/iigbot.sqlite3-shm
+
+# --- Сборка PyInstaller ---
+app/build/
+app/dist/
+*.exe
