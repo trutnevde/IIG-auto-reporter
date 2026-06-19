@@ -1,0 +1,22 @@
+# --- СЕКРЕТЫ: никогда не коммитим ---
+secrets.json
+.env
+.env.*
+.audit-key
+
+# --- Логи и журналы ---
+*.log
+report.log
+diagnose.log
+audit.jsonl
+
+# --- Локальные данные/выгрузки ---
+outputs/
+uploads/
+
+# --- Служебное ---
+.claude/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
