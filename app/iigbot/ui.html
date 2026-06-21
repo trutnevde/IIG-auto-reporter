@@ -402,8 +402,12 @@ async function renderSettings(){
       <div class="panel"><h3>Подключения</h3><div class="body"><div class="kvs">
         <div class="k">Telegram бот</div><div>${tgOk?('<span class="badge b-green">✓ @'+esc(s.telegram.username||'')+'</span>'):('<span class="badge b-red">'+esc(s.telegram.status)+'</span>')}</div>
         <div class="k">Яндекс OAuth</div><div>${s.yandex.status==='ок'?'<span class="badge b-green">✓ подключён</span>':'<span class="badge b-red">нет токена</span>'}</div>
-        <div class="k">Метрика</div><div><span class="badge b-grey">цели задаются вручную (авто-подгрузка — позже)</span></div>
-      </div><p class="muted" style="margin-top:12px">Токены хранятся в secrets.json и здесь не показываются.</p></div></div>
+      </div>
+      <div class="field" style="margin-top:12px"><label>Telegram bot token</label><input id="stTgToken" placeholder="${s.telegram.has_token?'задан — оставь пустым, чтобы не менять':'вставь токен от @BotFather'}"></div>
+      <div class="field"><label>Yandex OAuth токен</label><input id="stYaToken" placeholder="${s.yandex.has_token?'задан — оставь пустым, чтобы не менять':'вставь OAuth токен Яндекс.Директа'}"></div>
+      <button class="btn primary" onclick="saveTokens()">Сохранить токены</button>
+      <div class="hint">Пишутся в secrets.json рядом с программой. После сохранения бот подхватит их сам; если не отвечает — перезапусти программу.</div>
+      </div></div>
       <div class="panel"><h3>Доступ к привязкам</h3><div class="body">
         <div class="field"><label>Администраторы (Telegram ID, через запятую)</label><input id="stAdmins" value="${esc((s.admin_user_ids||[]).join(', '))}"><div class="hint">Только они могут /bind в Telegram. Свой id — у @userinfobot.</div></div>
       </div></div>
@@ -424,6 +428,11 @@ async function saveSettings(){
   const admins=(el('stAdmins').value||'').split(/[,\s]+/).filter(Boolean);
   try{await api('save_settings',el('stIntro').value,el('stNote').value,el('stAttr').value,admins,el('stDay').value,el('stTime').value);
     toast('Сохранено','ok');}catch(e){}
+}
+async function saveTokens(){
+  const tg=(el('stTgToken').value||'').trim(), ya=(el('stYaToken').value||'').trim();
+  if(!tg && !ya){ toast('Введи хотя бы один токен','err'); return; }
+  try{ await api('save_secrets', tg, ya); toast('Токены сохранены','ok'); el('stTgToken').value='';el('stYaToken').value=''; refresh(); }catch(e){}
 }
 
 /* ---------- DRAWER (client) ---------- */

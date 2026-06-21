@@ -9,12 +9,12 @@ import json
 import difflib
 import functools
 
-from . import yandex, report
+from . import yandex, report, listener
 from .storage import Storage
 from .telegram_api import Telegram, TelegramError
 from .settings import (
     load_secrets, load_app_config, load_report_config,
-    save_app_config, save_report_config,
+    save_app_config, save_report_config, save_secrets as _save_secrets,
 )
 from .import_config import normalize_goals
 
@@ -264,17 +264,24 @@ class Api:
     def settings(self):
         rep = load_report_config()
         app = load_app_config()
-        # статусы подключений (без раскрытия секретов)
-        tg_status, tg_name = "нет", None
-        ya_status = "нет"
+        # наличие токенов (сами значения не раскрываем)
+        tg_has = ya_has = False
         try:
             secrets = load_secrets()
-            if secrets.get("yandex_oauth_token") and "ВСТАВЬ" not in secrets["yandex_oauth_token"]:
-                ya_status = "ок"
-            tg_name = self._bot_name()
-            tg_status = "ок"
-        except Exception as e:  # noqa: BLE001
-            tg_status = "ошибка: {}".format(e)
+            tgv = secrets.get("telegram_bot_token") or ""
+            yav = secrets.get("yandex_oauth_token") or ""
+            tg_has = bool(tgv) and "ВСТАВЬ" not in tgv
+            ya_has = bool(yav) and "ВСТАВЬ" not in yav
+        except Exception:  # noqa: BLE001
+            pass
+        ya_status = "ок" if ya_has else "нет"
+        tg_status, tg_name = "нет", None
+        if tg_has:
+            try:
+                tg_name = self._bot_name()
+                tg_status = "ок"
+            except Exception as e:  # noqa: BLE001
+                tg_status = "ошибка: {}".format(e)
         return {
             "intro": rep.get("intro", ""),
             "specialist_note": rep.get("specialist_note", ""),
@@ -282,8 +289,8 @@ class Api:
             "admin_user_ids": app.get("admin_user_ids", []),
             "report_day": app.get("report_day", "Понедельник"),
             "report_time": app.get("report_time", "09:00"),
-            "telegram": {"status": tg_status, "username": tg_name},
-            "yandex": {"status": ya_status},
+            "telegram": {"status": tg_status, "username": tg_name, "has_token": tg_has},
+            "yandex": {"status": ya_status, "has_token": ya_has},
         }
 
     @safe
@@ -313,6 +320,25 @@ class Api:
             app_patch["report_time"] = report_time
         if app_patch:
             self.cfg = save_app_config(app_patch)
+        return True
+
+    @safe
+    def save_secrets(self, telegram_bot_token=None, yandex_oauth_token=None):
+        """Сохраняет токены в secrets.json прямо из интерфейса (без правки файла руками)."""
+        patch = {}
+        if telegram_bot_token and telegram_bot_token.strip():
+            patch["telegram_bot_token"] = telegram_bot_token.strip()
+        if yandex_oauth_token and yandex_oauth_token.strip():
+            patch["yandex_oauth_token"] = yandex_oauth_token.strip()
+        if not patch:
+            raise RuntimeError("Введите хотя бы один токен")
+        _save_secrets(patch)
+        self._tg = None            # сброс кэша — статус/бот перечитают новый токен
+        self._bot_username = None
+        try:
+            listener.start(load_secrets(), self.cfg)   # поднять слушатель с новым токеном
+        except Exception:  # noqa: BLE001
+            pass
         return True
 
     @safe

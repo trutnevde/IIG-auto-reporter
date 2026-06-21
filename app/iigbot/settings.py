@@ -129,3 +129,19 @@ def save_report_config(patch):
     cur.update(patch)
     _save(path, cur)
     return cur
+
+
+def save_secrets(patch):
+    """Записывает/обновляет токены в secrets.json рядом с программой (мержит с существующими)."""
+    path = _secrets_candidates()[0]
+    cur = {}
+    if os.path.isfile(path):
+        try:
+            cur = _load(path)
+        except Exception:  # noqa: BLE001
+            cur = {}
+    for k, v in (patch or {}).items():
+        if v is not None:
+            cur[k] = v
+    _save(path, cur)
+    return path
