@@ -72,6 +72,24 @@ def load_secrets():
     return _load(path)
 
 
+SECRETS_TEMPLATE = {
+    "telegram_bot_token": "ВСТАВЬ_ТОКЕН_БОТА_от_BotFather",
+    "yandex_oauth_token": "ВСТАВЬ_OAUTH_ТОКЕН_ЯНДЕКС_ДИРЕКТА",
+}
+
+
+def ensure_secrets_template():
+    """Если secrets.json рядом с программой нет — создаём шаблон с подсказками.
+    Так пользователь сразу видит, какой файл заполнить, а не получает падение «не найден»."""
+    path = _secrets_candidates()[0]
+    if not os.path.isfile(path):
+        try:
+            _save(path, SECRETS_TEMPLATE)
+        except Exception:
+            pass
+    return path
+
+
 def load_app_config():
     path = _first_existing(_app_config_path())
     cfg = _load(path) if path else {}

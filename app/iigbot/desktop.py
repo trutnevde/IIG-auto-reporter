@@ -23,10 +23,14 @@ def main():
         print("pywebview не установлен. Запусти веб-версию:  python -m iigbot web")
         return
 
-    secrets = load_secrets()
+    try:
+        secrets = load_secrets()
+    except Exception as e:  # noqa: BLE001
+        print("secrets.json не найден/битый: {} — открываю окно, впиши токены в secrets.json".format(e))
+        secrets = {}
     cfg = load_app_config()
 
-    listener.start(secrets, cfg)   # фоновое обнаружение чатов
+    listener.start(secrets, cfg)   # слушатель чатов — отдельным процессом
 
     api = Api()
     with open(package_file("ui.html"), encoding="utf-8") as f:

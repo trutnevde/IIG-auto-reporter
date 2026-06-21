@@ -7,6 +7,7 @@
 Запуск (Windows):  run_bot.bat
 Или из app/:       python -m iigbot.bot
 """
+import socket
 import sys
 import time
 import traceback
@@ -233,6 +234,15 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8")   # корректный вывод эмодзи/кириллицы в консоли Windows
     except Exception:
         pass
+
+    # анти-дубликат: только один слушатель на машину (иначе конфликт getUpdates и двойные ответы).
+    # Лок держим до конца процесса — освобождается ОС при выходе.
+    _singleton_lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        _singleton_lock.bind(("127.0.0.1", 49517))
+    except OSError:
+        print("Слушатель уже запущен — выходим, чтобы не дублировать ответы.")
+        return
 
     secrets = load_secrets()
     cfg = load_app_config()

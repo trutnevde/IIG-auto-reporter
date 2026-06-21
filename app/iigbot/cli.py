@@ -10,7 +10,29 @@
 
 Используется и как `python -m iigbot ...`, и как собранный IIGReporter.exe.
 """
+import os
 import sys
+
+
+def _ensure_stdio():
+    """onefile-GUI-сборка (console=False): sys.stdout/stderr = None, и любой print() роняет
+    процесс/поток. Перенаправляем вывод в файл рядом с программой — тогда ничего не падает."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    f = None
+    try:
+        from .settings import BASE_DIR
+        f = open(os.path.join(BASE_DIR, "iig.log"), "a", encoding="utf-8", buffering=1)
+    except Exception:
+        try:
+            f = open(os.devnull, "w")
+        except Exception:
+            return
+    if sys.stdout is None:
+        sys.stdout = f
+    if sys.stderr is None:
+        sys.stderr = f
+
 
 HELP = (
     "IIG Reporter\n"
@@ -24,6 +46,12 @@ HELP = (
 
 
 def main(argv=None):
+    _ensure_stdio()
+    try:
+        from .settings import ensure_secrets_template
+        ensure_secrets_template()       # создаём шаблон secrets.json рядом, если его нет
+    except Exception:
+        pass
     args = list(sys.argv[1:] if argv is None else argv)
     cmd = (args[0].lower().lstrip("-") if args else "desktop")
 
