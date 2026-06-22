@@ -30,7 +30,17 @@ def main():
         secrets = {}
     cfg = load_app_config()
 
-    listener.start(secrets, cfg)   # слушатель чатов — отдельным процессом
+    proc = listener.start(secrets, cfg)   # слушатель чатов — отдельным процессом
+
+    def _stop_listener():
+        if proc is not None and proc.poll() is None:
+            try:
+                proc.terminate()
+            except Exception:  # noqa: BLE001
+                pass
+
+    import atexit
+    atexit.register(_stop_listener)   # на случай аварийного выхода
 
     api = Api()
     with open(package_file("ui.html"), encoding="utf-8") as f:
@@ -43,6 +53,7 @@ def main():
         width=1240, height=820, min_size=(1000, 640),
     )
     webview.start()
+    _stop_listener()   # окно закрыли — гасим слушатель, чтобы не остался «зомби» с локом
 
 
 if __name__ == "__main__":

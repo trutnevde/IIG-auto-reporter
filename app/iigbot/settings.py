@@ -62,6 +62,43 @@ def package_file(name):
     return os.path.join(PKG_DIR, name)
 
 
+def ensure_ca_bundle():
+    """Делает CA-сертификат для HTTPS независимым от временной _MEI-папки PyInstaller.
+
+    В onefile-сборке requests/certifi берёт cacert.pem из sys._MEIPASS (…\\Temp\\_MEI…).
+    Эту папку удаляет родительский/прежний процесс при закрытии окна — и тогда HTTPS падает
+    с OSError («Could not find a suitable TLS CA certificate bundle»), а фоновый слушатель
+    тихо умирает. Копируем бандл ОДИН раз рядом с программой (BASE_DIR) и указываем на
+    стабильную копию через переменные окружения — их наследует и дочерний процесс-слушатель.
+    Копия рядом с exe не удаляется никогда. В обычном Python ничего не трогаем.
+    """
+    if not FROZEN:
+        return None
+    stable = os.path.join(BASE_DIR, "cacert.pem")
+    src = None
+    try:
+        import certifi
+        src = certifi.where()
+    except Exception:  # noqa: BLE001
+        src = None
+    if not (src and os.path.isfile(src)):
+        meipass = getattr(sys, "_MEIPASS", None)
+        cand = os.path.join(meipass, "certifi", "cacert.pem") if meipass else None
+        src = cand if (cand and os.path.isfile(cand)) else None
+    if src:  # обновляем стабильную копию, пока _MEI ещё жив
+        try:
+            with open(src, "rb") as fi, open(stable, "wb") as fo:
+                fo.write(fi.read())
+        except Exception:  # noqa: BLE001
+            pass
+    if os.path.isfile(stable):
+        os.environ["REQUESTS_CA_BUNDLE"] = stable   # requests
+        os.environ["CURL_CA_BUNDLE"] = stable        # requests (резерв)
+        os.environ["SSL_CERT_FILE"] = stable         # ssl/urllib
+        return stable
+    return None
+
+
 def load_secrets():
     path = _first_existing(*_secrets_candidates())
     if not path:

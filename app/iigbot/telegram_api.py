@@ -49,7 +49,9 @@ class Telegram:
         for attempt in range(retries):
             try:
                 r = self.s.post(url, json=params or {}, timeout=http_timeout or (self.timeout + 15))
-            except requests.RequestException as e:
+            except (requests.RequestException, OSError) as e:
+                # OSError ловим тоже: при битом пути к CA-бандлу requests кидает именно его —
+                # без этого слушатель падал насмерть. Здесь же он станет повторяемой ошибкой.
                 last = "сеть: {}".format(e)
                 time.sleep(min(2 ** attempt, 10))
                 continue

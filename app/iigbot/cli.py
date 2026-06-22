@@ -48,7 +48,8 @@ HELP = (
 def main(argv=None):
     _ensure_stdio()
     try:
-        from .settings import ensure_secrets_template
+        from .settings import ensure_ca_bundle, ensure_secrets_template
+        ensure_ca_bundle()              # стабильный CA рядом с exe (чинит падение слушателя по TLS)
         ensure_secrets_template()       # создаём шаблон secrets.json рядом, если его нет
     except Exception:
         pass
