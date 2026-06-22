@@ -517,7 +517,7 @@ async function renderReports(){
   const opts=(bound.length?bound:cls).map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
   host.innerHTML=`
     <h2 class="title">Отчёты</h2><p class="sub">Предпросмотр сообщения и история рассылок.</p>
-    <div class="tabs"><div class="t ${RTAB==='prev'?'on':''}" onclick="setRtab('prev')">Предпросмотр</div><div class="t ${RTAB==='hist'?'on':''}" onclick="setRtab('hist')">История</div></div>
+    <div class="tabs"><div class="t ${RTAB==='prev'?'on':''}" onclick="setRtab('prev')">Предпросмотр</div><div class="t ${RTAB==='build'?'on':''}" onclick="setRtab('build')">Конструктор</div><div class="t ${RTAB==='hist'?'on':''}" onclick="setRtab('hist')">История</div></div>
     <div id="rpane"></div>`;
   if(RTAB==='prev'){
     el('rpane').innerHTML=`<div class="grid2">
@@ -532,6 +532,8 @@ async function renderReports(){
       </div></div>
       <div class="panel"><h3><span class="h3-ic">📱</span> Как увидит клиент</h3><div class="body"><div class="tg"><div class="bubble" id="rpBubble"><span class="muted">Нажми «Сформировать превью».</span></div><div class="meta" id="rpMeta"></div></div></div></div>
     </div>`;
+  }else if(RTAB==='build'){
+    await renderBuilder(opts);
   }else{
     el('rpane').innerHTML='<div class="panel"><div id="histBody" class="empty"><span class="spin"></span> загрузка…</div></div>';
     try{const h=await api('history');el('histBody').outerHTML=histTable(h);}catch(e){el('histBody').innerHTML='Ошибка: '+esc(e.message);}
@@ -567,6 +569,65 @@ async function runWeekly(){
   if(!confirm('Запустить рассылку по ВСЕМ привязанным клиентам за прошлую неделю?'))return;
   toast('Запускаю рассылку…');
   try{const r=await api('run_weekly');toast(`Готово: отправлено ${r.sent}, пропущено ${r.skipped}, без чата ${r.no_chat}, ошибок ${r.errors}`,'ok');}catch(e){}
+}
+
+/* ---------- REPORT BUILDER (конструктор) ---------- */
+function fmtInt(n){return Math.round(Number(n)||0).toLocaleString('ru-RU');}
+function fmtMoney(n){return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₽';}
+let RBOPT=null, RB_LAST=null;
+async function renderBuilder(clientOpts){
+  if(!RBOPT){try{RBOPT=await api('report_options');}catch(e){el('rpane').innerHTML='<div class="panel"><div class="empty">Ошибка: '+esc(e.message)+'</div></div>';return;}}
+  const lv=RBOPT.levels.map(l=>`<option value="${l.key}"${l.key==='campaign'?' selected':''}>${esc(l.label)}</option>`).join('');
+  const at=RBOPT.attributions.map(a=>`<option value="${a}"${a==='LSC'?' selected':''}>${a}</option>`).join('');
+  const d=new Date();const dow=(d.getDay()+6)%7;const mon=new Date(d);mon.setDate(d.getDate()-dow-7);const sun=new Date(mon);sun.setDate(mon.getDate()+6);
+  const f=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+  el('rpane').innerHTML=`
+    <div class="panel"><h3><span class="h3-ic">🧰</span> Конструктор отчёта</h3><div class="body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="field"><label>Клиент</label><select id="rbClient">${clientOpts||'<option>нет клиентов</option>'}</select></div>
+        <div class="field"><label>Разрез</label><select id="rbLevel">${lv}</select></div>
+        <div class="field"><label>Модель атрибуции</label><select id="rbAttr">${at}</select></div>
+        <div class="field"><label>Строк (топ по расходу)</label><input id="rbLimit" type="number" value="100" min="1" max="1000"></div>
+        <div class="field"><label>Дата с</label><input id="rbFrom" type="date" value="${f(mon)}"></div>
+        <div class="field"><label>Дата по</label><input id="rbTo" type="date" value="${f(sun)}"></div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn primary" onclick="doReportQuery()">📊 Сформировать</button>
+        <button class="btn" onclick="doReportCopy()">📋 Скопировать текст</button>
+        <button class="btn" onclick="doReportSend()">📨 Отправить в чат</button>
+      </div>
+      <div class="note" style="margin-top:12px">Конверсии и атрибуция считаются по целям клиента (если заданы). «Объявления/Фразы/Запросы» могут быть большими — показываются топ-N по расходу.</div>
+    </div></div>
+    <div class="panel" style="margin-top:14px"><div class="body" id="rbResult"><div class="empty">Задай параметры и нажми «Сформировать».</div></div></div>`;
+}
+function rbParams(){return [el('rbClient').value, el('rbLevel').value, el('rbFrom').value, el('rbTo').value, el('rbAttr').value, parseInt(el('rbLimit').value||'100',10)];}
+async function doReportQuery(){
+  const p=rbParams();if(!p[0])return;
+  el('rbResult').innerHTML='<div class="empty"><span class="spin"></span> запрашиваю данные из Директа…</div>';
+  try{const r=await api('report_query',p[0],p[1],p[2],p[3],p[4],p[5]);RB_LAST=r;el('rbResult').innerHTML=rbRender(r);}
+  catch(e){el('rbResult').innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';}
+}
+function rbCell(m,uc){let s=`<td class="right">${esc(fmtMoney(m.cost))}</td><td class="right">${fmtInt(m.imp)}</td><td class="right">${fmtInt(m.clicks)}</td><td class="right">${(m.ctr||0).toFixed(2)}%</td><td class="right">${esc(fmtMoney(m.cpc))}</td>`;if(uc)s+=`<td class="right">${fmtInt(m.conv)}</td><td class="right">${(m.cr||0).toFixed(2)}%</td><td class="right">${esc(fmtMoney(m.cpa))}</td>`;return s;}
+function rbRender(r){
+  const uc=r.use_conv;
+  const dimTh=r.dim_titles.map(t=>'<th>'+esc(t)+'</th>').join('');
+  const metTh='<th class="right">Расход</th><th class="right">Показы</th><th class="right">Клики</th><th class="right">CTR</th><th class="right">CPC</th>'+(uc?'<th class="right">Конв.</th><th class="right">CR</th><th class="right">CPA</th>':'');
+  let head=`<div style="margin-bottom:10px"><b>${esc(r.client_name)}</b> · ${esc(r.level_label)} · атрибуция ${esc(r.attribution)} · ${esc(r.date_from)}…${esc(r.date_to)}`;
+  if(!uc)head+=' · <span class="muted">конверсии недоступны (нет целей у клиента / разрез без целей)</span>';
+  head+=`<br><span class="muted">показано ${r.n_shown} из ${r.n_total}</span></div>`;
+  const totalRow=`<tr style="font-weight:700;background:var(--surface-2)"><td colspan="${r.dim_titles.length}">ИТОГО</td>${rbCell(r.totals,uc)}</tr>`;
+  const body=r.rows.map(row=>'<tr>'+row.dims.map(d=>'<td>'+esc(d||'—')+'</td>').join('')+rbCell(row.m,uc)+'</tr>').join('');
+  return head+`<div class="scrollx"><table><thead><tr>${dimTh}${metTh}</tr></thead><tbody>${totalRow}${body}</tbody></table></div>`;
+}
+async function doReportCopy(){
+  if(!RB_LAST||!RB_LAST.text){toast('Сначала сформируй отчёт','err');return;}
+  try{await navigator.clipboard.writeText(RB_LAST.text);toast('Текст скопирован','ok');}
+  catch(e){const ta=document.createElement('textarea');ta.value=RB_LAST.text;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('Текст скопирован','ok');}catch(_){toast('Не удалось скопировать','err');}ta.remove();}
+}
+async function doReportSend(){
+  const p=rbParams();if(!p[0])return;
+  if(!confirm('Отправить этот отчёт в привязанный чат клиента?'))return;
+  try{const r=await api('report_send',p[0],p[1],p[2],p[3],p[4],p[5]);toast('Отправлено в чатов: '+r.sent,'ok');}catch(e){}
 }
 
 /* ---------- SETTINGS ---------- */

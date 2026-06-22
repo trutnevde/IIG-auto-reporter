@@ -64,7 +64,7 @@ def period(today=None):
 
 # ---------- запрос отчёта (CAMPAIGN_PERFORMANCE_REPORT, TSV) ----------
 def fetch_report(token, login, date_from, date_to, fields, goal_ids=None, attribution="LSC",
-                 _post=None, _sleep=None):
+                 report_type="CAMPAIGN_PERFORMANCE_REPORT", _post=None, _sleep=None):
     """Возвращает список строк-словарей (имя_столбца -> значение). _post/_sleep — для тестов."""
     post = _post or requests.post
     sleep = _sleep or time.sleep
@@ -82,7 +82,7 @@ def fetch_report(token, login, date_from, date_to, fields, goal_ids=None, attrib
         "SelectionCriteria": {"DateFrom": date_from, "DateTo": date_to},
         "FieldNames": list(fields),
         "ReportName": "wk_{}_{}".format(login, int(time.time() * 1000)),
-        "ReportType": "CAMPAIGN_PERFORMANCE_REPORT",
+        "ReportType": report_type,
         "DateRangeType": "CUSTOM_DATE",
         "Format": "TSV",
         "IncludeVAT": "YES",       # расход — с НДС

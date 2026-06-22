@@ -265,6 +265,49 @@ class Api:
             "status": r["status"], "error": r["error"],
         } for r in rows]
 
+    # ---------- конструктор отчётов ----------
+    @safe
+    def report_options(self):
+        from . import report_custom as RC
+        return RC.options()
+
+    def _report_build(self, login, level, date_from, date_to, attribution, limit):
+        from . import report_custom as RC
+        token = load_secrets()["yandex_oauth_token"]
+        c = self.db.get_client(login)
+        if not c:
+            raise RuntimeError("Клиент {} не найден".format(login))
+        goal_defs = report.goal_defs_from_client(c)
+        if not date_from or not date_to:
+            per = report.period()
+            date_from = date_from or per["date_from"]
+            date_to = date_to or per["date_to"]
+        res = RC.build(token, login, level or "campaign", date_from, date_to,
+                       attribution or "LSC", goal_defs, limit or 100)
+        res["client_name"] = c["name"] or login
+        res["text"] = RC.to_text(login, c["name"] or login, res)
+        return res
+
+    @safe
+    def report_query(self, login, level="campaign", date_from=None, date_to=None, attribution="LSC", limit=100):
+        res = self._report_build(login, level, date_from, date_to, attribution, limit)
+        res["chats"] = [{"chat_id": b["chat_id"], "title": self._chat_title(b["chat_id"])}
+                        for b in self.db.bindings_for_login(login)]
+        return res
+
+    @safe
+    def report_send(self, login, level="campaign", date_from=None, date_to=None, attribution="LSC", limit=100):
+        res = self._report_build(login, level, date_from, date_to, attribution, limit)
+        chats = self.db.bindings_for_login(login)
+        if not chats:
+            raise RuntimeError("Клиент не привязан ни к одному чату")
+        tg = self._tg_client()
+        sent = 0
+        for b in chats:
+            tg.send_message(b["chat_id"], res["text"])
+            sent += 1
+        return {"sent": sent}
+
     # ---------- settings ----------
     @safe
     def settings(self):
