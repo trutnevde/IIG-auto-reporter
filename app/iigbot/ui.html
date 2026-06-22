@@ -259,6 +259,7 @@
       <a data-go="match"><span class="ic">🔗</span><span>Привязки</span><span class="badge b-amber nav-badge" id="navMatch" style="display:none">0</span></a>
       <a data-go="reports"><span class="ic">📨</span><span>Отчёты</span></a>
       <a data-go="settings"><span class="ic">⚙️</span><span>Настройки</span></a>
+      <a data-go="guide"><span class="ic">📖</span><span>Гайд</span></a>
     </nav>
     <div class="btn-connect" onclick="openOnboard()"><span>＋</span><span>Подключить клиента</span></div>
     <div class="spacer"></div>
@@ -280,6 +281,7 @@
       <section data-view="match"><div id="v_match"></div></section>
       <section data-view="reports"><div id="v_reports"></div></section>
       <section data-view="settings"><div id="v_settings"></div></section>
+      <section data-view="guide"><div id="v_guide"></div></section>
     </div>
   </div>
 </div>
@@ -330,7 +332,7 @@ function applyTheme(t){document.documentElement.setAttribute('data-theme',t);try
 function toggleTheme(){const cur=document.documentElement.getAttribute('data-theme')||'light';applyTheme(cur==='dark'?'light':'dark');}
 
 /* ---------- роутинг ---------- */
-const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',settings:'Настройки'};
+const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',settings:'Настройки',guide:'Гайд'};
 function go(v){
   document.querySelectorAll('section[data-view]').forEach(s=>s.classList.toggle('on',s.dataset.view===v));
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active',a.dataset.go===v));
@@ -339,7 +341,7 @@ function go(v){
 }
 document.getElementById('nav').addEventListener('click',e=>{const a=e.target.closest('a');if(a)go(a.dataset.go);});
 let CURRENT='dashboard';
-function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,settings:renderSettings}[v]||(()=>{}))();}
+function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,settings:renderSettings,guide:renderGuide}[v]||(()=>{}))();}
 function refresh(){render(CURRENT);loadBadges();}
 
 /* ---------- бейджи/статус ---------- */
@@ -433,12 +435,16 @@ async function renderChats(){
           <td>${esc(c.title)}</td><td class="muted">${c.chat_id}</td><td>${esc(c.type||'')}</td>
           <td>${c.status==='active'?'<span class="badge b-green">активен</span>':'<span class="badge b-grey">удалён</span>'}</td>
           <td><select id="bind_${c.chat_id}"><option value="">— не привязан —</option>${opts}</select></td>
-          <td class="right"><button class="btn sm primary" onclick="doBind(${c.chat_id})">Сохранить</button></td>
+          <td class="right"><button class="btn sm primary" onclick="doBind(${c.chat_id})">Сохранить</button> <button class="btn sm" onclick="doDeleteChat(${c.chat_id})" title="Удалить чат из базы">🗑</button></td>
         </tr>`).join(''):'<tr><td colspan="6" class="empty">Пока нет чатов. Запусти бота и добавь его в чат.</td></tr>'}
       </tbody></table></div></div>`;
   chats.forEach(c=>{if(c.login){const s=el('bind_'+c.chat_id);if(s)s.value=c.login;}});
 }
 async function doBind(chatId){const sel=el('bind_'+chatId);try{await api('bind',chatId,sel.value);toast(sel.value?'Привязано':'Привязка снята','ok');refresh();}catch(e){}}
+async function doDeleteChat(chatId){
+  if(!confirm('Удалить чат '+chatId+' из базы? Привязка к клиенту тоже снимется.\n(Сам чат в Telegram это не трогает — бот просто забудет о нём.)'))return;
+  try{await api('delete_chat',chatId);toast('Чат удалён из базы','ok');refresh();}catch(e){}
+}
 
 /* ---------- MATCH ---------- */
 async function renderMatch(){
@@ -467,6 +473,40 @@ async function renderMatch(){
 }
 async function doBind2(chatId,login){try{await api('bind',chatId,login);toast('Привязано','ok');refresh();}catch(e){}}
 async function doBindManual(chatId){const s=el('mansel_'+chatId);if(!s.value){toast('Выбери клиента','err');return;}try{await api('bind',chatId,s.value);toast('Привязано','ok');refresh();}catch(e){}}
+
+/* ---------- GUIDE ---------- */
+function renderGuide(){
+  el('v_guide').innerHTML=`
+    <h2 class="title">Гайд</h2><p class="sub">Как пользоваться программой — по шагам.</p>
+    <div class="panel"><h3><span class="h3-ic">⚡</span> Быстрый старт</h3><div class="body">
+      <ol>
+        <li><b>Запусти программу.</b> <code>IIGReporter.exe</code> и <code>secrets.json</code> должны лежать в одной папке.</li>
+        <li><b>Включи VPN на весь трафик.</b> Telegram в РФ заблокирован — без VPN будет «Нет связи». Яндексу VPN не нужен.</li>
+        <li><b>Настройки → впиши токены</b> (Telegram и Yandex) и свой Telegram ID в «Администраторы» → Сохранить.</li>
+        <li><b>Клиенты → «Подтянуть из Директа»</b> — подтянет всех клиентов агентства.</li>
+        <li><b>Подключи бота к чату клиента</b> и привяжи чат к клиенту (см. ниже).</li>
+        <li><b>Отчёты → Предпросмотр → «Отправить тест»</b>, потом «Запустить рассылку».</li>
+      </ol>
+    </div></div>
+    <div class="panel"><h3><span class="h3-ic">🔗</span> Как привязать чат к клиенту</h3><div class="body">
+      <p><b>Способ 1 (просто):</b> кнопка <b>＋ Подключить клиента</b> → выбери клиента → «Получить ссылку» → открой ссылку → выбери группу клиента. Бот зайдёт и сам привяжется.</p>
+      <p><b>Способ 2 (вручную):</b> добавь бота в группу клиента → он появится во вкладке <b>Чаты</b> → во вкладке <b>Привязки</b> подтверди предложенного клиента (или выбери вручную).</p>
+      <div class="note">⚠️ Программа должна быть запущена, когда добавляешь бота — фоновый слушатель ловит новые чаты.</div>
+    </div></div>
+    <div class="panel"><h3><span class="h3-ic">📨</span> Отчёты и рассылка</h3><div class="body">
+      <p><b>Отчёты → Предпросмотр</b> — выбери клиента, увидишь готовый текст. «Отправить тест» пришлёт его в привязанный чат.</p>
+      <p><b>Запустить рассылку</b> — отправит отчёты за прошлую неделю по всем привязанным клиентам (кнопка на «Обзоре» и в «Отчётах»).</p>
+      <p><b>Автозапуск (Пн 09:00):</b> в Планировщике задач Windows создай задачу на <code>IIGReporter.exe weekly</code> (VPN должен быть включён в это время).</p>
+    </div></div>
+    <div class="panel"><h3><span class="h3-ic">🩹</span> Если что-то не так</h3><div class="body">
+      <ul>
+        <li><b>«Нет связи»</b> — программа не достучалась до Telegram. Проверь VPN (режим «весь трафик»), нажми «Обновить».</li>
+        <li><b>Бот молчит / отвечает дважды</b> — запускай только одну копию программы. Бот отвечает, только пока окно открыто.</li>
+        <li><b>Лишний чат-«висяк»</b> (бота уже выгнали, а строка осталась) — кнопка 🗑 во вкладке «Чаты» удалит его из базы.</li>
+        <li><b>Клиенты/привязки пропали</b> — база <code>iigbot.sqlite3</code> лежит рядом с exe и своя для каждой папки/пользователя Windows. Перенеси этот файл, чтобы перенести привязки.</li>
+      </ul>
+    </div></div>`;
+}
 
 /* ---------- REPORTS ---------- */
 let RTAB='prev';

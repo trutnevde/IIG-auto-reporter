@@ -110,6 +110,12 @@ class Storage:
             "SELECT * FROM chats ORDER BY (status='active') DESC, title COLLATE NOCASE"
         ).fetchall()
 
+    def delete_chat(self, chat_id):
+        """Полностью удаляет чат из базы вместе с его привязкой (сам чат в Telegram не трогает)."""
+        self.conn.execute("DELETE FROM bindings WHERE chat_id=?", (chat_id,))
+        self.conn.execute("DELETE FROM chats WHERE chat_id=?", (chat_id,))
+        self.conn.commit()
+
     # ---------- clients ----------
     def upsert_client(self, login, name=None, goals=None, attribution=None, source=None):
         # COALESCE: не затираем уже заданные вручную поля при повторной синхронизации.

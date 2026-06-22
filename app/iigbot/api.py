@@ -194,6 +194,12 @@ class Api:
         self.db.remove_binding(int(chat_id))
         return {"bound": False}
 
+    @safe
+    def delete_chat(self, chat_id):
+        """Удаляет чат из базы (для «висяков» — когда бота уже выгнали, а строка осталась)."""
+        self.db.delete_chat(int(chat_id))
+        return {"deleted": True}
+
     # ---------- matcher (подсказки привязок) ----------
     @safe
     def suggestions(self):
