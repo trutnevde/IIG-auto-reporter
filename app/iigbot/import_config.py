@@ -13,14 +13,23 @@ from .storage import Storage
 
 
 def normalize_goals(goals):
-    """Приводим оба формата config.json к единому виду [{'id','name'}]."""
+    """Единый вид цели: {'id','name','active','type'}.
+
+    active — показывать ли цель в отчётах (по умолчанию True, для обратной совместимости
+    со старыми целями без этого поля). type — тип цели Метрики (для авто-пресета «ключевых»).
+    """
     out = []
     for g in goals or []:
         if isinstance(g, dict):
             gid = str(g.get("id"))
-            out.append({"id": gid, "name": g.get("name") or "Цель {}".format(gid)})
+            out.append({
+                "id": gid,
+                "name": g.get("name") or "Цель {}".format(gid),
+                "active": (g.get("active") is not False),
+                "type": g.get("type") or "",
+            })
         else:
-            out.append({"id": str(g), "name": "Цель {}".format(g)})
+            out.append({"id": str(g), "name": "Цель {}".format(g), "active": True, "type": ""})
     return out
 
 

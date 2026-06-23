@@ -207,7 +207,10 @@
   .modal.on{opacity:1;transform:translate(-50%,-50%) scale(1);pointer-events:auto}
   .modal .body{padding:20px}
   .link-box{display:flex;gap:8px;margin-top:9px}.link-box input{flex:1;font-family:ui-monospace,"Cascadia Code",monospace;font-size:12.5px}
-  .goalrow{display:grid;grid-template-columns:130px 1fr 34px;gap:8px;margin-bottom:7px}
+  .goalrow{display:grid;grid-template-columns:46px 120px 1fr 34px;gap:8px;margin-bottom:7px;align-items:center}
+  .ga-wrap{display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .goalrow.head{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
+  .goalrow input[type=checkbox]{width:17px;height:17px;accent-color:var(--brand);cursor:pointer}
 
   /* ---------- telegram preview ---------- */
   .tg{background:var(--surface-3);border-radius:14px;padding:20px;min-height:130px;
@@ -394,6 +397,7 @@ async function renderClients(){
       <select id="clFilter" onchange="drawClients()"><option value="">Все</option><option value="bound">С привязкой</option><option value="unbound">Без чата</option></select>
       <div style="flex:1"></div>
       <button class="btn" onclick="doSync()">🔄 Подтянуть из Директа</button>
+      <button class="btn" onclick="doBulkGoals()">🎯 Цели из Метрики (всем)</button>
       <button class="btn" onclick="doImport()">⬇ Импорт config.json</button>
     </div>
     <div class="panel"><div class="scrollx"><table>
@@ -419,6 +423,14 @@ function drawClients(){
 }
 async function doSync(){try{toast('Запрашиваю клиентов из Директа…');const r=await api('sync_clients');toast('Синхронизировано: '+r.synced,'ok');refresh();}catch(e){}}
 async function doImport(){try{const r=await api('import_config');toast('Импорт: клиентов '+r.clients+', привязок '+r.bindings,'ok');refresh();}catch(e){}}
+async function doBulkGoals(){
+  if(!confirm('Подтянуть цели из Метрики для ВСЕХ привязанных клиентов?\nКлючевые включатся для отчётов, остальные сохранятся выключенными. Уже настроенные вручную галки не сбросятся.'))return;
+  toast('Подтягиваю цели из Метрики всем привязанным… это может занять время');
+  try{const r=await api('metrika_goals_bulk');
+    toast('Готово: с целями '+r.with_goals+', без счётчика '+r.no_counter+', ошибок '+r.errors+' (из '+r.clients+' привязанных)','ok');
+    refresh();
+  }catch(e){}
+}
 
 /* ---------- CHATS ---------- */
 async function renderChats(){
@@ -598,7 +610,7 @@ async function renderBuilder(clientOpts){
   el('rpane').innerHTML=`
     <div class="panel"><h3><span class="h3-ic">🧰</span> Конструктор отчёта</h3><div class="body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div class="field"><label>Клиент</label><select id="rbClient" onchange="rbLoadCampaigns()">${clientOpts||'<option>нет клиентов</option>'}</select></div>
+        <div class="field"><label>Клиент</label><select id="rbClient" onchange="rbLoadCampaigns();rbLoadGoals()">${clientOpts||'<option>нет клиентов</option>'}</select></div>
         <div class="field"><label>Кампания (фильтр)</label><select id="rbCampaign"><option value="">Все кампании</option></select></div>
         <div class="field"><label>Базовый разрез</label><select id="rbLevel">${lv}</select></div>
         <div class="field"><label>Модель атрибуции</label><select id="rbAttr">${at}</select></div>
@@ -611,6 +623,7 @@ async function renderBuilder(clientOpts){
         <div id="rbGrainWrap" style="display:none;margin-top:6px"><span class="muted" style="font-size:12.5px">Группировка даты:</span> <select id="rbGrain" style="width:auto;margin-left:6px">${grains}</select></div>
       </div>
       <div class="field"><label>Колонки-метрики</label><div>${mets}</div></div>
+      <div class="field"><label>Цели для отчёта (конверсии)</label><div id="rbGoals"><span class="muted" style="font-size:12.5px">выбери клиента…</span></div></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <button class="btn primary" onclick="doReportQuery()">📊 Сформировать</button>
         <button class="btn" onclick="doReportCopy()">📋 Скопировать текст</button>
@@ -620,7 +633,7 @@ async function renderBuilder(clientOpts){
       <div class="note" style="margin-top:12px">Конверсии/CR/CPA — для любого клиента (поле Conversions Директа; если есть цели — по ним под атрибуцией). «Кампания (фильтр)» ограничивает отчёт одной кампанией — удобно разбить её по группам/объявлениям/фразам. В таблице результата: заголовки кликабельны (сортировка ▲▼), есть поиск по строкам. xlsx сохраняется в папку <b>reports</b> рядом с программой.</div>
     </div></div>
     <div class="panel" style="margin-top:14px"><div class="body" id="rbResult"><div class="empty">Задай параметры и нажми «Сформировать».</div></div></div>`;
-  rbLoadCampaigns();
+  rbLoadCampaigns();rbLoadGoals();
 }
 async function rbLoadCampaigns(){
   const login=el('rbClient')?el('rbClient').value:'';const sel=el('rbCampaign');if(!login||!sel)return;
@@ -630,11 +643,20 @@ async function rbLoadCampaigns(){
   }catch(e){sel.innerHTML='<option value="">Все кампании</option>';}
   sel.disabled=false;
 }
+async function rbLoadGoals(){
+  const login=el('rbClient')?el('rbClient').value:'';const host=el('rbGoals');if(!login||!host)return;
+  host.innerHTML='<span class="muted" style="font-size:12.5px">загрузка целей…</span>';
+  try{const gs=await api('client_goals',login);
+    if(!gs||!gs.length){host.innerHTML='<span class="muted" style="font-size:12.5px">у клиента нет целей → будут общие конверсии</span>';return;}
+    host.innerHTML=gs.map(g=>`<label style="${RB_CHK}"><input type="checkbox" class="rbg" value="${esc(g.id)}" ${g.active!==false?'checked':''}> ${esc(g.name)}</label>`).join('');
+  }catch(e){host.innerHTML='<span class="muted" style="font-size:12.5px">не удалось загрузить цели</span>';}
+}
+function rbGoalIds(){return [...document.querySelectorAll('#rbGoals .rbg:checked')].map(c=>c.value);}
 function rbSegChanged(){const dt=el('rbSeg_date');const w=el('rbGrainWrap');if(w)w.style.display=(dt&&dt.checked)?'block':'none';}
 function rbSegments(){return (RBOPT.segments||[]).filter(s=>{const c=el('rbSeg_'+s.key);return c&&c.checked;}).map(s=>s.key);}
 function rbMetricsSel(){return new Set((RBOPT.metrics||[]).filter(m=>{const c=el('rbMet_'+m.key);return c&&c.checked;}).map(m=>m.key));}
 function rbCols(r){const sel=rbMetricsSel();return RB_MET.filter(c=>sel.has(c.key)&&(!c.conv||r.use_conv));}
-function rbParams(){return [el('rbClient').value, el('rbLevel').value, el('rbFrom').value, el('rbTo').value, el('rbAttr').value, parseInt(el('rbLimit').value||'100',10), rbSegments(), (el('rbGrain')?el('rbGrain').value:'day'), (el('rbCampaign')?el('rbCampaign').value:'')];}
+function rbParams(){return [el('rbClient').value, el('rbLevel').value, el('rbFrom').value, el('rbTo').value, el('rbAttr').value, parseInt(el('rbLimit').value||'100',10), rbSegments(), (el('rbGrain')?el('rbGrain').value:'day'), (el('rbCampaign')?el('rbCampaign').value:''), rbGoalIds()];}
 async function doReportQuery(){
   const p=rbParams();if(!p[0])return;
   el('rbResult').innerHTML='<div class="empty"><span class="spin"></span> запрашиваю данные из Директа…</div>';
@@ -744,13 +766,15 @@ async function openClient(login){
     <div class="field"><label>Название</label><input id="dName" value="${esc(c.name)}"></div>
     <div class="field"><label>Привязанные чаты</label><div>${c.chats.length?c.chats.map(ch=>'<span class="chip">💬 '+esc(ch.title)+'</span>').join(''):'<span class="muted">— нет. Привяжи во вкладке «Чаты»/«Привязки».</span>'}</div></div>
     <div class="field"><label>Модель атрибуции</label><select id="dAttr">${['LSC','LC','FC','LYDC'].map(a=>`<option ${a===c.attribution?'selected':''}>${a}</option>`).join('')}</select></div>
-    <div class="field"><label>Цели Метрики (конверсии)</label><div id="dGoals"></div>
+    <div class="field"><label>Цели Метрики (конверсии)</label>
+      <div class="goalrow head"><div>в отчёт</div><div>ID</div><div>Название</div><div></div></div>
+      <div id="dGoals"></div>
       <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
         <button class="btn sm primary" onclick="pullGoals()">🎯 Подтянуть из Метрики</button>
         <button class="btn sm" onclick="addGoal()">＋ Добавить вручную</button>
       </div>
-      <div class="hint">«Подтянуть из Метрики» сам находит счётчик клиента (по настройкам кампаний Директа и/или домену) и загружает все его цели. Лишние удали, затем «Сохранить».</div></div>`;
-  const g=el('dGoals');g.innerHTML='';(c.goals||[]).forEach(x=>addGoal(x.id,x.name));
+      <div class="hint">«Подтянуть из Метрики» сам находит счётчик клиента (кампании Директа и/или домен) и грузит ВСЕ его цели. Галка «в отчёт» = цель показывается в отчётах; ключевые (покупка/заявка/звонок) отмечаются сами, остальные лежат выключенными — довключи нужные и «Сохранить».</div></div>`;
+  const g=el('dGoals');g.innerHTML='';(c.goals||[]).forEach(x=>addGoal(x.id,x.name,x.active));
 }
 async function pullGoals(){
   if(!DR_LOGIN)return;
@@ -758,16 +782,18 @@ async function pullGoals(){
   try{const r=await api('metrika_goals',DR_LOGIN);
     if(!r.goals||!r.goals.length){toast(r.note||'Цели не найдены','err');return;}
     el('dGoals').innerHTML='';
-    r.goals.forEach(g=>addGoal(g.id,g.name));
-    toast('Подтянуто целей: '+r.goals.length+(r.counters&&r.counters.length?(' (счётчик '+r.counters.join(', ')+')'):'')+'. Проверь и нажми «Сохранить».','ok');
+    r.goals.forEach(g=>addGoal(g.id,g.name,g.active));
+    const act=r.goals.filter(g=>g.active!==false).length;
+    toast('Подтянуто целей: '+r.goals.length+' (ключевых вкл.: '+act+(r.counters&&r.counters.length?(', счётчик '+r.counters.join(', ')):'')+'). Проверь и «Сохранить».','ok');
   }catch(e){}
 }
-function addGoal(id,name){
+function addGoal(id,name,active){
   const row=document.createElement('div');row.className='goalrow';
-  row.innerHTML=`<input placeholder="ID" value="${esc(id||'')}"><input placeholder="Название" value="${esc(name||'')}"><button class="btn sm" onclick="this.parentNode.remove()">✕</button>`;
+  const on=active!==false;
+  row.innerHTML=`<label class="ga-wrap" title="Показывать в отчётах"><input type="checkbox" class="ga" ${on?'checked':''}></label><input placeholder="ID" value="${esc(id||'')}"><input placeholder="Название" value="${esc(name||'')}"><button class="btn sm" onclick="this.parentNode.remove()">✕</button>`;
   el('dGoals').appendChild(row);
 }
-function collectGoals(){return [...document.querySelectorAll('#dGoals .goalrow')].map(r=>{const i=r.querySelectorAll('input');return {id:i[0].value.trim(),name:i[1].value.trim()};}).filter(g=>g.id);}
+function collectGoals(){return [...document.querySelectorAll('#dGoals .goalrow:not(.head)')].map(r=>{const t=r.querySelectorAll('input[placeholder]');const chk=r.querySelector('.ga');return {id:(t[0]?t[0].value.trim():''),name:(t[1]?t[1].value.trim():''),active:chk?chk.checked:true};}).filter(g=>g.id);}
 async function drawerSave(){
   try{await api('save_client',DR_LOGIN,el('dName').value,collectGoals(),el('dAttr').value);toast('Сохранено','ok');closeDrawer();if(CURRENT==='clients')renderClients();}catch(e){}
 }

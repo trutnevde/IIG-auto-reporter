@@ -273,19 +273,33 @@ def build_message(client_name, goal_defs, camps, per, intro, note):
 
 
 # ---------- высокоуровневые операции поверх базы ----------
-def goal_defs_from_client(client_row):
+def goal_defs_from_client(client_row, only_active=True, only_ids=None):
+    """Цели клиента -> [{'id','name'}].
+
+    only_ids — взять ровно эти id (конструктор: выбор пользователя), игнорируя active.
+    Иначе при only_active=True остаются только активные («для отчётов»).
+    Цели без поля active считаются активными (обратная совместимость).
+    """
     try:
         items = json.loads(client_row["goals"] or "[]")
     except (ValueError, TypeError):
         items = []
-    out = []
+    norm = []
     for g in items:
         if isinstance(g, dict):
             gid = str(g.get("id"))
-            out.append({"id": gid, "name": g.get("name") or "Цель " + gid})
+            norm.append({"id": gid, "name": g.get("name") or "Цель " + gid,
+                         "active": (g.get("active") is not False)})
         else:
-            out.append({"id": str(g), "name": "Цель " + str(g)})
-    return out
+            norm.append({"id": str(g), "name": "Цель " + str(g), "active": True})
+    if only_ids is not None:
+        want = set(str(x) for x in only_ids)
+        sel = [g for g in norm if g["id"] in want]
+    elif only_active:
+        sel = [g for g in norm if g["active"]]
+    else:
+        sel = norm
+    return [{"id": g["id"], "name": g["name"]} for g in sel]
 
 
 def build_for_login(token, db, login, intro, note, default_attr="LSC", _post=None, _sleep=None):
@@ -324,11 +338,16 @@ def run_weekly(token, tg, db, intro, note, default_attr="LSC"):
     """Прогон по всем привязанным клиентам (для планировщика/кнопки «Запустить рассылку»)."""
     logins = sorted({b["login"] for b in db.list_bindings()})
     results = {"sent": 0, "skipped": 0, "no_chat": 0, "errors": 0, "details": []}
+    per = period()
     for login in logins:
         try:
             res = send_for_login(token, tg, db, login, intro, note, default_attr)
         except Exception as e:  # noqa: BLE001
             results["errors"] += 1
+            try:                       # фиксируем ошибку в Историю (раньше терялась)
+                db.log_send(login, None, per["date_from"], per["date_to"], "error", str(e))
+            except Exception:          # noqa: BLE001
+                pass
             results["details"].append({"login": login, "status": "error", "reason": str(e)})
             continue
         if res["status"] == "sent":

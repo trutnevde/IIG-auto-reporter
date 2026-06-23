@@ -34,6 +34,19 @@ def safe(fn):
     return wrapper
 
 
+# «Ключевые» цели — те, что по умолчанию активны для отчётов (покупки/заявки/звонки и т.п.).
+KEY_GOAL_TYPES = {"e_purchase", "form", "phone", "messenger", "action", "contact_data_sent"}
+KEY_GOAL_WORDS = ("покупк", "заявк", "звон", "форм", "заказ", "оплат", "корзин", "купить",
+                  "лид", "обратн", "заполн", "контакт", "checkout", "purchase", "order", "lead", "call")
+
+
+def _is_key_goal(name, gtype):
+    if (gtype or "") in KEY_GOAL_TYPES:
+        return True
+    n = (name or "").lower()
+    return any(w in n for w in KEY_GOAL_WORDS)
+
+
 class Api:
     def __init__(self):
         self.cfg = load_app_config()
@@ -155,10 +168,9 @@ class Api:
         )
         return True
 
-    @safe
-    def metrika_goals(self, login):
-        """Находит счётчик(и) клиента (по настройкам кампаний Директа и/или домену)
-        среди доступных токену в Метрике и возвращает ВСЕ их цели. Ничего не сохраняет."""
+    def _metrika_goals_for(self, login):
+        """Ядро: находит доступные счётчики клиента (кампании ∪ домен) и собирает все их цели
+        с авто-пометкой active (ключевые → True). Бросает исключения (оборачивается в @safe выше)."""
         from . import metrika
         token = load_secrets()["yandex_oauth_token"]
         c = self.db.get_client(login)
@@ -172,12 +184,11 @@ class Api:
         acc_ids = {x["id"] for x in accessible}
         domains = self._client_domains(c["name"])
         dom_ids = [x["id"] for x in accessible if any(self._dom_match(x["site"], d) for d in domains)]
-        # сначала счётчики из кампаний (доступные), затем совпавшие по домену
         candidates = []
-        for cid in camp_ids + dom_ids:
+        for cid in camp_ids + dom_ids:                 # кампании в приоритете, затем домен
             if cid in acc_ids and cid not in candidates:
                 candidates.append(cid)
-        if not candidates:                 # вдруг список доступных неполон — пробуем кампанийные напрямую
+        if not candidates:                             # список доступных мог быть неполон — пробуем напрямую
             for cid in camp_ids:
                 if cid not in candidates:
                     candidates.append(cid)
@@ -191,10 +202,70 @@ class Api:
             for g in gs:
                 if g["id"] not in seen:
                     seen.add(g["id"])
+                    g["active"] = _is_key_goal(g["name"], g.get("type"))
                     goals.append(g)
         note = "" if goals else "Не нашёл доступного счётчика Метрики для этого клиента (нет доступа к его счётчику)."
         return {"goals": goals, "counters": used, "note": note,
                 "from_campaigns": camp_ids, "from_domain": dom_ids}
+
+    @safe
+    def metrika_goals(self, login):
+        """Для карточки клиента: цели из Метрики с пресетом active (ключевые отмечены). Не сохраняет."""
+        return self._metrika_goals_for(login)
+
+    @safe
+    def metrika_goals_bulk(self):
+        """Подтягивает цели из Метрики для всех ПРИВЯЗАННЫХ клиентов и СОХРАНЯЕТ их (с пресетом
+        ключевых). Если у клиента цель уже была — её флаг active сохраняется (ручные правки не теряются)."""
+        logins = sorted({b["login"] for b in self.db.list_bindings()})
+        res = {"clients": len(logins), "with_goals": 0, "no_counter": 0, "errors": 0, "details": []}
+        for login in logins:
+            try:
+                found = self._metrika_goals_for(login)
+            except Exception as e:  # noqa: BLE001
+                res["errors"] += 1
+                res["details"].append({"login": login, "status": "error", "reason": str(e)})
+                continue
+            goals = found["goals"]
+            if not goals:
+                res["no_counter"] += 1
+                res["details"].append({"login": login, "status": "no_counter"})
+                continue
+            cur = self.db.get_client(login)
+            prev = {}
+            try:
+                for g in json.loads((cur and cur["goals"]) or "[]"):
+                    if isinstance(g, dict):
+                        prev[str(g.get("id"))] = (g.get("active") is not False)
+            except Exception:  # noqa: BLE001
+                pass
+            merged = [{"id": g["id"], "name": g["name"], "type": g.get("type", ""),
+                       "active": prev.get(g["id"], g["active"])} for g in goals]
+            self.db.upsert_client(login=login, goals=normalize_goals(merged))
+            res["with_goals"] += 1
+            res["details"].append({"login": login, "status": "ok",
+                                   "goals": len(merged), "active": sum(1 for g in merged if g["active"])})
+        return res
+
+    @safe
+    def client_goals(self, login):
+        """Цели клиента для выбора в конструкторе: [{'id','name','active'}]."""
+        c = self.db.get_client(login)
+        if not c:
+            return []
+        try:
+            items = json.loads(c["goals"] or "[]")
+        except (ValueError, TypeError):
+            items = []
+        out = []
+        for g in items:
+            if isinstance(g, dict):
+                gid = str(g.get("id"))
+                out.append({"id": gid, "name": g.get("name") or ("Цель " + gid),
+                            "active": (g.get("active") is not False)})
+            else:
+                out.append({"id": str(g), "name": "Цель " + str(g), "active": True})
+        return out
 
     @safe
     def sync_clients(self):
@@ -342,13 +413,17 @@ class Api:
         return [{"id": str(c.get("Id")), "name": c.get("Name") or str(c.get("Id"))} for c in camps]
 
     def _report_build(self, login, level, date_from, date_to, attribution, limit,
-                      segments=None, date_grain="day", campaign=None):
+                      segments=None, date_grain="day", campaign=None, goal_ids=None):
         from . import report_custom as RC
         token = load_secrets()["yandex_oauth_token"]
         c = self.db.get_client(login)
         if not c:
             raise RuntimeError("Клиент {} не найден".format(login))
-        goal_defs = report.goal_defs_from_client(c)
+        # goal_ids передан (даже пустой) -> ровно эти цели; иначе — активные «для отчётов»
+        if goal_ids is not None:
+            goal_defs = report.goal_defs_from_client(c, only_ids=goal_ids)
+        else:
+            goal_defs = report.goal_defs_from_client(c)
         if not date_from or not date_to:
             per = report.period()
             date_from = date_from or per["date_from"]
@@ -361,16 +436,16 @@ class Api:
 
     @safe
     def report_query(self, login, level="campaign", date_from=None, date_to=None, attribution="LSC",
-                     limit=100, segments=None, date_grain="day", campaign=None):
-        res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain, campaign)
+                     limit=100, segments=None, date_grain="day", campaign=None, goal_ids=None):
+        res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain, campaign, goal_ids)
         res["chats"] = [{"chat_id": b["chat_id"], "title": self._chat_title(b["chat_id"])}
                         for b in self.db.bindings_for_login(login)]
         return res
 
     @safe
     def report_send(self, login, level="campaign", date_from=None, date_to=None, attribution="LSC",
-                    limit=100, segments=None, date_grain="day", campaign=None):
-        res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain, campaign)
+                    limit=100, segments=None, date_grain="day", campaign=None, goal_ids=None):
+        res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain, campaign, goal_ids)
         chats = self.db.bindings_for_login(login)
         if not chats:
             raise RuntimeError("Клиент не привязан ни к одному чату")
@@ -383,13 +458,13 @@ class Api:
 
     @safe
     def report_export_xlsx(self, login, level="campaign", date_from=None, date_to=None, attribution="LSC",
-                           limit=1000, segments=None, date_grain="day", campaign=None):
+                           limit=1000, segments=None, date_grain="day", campaign=None, goal_ids=None):
         """Строит отчёт и сохраняет .xlsx в подпапку reports/ рядом с программой. Ничего не отправляет."""
         import os
         import re
         from . import report_custom as RC
         from .settings import BASE_DIR
-        res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain, campaign)
+        res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain, campaign, goal_ids)
         folder = os.path.join(BASE_DIR, "reports")
         os.makedirs(folder, exist_ok=True)
         safe_login = re.sub(r"[^A-Za-z0-9_.-]", "_", str(login))
