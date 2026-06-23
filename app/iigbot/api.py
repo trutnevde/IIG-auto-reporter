@@ -453,6 +453,7 @@ class Api:
         sent = 0
         for b in chats:
             tg.send_message(b["chat_id"], res["text"])
+            self.db.log_send(login, b["chat_id"], res["date_from"], res["date_to"], "sent")
             sent += 1
         return {"sent": sent}
 
