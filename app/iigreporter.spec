@@ -10,7 +10,7 @@ datas = [('iigbot/ui.html', 'iigbot')]          # интерфейс кладё�
 binaries = []
 hiddenimports = ['iigbot.' + m for m in (
     'cli', 'desktop', 'web', 'report', 'report_custom', 'api', 'bot', 'run_weekly',
-    'sync_clients', 'import_config', 'storage', 'telegram_api', 'yandex',
+    'sync_clients', 'import_config', 'storage', 'telegram_api', 'yandex', 'metrika',
     'settings', 'listener',
 )]
 

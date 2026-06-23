@@ -6,6 +6,7 @@
 ловят исключения здесь.
 """
 import json
+import re
 import difflib
 import functools
 
@@ -39,8 +40,24 @@ class Api:
         self.db = Storage(self.cfg["db_path"])
         self._tg = None
         self._bot_username = None
+        self._mk_counters = None       # кэш списка счётчиков Метрики
 
     # ---------- helpers ----------
+    def _metrika_counters(self):
+        if self._mk_counters is None:
+            from . import metrika
+            self._mk_counters = metrika.get_counters(load_secrets()["yandex_oauth_token"])
+        return self._mk_counters
+
+    @staticmethod
+    def _client_domains(name):
+        toks = re.split(r"[\s,/]+", (name or "").lower())
+        return [t.strip(".") for t in toks if "." in t and len(t) > 3]
+
+    @staticmethod
+    def _dom_match(site, dom):
+        return bool(site) and (site == dom or site.endswith("." + dom) or dom.endswith("." + site))
+
     def _tg_client(self):
         if self._tg is None:
             token = (load_secrets().get("telegram_bot_token") or "").strip()
@@ -137,6 +154,47 @@ class Api:
             attribution=attribution,
         )
         return True
+
+    @safe
+    def metrika_goals(self, login):
+        """Находит счётчик(и) клиента (по настройкам кампаний Директа и/или домену)
+        среди доступных токену в Метрике и возвращает ВСЕ их цели. Ничего не сохраняет."""
+        from . import metrika
+        token = load_secrets()["yandex_oauth_token"]
+        c = self.db.get_client(login)
+        if not c:
+            raise RuntimeError("Клиент не найден")
+        try:
+            camp_ids = list(yandex.get_campaign_counters(token, login))
+        except Exception:  # noqa: BLE001
+            camp_ids = []
+        accessible = self._metrika_counters()
+        acc_ids = {x["id"] for x in accessible}
+        domains = self._client_domains(c["name"])
+        dom_ids = [x["id"] for x in accessible if any(self._dom_match(x["site"], d) for d in domains)]
+        # сначала счётчики из кампаний (доступные), затем совпавшие по домену
+        candidates = []
+        for cid in camp_ids + dom_ids:
+            if cid in acc_ids and cid not in candidates:
+                candidates.append(cid)
+        if not candidates:                 # вдруг список доступных неполон — пробуем кампанийные напрямую
+            for cid in camp_ids:
+                if cid not in candidates:
+                    candidates.append(cid)
+        goals, used, seen = [], [], set()
+        for cid in candidates:
+            try:
+                gs = metrika.get_counter_goals(token, cid)
+            except Exception:  # noqa: BLE001 — 403/нет доступа: пропускаем счётчик
+                continue
+            used.append(cid)
+            for g in gs:
+                if g["id"] not in seen:
+                    seen.add(g["id"])
+                    goals.append(g)
+        note = "" if goals else "Не нашёл доступного счётчика Метрики для этого клиента (нет доступа к его счётчику)."
+        return {"goals": goals, "counters": used, "note": note,
+                "from_campaigns": camp_ids, "from_domain": dom_ids}
 
     @safe
     def sync_clients(self):

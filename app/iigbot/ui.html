@@ -745,9 +745,22 @@ async function openClient(login){
     <div class="field"><label>Привязанные чаты</label><div>${c.chats.length?c.chats.map(ch=>'<span class="chip">💬 '+esc(ch.title)+'</span>').join(''):'<span class="muted">— нет. Привяжи во вкладке «Чаты»/«Привязки».</span>'}</div></div>
     <div class="field"><label>Модель атрибуции</label><select id="dAttr">${['LSC','LC','FC','LYDC'].map(a=>`<option ${a===c.attribution?'selected':''}>${a}</option>`).join('')}</select></div>
     <div class="field"><label>Цели Метрики (конверсии)</label><div id="dGoals"></div>
-      <button class="btn sm" onclick="addGoal()" style="margin-top:6px">＋ Добавить цель</button>
-      <div class="hint">ID цели из Яндекс.Метрики и понятное название. Авто-подгрузку из Метрики добавим позже.</div></div>`;
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+        <button class="btn sm primary" onclick="pullGoals()">🎯 Подтянуть из Метрики</button>
+        <button class="btn sm" onclick="addGoal()">＋ Добавить вручную</button>
+      </div>
+      <div class="hint">«Подтянуть из Метрики» сам находит счётчик клиента (по настройкам кампаний Директа и/или домену) и загружает все его цели. Лишние удали, затем «Сохранить».</div></div>`;
   const g=el('dGoals');g.innerHTML='';(c.goals||[]).forEach(x=>addGoal(x.id,x.name));
+}
+async function pullGoals(){
+  if(!DR_LOGIN)return;
+  toast('Ищу счётчик и цели в Метрике…');
+  try{const r=await api('metrika_goals',DR_LOGIN);
+    if(!r.goals||!r.goals.length){toast(r.note||'Цели не найдены','err');return;}
+    el('dGoals').innerHTML='';
+    r.goals.forEach(g=>addGoal(g.id,g.name));
+    toast('Подтянуто целей: '+r.goals.length+(r.counters&&r.counters.length?(' (счётчик '+r.counters.join(', ')+')'):'')+'. Проверь и нажми «Сохранить».','ok');
+  }catch(e){}
 }
 function addGoal(id,name){
   const row=document.createElement('div');row.className='goalrow';
