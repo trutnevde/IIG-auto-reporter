@@ -25,6 +25,10 @@ def safe(fn):
         try:
             return {"ok": True, "data": fn(self, *args, **kwargs)}
         except Exception as e:  # noqa: BLE001
+            try:                       # в exe stdout перенаправлен в iig.log — ошибки будут видны
+                print("[api] {}: {}".format(fn.__name__, e))
+            except Exception:          # noqa: BLE001
+                pass
             return {"ok": False, "error": str(e)}
     return wrapper
 

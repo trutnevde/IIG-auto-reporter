@@ -141,9 +141,18 @@ def build(token, login, level, date_from, date_to, attribution="LSC", goal_defs=
     if campaign and level != "account":
         fltrs = [{"Field": "CampaignId", "Operator": "IN", "Values": [str(campaign)]}]
 
-    raw = R.fetch_report(token, login, date_from, date_to, fields,
-                         goal_ids=goal_ids, attribution=attribution, report_type=rtype,
-                         filters=fltrs, _post=_post, _sleep=_sleep)
+    try:
+        raw = R.fetch_report(token, login, date_from, date_to, fields,
+                             goal_ids=goal_ids, attribution=attribution, report_type=rtype,
+                             filters=fltrs, _post=_post, _sleep=_sleep)
+    except RuntimeError as e:
+        # частая причина — несовместимое сочетание разреза и срезов: даём понятную подсказку
+        if segs:
+            raise RuntimeError(
+                "Директ не принял это сочетание разреза «{}» и срезов [{}] — скорее всего они "
+                "несовместимы. Убери один срез или смени разрез. Ответ Директа: {}".format(
+                    LEVEL_LABELS.get(level, level), ", ".join(SEGMENTS[s][1] for s in segs), e))
+        raise
 
     # агрегируем на своей стороне по кортежу значений измерений (нужно для свёртки дат
     # день->неделя/месяц и чтобы суммы сходились).

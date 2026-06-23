@@ -111,7 +111,15 @@ def fetch_report(token, login, date_from, date_to, fields, goal_ids=None, attrib
                 wait = 5
             sleep(max(wait, 1))
             continue
-        raise RuntimeError("Reports API {} (login {}): {}".format(r.status_code, login, (r.text or "")[:300]))
+        detail = (r.text or "")[:500]
+        try:
+            j = r.json()
+            err = j.get("error") if isinstance(j, dict) else None
+            if err:
+                detail = (str(err.get("error_string") or "") + ". " + str(err.get("error_detail") or "")).strip(" .")
+        except Exception:  # noqa: BLE001
+            pass
+        raise RuntimeError("Reports API {}: {}".format(r.status_code, detail))
     raise RuntimeError("Отчёт не готов за отведённое время (login {})".format(login))
 
 
