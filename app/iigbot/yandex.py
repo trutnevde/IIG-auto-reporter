@@ -32,3 +32,28 @@ def get_agency_clients(token):
         err = data["error"]
         raise RuntimeError("Директ API: {} — {}".format(err.get("error_string"), err.get("error_detail")))
     return (data.get("result") or {}).get("Clients", [])
+
+
+def get_campaigns(token, login):
+    """Список кампаний клиента (синхронно, быстро): [{'Id','Name'}]. Только чтение."""
+    headers = {
+        "Authorization": "Bearer {}".format(token),
+        "Client-Login": login,
+        "Accept-Language": "ru",
+        "Content-Type": "application/json; charset=utf-8",
+    }
+    body = {
+        "method": "get",
+        "params": {"SelectionCriteria": {}, "FieldNames": ["Id", "Name"]},
+    }
+    r = requests.post(API + "campaigns", json=body, headers=headers, timeout=60)
+    try:
+        data = r.json()
+    except ValueError:
+        raise RuntimeError("Директ вернул не-JSON (HTTP {})".format(r.status_code))
+    if isinstance(data, dict) and data.get("error"):
+        err = data["error"]
+        raise RuntimeError("Директ API: {} — {}".format(err.get("error_string"), err.get("error_detail")))
+    camps = (data.get("result") or {}).get("Campaigns", [])
+    camps.sort(key=lambda c: (c.get("Name") or "").lower())
+    return camps

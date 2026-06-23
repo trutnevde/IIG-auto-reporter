@@ -574,7 +574,7 @@ async function runWeekly(){
 /* ---------- REPORT BUILDER (конструктор) ---------- */
 function fmtInt(n){return Math.round(Number(n)||0).toLocaleString('ru-RU');}
 function fmtMoney(n){return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₽';}
-let RBOPT=null, RB_LAST=null;
+let RBOPT=null, RB_LAST=null, RB_SORT={key:'cost',dir:-1};
 const RB_MET=[
   {key:'cost',label:'Расход',fmt:m=>esc(fmtMoney(m.cost))},
   {key:'imp',label:'Показы',fmt:m=>fmtInt(m.imp)},
@@ -598,55 +598,81 @@ async function renderBuilder(clientOpts){
   el('rpane').innerHTML=`
     <div class="panel"><h3><span class="h3-ic">🧰</span> Конструктор отчёта</h3><div class="body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div class="field"><label>Клиент</label><select id="rbClient">${clientOpts||'<option>нет клиентов</option>'}</select></div>
+        <div class="field"><label>Клиент</label><select id="rbClient" onchange="rbLoadCampaigns()">${clientOpts||'<option>нет клиентов</option>'}</select></div>
+        <div class="field"><label>Кампания (фильтр)</label><select id="rbCampaign"><option value="">Все кампании</option></select></div>
         <div class="field"><label>Базовый разрез</label><select id="rbLevel">${lv}</select></div>
         <div class="field"><label>Модель атрибуции</label><select id="rbAttr">${at}</select></div>
-        <div class="field"><label>Строк (топ по расходу)</label><input id="rbLimit" type="number" value="100" min="1" max="5000"></div>
         <div class="field"><label>Дата с</label><input id="rbFrom" type="date" value="${f(mon)}"></div>
         <div class="field"><label>Дата по</label><input id="rbTo" type="date" value="${f(sun)}"></div>
+        <div class="field"><label>Строк (топ по расходу)</label><input id="rbLimit" type="number" value="100" min="1" max="5000"></div>
       </div>
       <div class="field"><label>Доп. измерения (срезы — можно несколько)</label>
         <div>${segs}</div>
         <div id="rbGrainWrap" style="display:none;margin-top:6px"><span class="muted" style="font-size:12.5px">Группировка даты:</span> <select id="rbGrain" style="width:auto;margin-left:6px">${grains}</select></div>
       </div>
       <div class="field"><label>Колонки-метрики</label><div>${mets}</div></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
         <button class="btn primary" onclick="doReportQuery()">📊 Сформировать</button>
         <button class="btn" onclick="doReportCopy()">📋 Скопировать текст</button>
         <button class="btn" onclick="doReportXlsx()">⬇ Скачать xlsx</button>
-        <button class="btn" onclick="doReportSend()">📨 Отправить в чат</button>
+        <button class="btn" onclick="doReportSend()" title="Уйдёт реальным людям в чате клиента" style="margin-left:auto;border-color:var(--red);color:var(--red)">📨 Отправить в чат</button>
       </div>
-      <div class="note" style="margin-top:12px">Конверсии/CR/CPA показываются для любого клиента (поле Conversions Директа). Если у клиента заданы цели — считаются по ним под выбранной атрибуцией. «Объявления/Фразы/Запросы» и срезы могут давать много строк — показывается топ-N по расходу. xlsx сохраняется в папку <b>reports</b> рядом с программой.</div>
+      <div class="note" style="margin-top:12px">Конверсии/CR/CPA — для любого клиента (поле Conversions Директа; если есть цели — по ним под атрибуцией). «Кампания (фильтр)» ограничивает отчёт одной кампанией — удобно разбить её по группам/объявлениям/фразам. В таблице результата: заголовки кликабельны (сортировка ▲▼), есть поиск по строкам. xlsx сохраняется в папку <b>reports</b> рядом с программой.</div>
     </div></div>
     <div class="panel" style="margin-top:14px"><div class="body" id="rbResult"><div class="empty">Задай параметры и нажми «Сформировать».</div></div></div>`;
+  rbLoadCampaigns();
+}
+async function rbLoadCampaigns(){
+  const login=el('rbClient')?el('rbClient').value:'';const sel=el('rbCampaign');if(!login||!sel)return;
+  sel.innerHTML='<option value="">Загрузка…</option>';sel.disabled=true;
+  try{const cs=await api('report_campaigns',login);
+    sel.innerHTML='<option value="">Все кампании ('+cs.length+')</option>'+cs.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  }catch(e){sel.innerHTML='<option value="">Все кампании</option>';}
+  sel.disabled=false;
 }
 function rbSegChanged(){const dt=el('rbSeg_date');const w=el('rbGrainWrap');if(w)w.style.display=(dt&&dt.checked)?'block':'none';}
 function rbSegments(){return (RBOPT.segments||[]).filter(s=>{const c=el('rbSeg_'+s.key);return c&&c.checked;}).map(s=>s.key);}
 function rbMetricsSel(){return new Set((RBOPT.metrics||[]).filter(m=>{const c=el('rbMet_'+m.key);return c&&c.checked;}).map(m=>m.key));}
-function rbParams(){return [el('rbClient').value, el('rbLevel').value, el('rbFrom').value, el('rbTo').value, el('rbAttr').value, parseInt(el('rbLimit').value||'100',10), rbSegments(), (el('rbGrain')?el('rbGrain').value:'day')];}
+function rbCols(r){const sel=rbMetricsSel();return RB_MET.filter(c=>sel.has(c.key)&&(!c.conv||r.use_conv));}
+function rbParams(){return [el('rbClient').value, el('rbLevel').value, el('rbFrom').value, el('rbTo').value, el('rbAttr').value, parseInt(el('rbLimit').value||'100',10), rbSegments(), (el('rbGrain')?el('rbGrain').value:'day'), (el('rbCampaign')?el('rbCampaign').value:'')];}
 async function doReportQuery(){
   const p=rbParams();if(!p[0])return;
   el('rbResult').innerHTML='<div class="empty"><span class="spin"></span> запрашиваю данные из Директа…</div>';
-  try{const r=await api('report_query',...p);RB_LAST=r;el('rbResult').innerHTML=rbRender(r);}
+  try{const r=await api('report_query',...p);RB_LAST=r;RB_SORT={key:'cost',dir:-1};el('rbResult').innerHTML=rbShell(r);rbDrawTable();}
   catch(e){el('rbResult').innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';}
 }
-function rbRender(r){
-  const sel=rbMetricsSel();
-  const cols=RB_MET.filter(c=>sel.has(c.key)&&(!c.conv||r.use_conv));
-  const dimTh=r.dim_titles.map(t=>'<th>'+esc(t)+'</th>').join('');
-  const metTh=cols.map(c=>'<th class="right">'+esc(c.label)+'</th>').join('');
-  const cell=m=>cols.map(c=>'<td class="right">'+c.fmt(m)+'</td>').join('');
-  let head=`<div style="margin-bottom:10px"><b>${esc(r.client_name)}</b> · ${esc(r.level_label)}`;
+function rbShell(r){
+  let head=`<div style="margin-bottom:8px"><b>${esc(r.client_name)}</b> · ${esc(r.level_label)}`;
   if(r.segments&&r.segments.length)head+=` · +${r.segments.length} срез(а)`;
   head+=` · атрибуция ${esc(r.attribution)} · ${esc(r.date_from)}…${esc(r.date_to)}`;
   if(!r.use_conv)head+=' · <span class="muted">конверсии для этого разреза недоступны</span>';
   else if(!r.by_goals)head+=' · <span class="muted">конверсии — суммарные (без целей)</span>';
-  head+=`<br><span class="muted">показано ${r.n_shown} из ${r.n_total}</span></div>`;
-  const totalRow=`<tr style="font-weight:700;background:var(--surface-2)"><td colspan="${r.dim_titles.length}">ИТОГО</td>${cell(r.totals)}</tr>`;
-  const body=r.rows.map(row=>'<tr>'+row.dims.map(d=>'<td>'+esc(d||'—')+'</td>').join('')+cell(row.m)+'</tr>').join('');
-  return head+`<div class="scrollx"><table><thead><tr>${dimTh}${metTh}</tr></thead><tbody>${totalRow}${body}</tbody></table></div>`;
+  head+='</div>';
+  const toolbar=`<div style="display:flex;gap:10px;align-items:center;margin:0 0 10px;flex-wrap:wrap"><input type="search" id="rbSearch" placeholder="🔎 фильтр по строкам…" style="min-width:220px" oninput="rbDrawTable()"><span class="muted" id="rbCount"></span></div>`;
+  return head+toolbar+'<div id="rbTable"></div>';
 }
-function rbRerender(){if(RB_LAST)el('rbResult').innerHTML=rbRender(RB_LAST);}
+function rbDrawTable(){
+  const r=RB_LAST,host=el('rbTable');if(!r||!host)return;
+  const cols=rbCols(r);
+  const q=(el('rbSearch')?el('rbSearch').value:'').trim().toLowerCase();
+  let rows=r.rows.slice();
+  if(q)rows=rows.filter(row=>row.dims.some(d=>String(d).toLowerCase().includes(q)));
+  const sk=RB_SORT.key,dir=RB_SORT.dir;
+  rows.sort((a,b)=>{
+    if(sk.indexOf('dim')===0){const i=+sk.slice(3);return dir*String(a.dims[i]||'').localeCompare(String(b.dims[i]||''),'ru',{numeric:true});}
+    return dir*(((a.m[sk]||0))-((b.m[sk]||0)));
+  });
+  const arrow=k=>sk===k?(dir<0?' ▼':' ▲'):'';
+  const dimTh=r.dim_titles.map((t,i)=>`<th onclick="rbSort('dim${i}')" style="cursor:pointer;user-select:none">${esc(t)}${arrow('dim'+i)}</th>`).join('');
+  const metTh=cols.map(c=>`<th class="right" onclick="rbSort('${c.key}')" style="cursor:pointer;user-select:none">${esc(c.label)}${arrow(c.key)}</th>`).join('');
+  const cell=m=>cols.map(c=>'<td class="right">'+c.fmt(m)+'</td>').join('');
+  const totalRow=`<tr style="font-weight:700;background:var(--surface-2)"><td colspan="${r.dim_titles.length}">ИТОГО</td>${cell(r.totals)}</tr>`;
+  const body=rows.map(row=>'<tr>'+row.dims.map(d=>'<td>'+esc(d||'—')+'</td>').join('')+cell(row.m)+'</tr>').join('');
+  host.innerHTML=`<div class="scrollx"><table><thead><tr>${dimTh}${metTh}</tr></thead><tbody>${totalRow}${body}</tbody></table></div>`;
+  const cnt=el('rbCount');if(cnt)cnt.textContent='строк: '+rows.length+(q?(' (из '+r.rows.length+')'):'')+' · всего по API: '+r.n_total;
+}
+function rbSort(key){if(RB_SORT.key===key)RB_SORT.dir*=-1;else RB_SORT={key,dir:key.indexOf('dim')===0?1:-1};rbDrawTable();}
+function rbRerender(){if(RB_LAST&&el('rbTable'))rbDrawTable();}
 async function doReportCopy(){
   if(!RB_LAST||!RB_LAST.text){toast('Сначала сформируй отчёт','err');return;}
   try{await navigator.clipboard.writeText(RB_LAST.text);toast('Текст скопирован','ok');}

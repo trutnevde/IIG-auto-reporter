@@ -271,8 +271,16 @@ class Api:
         from . import report_custom as RC
         return RC.options()
 
+    @safe
+    def report_campaigns(self, login):
+        """Список кампаний клиента для фильтра конструктора (только чтение)."""
+        from . import yandex
+        token = load_secrets()["yandex_oauth_token"]
+        camps = yandex.get_campaigns(token, login)
+        return [{"id": str(c.get("Id")), "name": c.get("Name") or str(c.get("Id"))} for c in camps]
+
     def _report_build(self, login, level, date_from, date_to, attribution, limit,
-                      segments=None, date_grain="day"):
+                      segments=None, date_grain="day", campaign=None):
         from . import report_custom as RC
         token = load_secrets()["yandex_oauth_token"]
         c = self.db.get_client(login)
@@ -284,23 +292,23 @@ class Api:
             date_from = date_from or per["date_from"]
             date_to = date_to or per["date_to"]
         res = RC.build(token, login, level or "campaign", date_from, date_to,
-                       attribution or "LSC", goal_defs, segments, date_grain or "day", limit or 100)
+                       attribution or "LSC", goal_defs, segments, date_grain or "day", campaign, limit or 100)
         res["client_name"] = c["name"] or login
         res["text"] = RC.to_text(login, c["name"] or login, res)
         return res
 
     @safe
     def report_query(self, login, level="campaign", date_from=None, date_to=None, attribution="LSC",
-                     limit=100, segments=None, date_grain="day"):
-        res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain)
+                     limit=100, segments=None, date_grain="day", campaign=None):
+        res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain, campaign)
         res["chats"] = [{"chat_id": b["chat_id"], "title": self._chat_title(b["chat_id"])}
                         for b in self.db.bindings_for_login(login)]
         return res
 
     @safe
     def report_send(self, login, level="campaign", date_from=None, date_to=None, attribution="LSC",
-                    limit=100, segments=None, date_grain="day"):
-        res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain)
+                    limit=100, segments=None, date_grain="day", campaign=None):
+        res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain, campaign)
         chats = self.db.bindings_for_login(login)
         if not chats:
             raise RuntimeError("Клиент не привязан ни к одному чату")
@@ -313,13 +321,13 @@ class Api:
 
     @safe
     def report_export_xlsx(self, login, level="campaign", date_from=None, date_to=None, attribution="LSC",
-                           limit=1000, segments=None, date_grain="day"):
+                           limit=1000, segments=None, date_grain="day", campaign=None):
         """Строит отчёт и сохраняет .xlsx в подпапку reports/ рядом с программой. Ничего не отправляет."""
         import os
         import re
         from . import report_custom as RC
         from .settings import BASE_DIR
-        res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain)
+        res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain, campaign)
         folder = os.path.join(BASE_DIR, "reports")
         os.makedirs(folder, exist_ok=True)
         safe_login = re.sub(r"[^A-Za-z0-9_.-]", "_", str(login))

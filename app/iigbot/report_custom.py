@@ -52,6 +52,29 @@ METRICS = [
     {"key": "conv", "label": "Конверсии"}, {"key": "cr", "label": "CR"}, {"key": "cpa", "label": "CPA"},
 ]
 
+# человекочитаемые подписи значений срезов (вместо GENDER_FEMALE, DESKTOP, AGE_25_34, AD_NETWORK …)
+GENDER_VAL = {"GENDER_MALE": "Мужчины", "GENDER_FEMALE": "Женщины", "MALE": "Мужчины", "FEMALE": "Женщины"}
+DEVICE_VAL = {"DESKTOP": "Десктоп", "MOBILE": "Смартфоны", "TABLET": "Планшеты"}
+AGE_VAL = {"AGE_0_17": "0–17", "AGE_18_24": "18–24", "AGE_25_34": "25–34",
+           "AGE_35_44": "35–44", "AGE_45_54": "45–54", "AGE_45_": "45+", "AGE_55": "55+"}
+NETWORK_VAL = {"SEARCH": "Поиск", "AD_NETWORK": "РСЯ"}
+VALUE_MAPS = {"Gender": GENDER_VAL, "Device": DEVICE_VAL, "Age": AGE_VAL, "AdNetworkType": NETWORK_VAL}
+
+
+def _pretty(field, raw):
+    """Красивое имя значения среза. Для немаппленных полей (кампании/фразы/…) — как есть."""
+    m = VALUE_MAPS.get(field)
+    if m is None:
+        return raw if raw is not None else ""
+    v = str(raw or "").strip()
+    if v in m:
+        return m[v]
+    if v in ("", "--", "UNKNOWN") or v.startswith("UNKNOWN"):
+        return "Не определён"
+    if field == "Age" and v.startswith("AGE_"):
+        return v[4:].replace("_", "–")
+    return raw if raw is not None else ""
+
 
 def options():
     return {
@@ -92,7 +115,7 @@ def _metrics(imp, clk, cost, conv):
 
 
 def build(token, login, level, date_from, date_to, attribution="LSC", goal_defs=None,
-          segments=None, date_grain="day", limit=100, _post=None, _sleep=None):
+          segments=None, date_grain="day", campaign=None, limit=100, _post=None, _sleep=None):
     if level not in LEVELS:
         raise RuntimeError("Неизвестный разрез: {}".format(level))
     rtype, ent_dims, ent_titles = LEVELS[level]
@@ -113,9 +136,14 @@ def build(token, login, level, date_from, date_to, attribution="LSC", goal_defs=
     if conv_capable:
         fields.append("Conversions")   # работает даже без Goals
 
+    # фильтр по одной кампании (для «выгрузить одну кампанию и разбить внутри»)
+    fltrs = None
+    if campaign and level != "account":
+        fltrs = [{"Field": "CampaignId", "Operator": "IN", "Values": [str(campaign)]}]
+
     raw = R.fetch_report(token, login, date_from, date_to, fields,
                          goal_ids=goal_ids, attribution=attribution, report_type=rtype,
-                         _post=_post, _sleep=_sleep)
+                         filters=fltrs, _post=_post, _sleep=_sleep)
 
     # агрегируем на своей стороне по кортежу значений измерений (нужно для свёртки дат
     # день->неделя/месяц и чтобы суммы сходились).
@@ -123,9 +151,11 @@ def build(token, login, level, date_from, date_to, attribution="LSC", goal_defs=
     for r in raw:
         disp = []
         for d in dim_fields:
-            val = str(r.get(d) or "")
+            raw = str(r.get(d) or "")
             if d == "Date":
-                val = _date_bucket(val, date_grain)
+                val = _date_bucket(raw, date_grain)
+            else:
+                val = _pretty(d, raw)
             disp.append(val)
         imp = R.parse_num(r.get("Impressions"))
         clk = R.parse_num(r.get("Clicks"))

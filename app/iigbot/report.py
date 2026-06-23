@@ -64,8 +64,11 @@ def period(today=None):
 
 # ---------- запрос отчёта (CAMPAIGN_PERFORMANCE_REPORT, TSV) ----------
 def fetch_report(token, login, date_from, date_to, fields, goal_ids=None, attribution="LSC",
-                 report_type="CAMPAIGN_PERFORMANCE_REPORT", _post=None, _sleep=None):
-    """Возвращает список строк-словарей (имя_столбца -> значение). _post/_sleep — для тестов."""
+                 report_type="CAMPAIGN_PERFORMANCE_REPORT", filters=None, _post=None, _sleep=None):
+    """Возвращает список строк-словарей (имя_столбца -> значение). _post/_sleep — для тестов.
+
+    filters — список фильтров SelectionCriteria, напр. [{"Field":"CampaignId","Operator":"IN","Values":["123"]}].
+    """
     post = _post or requests.post
     sleep = _sleep or time.sleep
     headers = {
@@ -78,8 +81,11 @@ def fetch_report(token, login, date_from, date_to, fields, goal_ids=None, attrib
         "skipReportSummary": "true",
         "Content-Type": "application/json; charset=utf-8",
     }
+    selection = {"DateFrom": date_from, "DateTo": date_to}
+    if filters:
+        selection["Filter"] = list(filters)
     params = {
-        "SelectionCriteria": {"DateFrom": date_from, "DateTo": date_to},
+        "SelectionCriteria": selection,
         "FieldNames": list(fields),
         "ReportName": "wk_{}_{}".format(login, int(time.time() * 1000)),
         "ReportType": report_type,
