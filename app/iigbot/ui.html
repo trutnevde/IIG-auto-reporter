@@ -575,59 +575,92 @@ async function runWeekly(){
 function fmtInt(n){return Math.round(Number(n)||0).toLocaleString('ru-RU');}
 function fmtMoney(n){return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₽';}
 let RBOPT=null, RB_LAST=null;
+const RB_MET=[
+  {key:'cost',label:'Расход',fmt:m=>esc(fmtMoney(m.cost))},
+  {key:'imp',label:'Показы',fmt:m=>fmtInt(m.imp)},
+  {key:'clicks',label:'Клики',fmt:m=>fmtInt(m.clicks)},
+  {key:'ctr',label:'CTR',fmt:m=>(m.ctr||0).toFixed(2)+'%'},
+  {key:'cpc',label:'CPC',fmt:m=>esc(fmtMoney(m.cpc))},
+  {key:'conv',label:'Конв.',conv:true,fmt:m=>fmtInt(m.conv)},
+  {key:'cr',label:'CR',conv:true,fmt:m=>(m.cr||0).toFixed(2)+'%'},
+  {key:'cpa',label:'CPA',conv:true,fmt:m=>esc(fmtMoney(m.cpa))},
+];
+const RB_CHK='display:inline-flex;align-items:center;gap:6px;margin:3px 14px 3px 0;font-weight:500;font-size:13px';
 async function renderBuilder(clientOpts){
   if(!RBOPT){try{RBOPT=await api('report_options');}catch(e){el('rpane').innerHTML='<div class="panel"><div class="empty">Ошибка: '+esc(e.message)+'</div></div>';return;}}
   const lv=RBOPT.levels.map(l=>`<option value="${l.key}"${l.key==='campaign'?' selected':''}>${esc(l.label)}</option>`).join('');
   const at=RBOPT.attributions.map(a=>`<option value="${a}"${a==='LSC'?' selected':''}>${a}</option>`).join('');
+  const segs=(RBOPT.segments||[]).map(s=>`<label style="${RB_CHK}"><input type="checkbox" id="rbSeg_${s.key}" onchange="rbSegChanged()"> ${esc(s.label)}</label>`).join('');
+  const grains=(RBOPT.date_grains||[]).map(g=>`<option value="${g.key}">${esc(g.label)}</option>`).join('');
+  const mets=(RBOPT.metrics||[]).map(m=>`<label style="${RB_CHK}"><input type="checkbox" id="rbMet_${m.key}" checked onchange="rbRerender()"> ${esc(m.label)}</label>`).join('');
   const d=new Date();const dow=(d.getDay()+6)%7;const mon=new Date(d);mon.setDate(d.getDate()-dow-7);const sun=new Date(mon);sun.setDate(mon.getDate()+6);
   const f=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
   el('rpane').innerHTML=`
     <div class="panel"><h3><span class="h3-ic">🧰</span> Конструктор отчёта</h3><div class="body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
         <div class="field"><label>Клиент</label><select id="rbClient">${clientOpts||'<option>нет клиентов</option>'}</select></div>
-        <div class="field"><label>Разрез</label><select id="rbLevel">${lv}</select></div>
+        <div class="field"><label>Базовый разрез</label><select id="rbLevel">${lv}</select></div>
         <div class="field"><label>Модель атрибуции</label><select id="rbAttr">${at}</select></div>
-        <div class="field"><label>Строк (топ по расходу)</label><input id="rbLimit" type="number" value="100" min="1" max="1000"></div>
+        <div class="field"><label>Строк (топ по расходу)</label><input id="rbLimit" type="number" value="100" min="1" max="5000"></div>
         <div class="field"><label>Дата с</label><input id="rbFrom" type="date" value="${f(mon)}"></div>
         <div class="field"><label>Дата по</label><input id="rbTo" type="date" value="${f(sun)}"></div>
       </div>
+      <div class="field"><label>Доп. измерения (срезы — можно несколько)</label>
+        <div>${segs}</div>
+        <div id="rbGrainWrap" style="display:none;margin-top:6px"><span class="muted" style="font-size:12.5px">Группировка даты:</span> <select id="rbGrain" style="width:auto;margin-left:6px">${grains}</select></div>
+      </div>
+      <div class="field"><label>Колонки-метрики</label><div>${mets}</div></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn primary" onclick="doReportQuery()">📊 Сформировать</button>
         <button class="btn" onclick="doReportCopy()">📋 Скопировать текст</button>
+        <button class="btn" onclick="doReportXlsx()">⬇ Скачать xlsx</button>
         <button class="btn" onclick="doReportSend()">📨 Отправить в чат</button>
       </div>
-      <div class="note" style="margin-top:12px">Конверсии и атрибуция считаются по целям клиента (если заданы). «Объявления/Фразы/Запросы» могут быть большими — показываются топ-N по расходу.</div>
+      <div class="note" style="margin-top:12px">Конверсии/CR/CPA показываются для любого клиента (поле Conversions Директа). Если у клиента заданы цели — считаются по ним под выбранной атрибуцией. «Объявления/Фразы/Запросы» и срезы могут давать много строк — показывается топ-N по расходу. xlsx сохраняется в папку <b>reports</b> рядом с программой.</div>
     </div></div>
     <div class="panel" style="margin-top:14px"><div class="body" id="rbResult"><div class="empty">Задай параметры и нажми «Сформировать».</div></div></div>`;
 }
-function rbParams(){return [el('rbClient').value, el('rbLevel').value, el('rbFrom').value, el('rbTo').value, el('rbAttr').value, parseInt(el('rbLimit').value||'100',10)];}
+function rbSegChanged(){const dt=el('rbSeg_date');const w=el('rbGrainWrap');if(w)w.style.display=(dt&&dt.checked)?'block':'none';}
+function rbSegments(){return (RBOPT.segments||[]).filter(s=>{const c=el('rbSeg_'+s.key);return c&&c.checked;}).map(s=>s.key);}
+function rbMetricsSel(){return new Set((RBOPT.metrics||[]).filter(m=>{const c=el('rbMet_'+m.key);return c&&c.checked;}).map(m=>m.key));}
+function rbParams(){return [el('rbClient').value, el('rbLevel').value, el('rbFrom').value, el('rbTo').value, el('rbAttr').value, parseInt(el('rbLimit').value||'100',10), rbSegments(), (el('rbGrain')?el('rbGrain').value:'day')];}
 async function doReportQuery(){
   const p=rbParams();if(!p[0])return;
   el('rbResult').innerHTML='<div class="empty"><span class="spin"></span> запрашиваю данные из Директа…</div>';
-  try{const r=await api('report_query',p[0],p[1],p[2],p[3],p[4],p[5]);RB_LAST=r;el('rbResult').innerHTML=rbRender(r);}
+  try{const r=await api('report_query',...p);RB_LAST=r;el('rbResult').innerHTML=rbRender(r);}
   catch(e){el('rbResult').innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';}
 }
-function rbCell(m,uc){let s=`<td class="right">${esc(fmtMoney(m.cost))}</td><td class="right">${fmtInt(m.imp)}</td><td class="right">${fmtInt(m.clicks)}</td><td class="right">${(m.ctr||0).toFixed(2)}%</td><td class="right">${esc(fmtMoney(m.cpc))}</td>`;if(uc)s+=`<td class="right">${fmtInt(m.conv)}</td><td class="right">${(m.cr||0).toFixed(2)}%</td><td class="right">${esc(fmtMoney(m.cpa))}</td>`;return s;}
 function rbRender(r){
-  const uc=r.use_conv;
+  const sel=rbMetricsSel();
+  const cols=RB_MET.filter(c=>sel.has(c.key)&&(!c.conv||r.use_conv));
   const dimTh=r.dim_titles.map(t=>'<th>'+esc(t)+'</th>').join('');
-  const metTh='<th class="right">Расход</th><th class="right">Показы</th><th class="right">Клики</th><th class="right">CTR</th><th class="right">CPC</th>'+(uc?'<th class="right">Конв.</th><th class="right">CR</th><th class="right">CPA</th>':'');
-  let head=`<div style="margin-bottom:10px"><b>${esc(r.client_name)}</b> · ${esc(r.level_label)} · атрибуция ${esc(r.attribution)} · ${esc(r.date_from)}…${esc(r.date_to)}`;
-  if(!uc)head+=' · <span class="muted">конверсии недоступны (нет целей у клиента / разрез без целей)</span>';
+  const metTh=cols.map(c=>'<th class="right">'+esc(c.label)+'</th>').join('');
+  const cell=m=>cols.map(c=>'<td class="right">'+c.fmt(m)+'</td>').join('');
+  let head=`<div style="margin-bottom:10px"><b>${esc(r.client_name)}</b> · ${esc(r.level_label)}`;
+  if(r.segments&&r.segments.length)head+=` · +${r.segments.length} срез(а)`;
+  head+=` · атрибуция ${esc(r.attribution)} · ${esc(r.date_from)}…${esc(r.date_to)}`;
+  if(!r.use_conv)head+=' · <span class="muted">конверсии для этого разреза недоступны</span>';
+  else if(!r.by_goals)head+=' · <span class="muted">конверсии — суммарные (без целей)</span>';
   head+=`<br><span class="muted">показано ${r.n_shown} из ${r.n_total}</span></div>`;
-  const totalRow=`<tr style="font-weight:700;background:var(--surface-2)"><td colspan="${r.dim_titles.length}">ИТОГО</td>${rbCell(r.totals,uc)}</tr>`;
-  const body=r.rows.map(row=>'<tr>'+row.dims.map(d=>'<td>'+esc(d||'—')+'</td>').join('')+rbCell(row.m,uc)+'</tr>').join('');
+  const totalRow=`<tr style="font-weight:700;background:var(--surface-2)"><td colspan="${r.dim_titles.length}">ИТОГО</td>${cell(r.totals)}</tr>`;
+  const body=r.rows.map(row=>'<tr>'+row.dims.map(d=>'<td>'+esc(d||'—')+'</td>').join('')+cell(row.m)+'</tr>').join('');
   return head+`<div class="scrollx"><table><thead><tr>${dimTh}${metTh}</tr></thead><tbody>${totalRow}${body}</tbody></table></div>`;
 }
+function rbRerender(){if(RB_LAST)el('rbResult').innerHTML=rbRender(RB_LAST);}
 async function doReportCopy(){
   if(!RB_LAST||!RB_LAST.text){toast('Сначала сформируй отчёт','err');return;}
   try{await navigator.clipboard.writeText(RB_LAST.text);toast('Текст скопирован','ok');}
   catch(e){const ta=document.createElement('textarea');ta.value=RB_LAST.text;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('Текст скопирован','ok');}catch(_){toast('Не удалось скопировать','err');}ta.remove();}
 }
+async function doReportXlsx(){
+  const p=rbParams();if(!p[0])return;
+  toast('Готовлю xlsx…');
+  try{const r=await api('report_export_xlsx',...p);toast('Сохранено: reports\\'+r.filename+' ('+r.n_rows+' строк)','ok');}catch(e){}
+}
 async function doReportSend(){
   const p=rbParams();if(!p[0])return;
-  if(!confirm('Отправить этот отчёт в привязанный чат клиента?'))return;
-  try{const r=await api('report_send',p[0],p[1],p[2],p[3],p[4],p[5]);toast('Отправлено в чатов: '+r.sent,'ok');}catch(e){}
+  if(!confirm('Отправить этот отчёт в привязанный чат клиента? Уйдёт реальным людям в чате.'))return;
+  try{const r=await api('report_send',...p);toast('Отправлено в чатов: '+r.sent,'ok');}catch(e){}
 }
 
 /* ---------- SETTINGS ---------- */

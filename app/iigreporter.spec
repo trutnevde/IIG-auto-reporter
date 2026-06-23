@@ -9,14 +9,14 @@ from PyInstaller.utils.hooks import collect_all
 datas = [('iigbot/ui.html', 'iigbot')]          # интерфейс кладём внутрь exe
 binaries = []
 hiddenimports = ['iigbot.' + m for m in (
-    'cli', 'desktop', 'web', 'report', 'api', 'bot', 'run_weekly',
+    'cli', 'desktop', 'web', 'report', 'report_custom', 'api', 'bot', 'run_weekly',
     'sync_clients', 'import_config', 'storage', 'telegram_api', 'yandex',
     'settings', 'listener',
 )]
 
 # pywebview/flask тянут необязательные подмодули — собираем их целиком, без падения,
 # если пакета нет.
-for pkg in ('pywebview', 'flask', 'requests', 'bottle', 'proxy_tools'):
+for pkg in ('pywebview', 'flask', 'requests', 'bottle', 'proxy_tools', 'openpyxl'):
     try:
         d, b, h = collect_all(pkg)
         datas += d
