@@ -531,11 +531,12 @@ def _block_bounds(values, header_idx):
     return list(range(header_idx + 1, end + 1)), foot
 
 
-def fill_month_detail(ws, token, login, all_goals, month_from, query_to,
+def fill_month_detail(ws, token, login, all_goals, month_from, query_to, weeks=None,
                       attribution=DEFAULT_ATTR, dry_run=True):
     """Составной помесячный лист («Июнь 26»): обновляет верхний блок по кампаниям за месяц
-    (1-е..сегодня) и upsert текущей недели в нижний под-блок «по неделям». Пишет только
-    входные ячейки — формулы, футеры и внешние столбцы (Комиссия) не трогает."""
+    (1-е..сегодня) и upsert недель в нижний под-блок «по неделям». Пишет только входные
+    ячейки — формулы, футеры и внешние столбцы (Комиссия) не трогает.
+    weeks — список (date_from, date_to_подписи, query_to) недель для upsert; None → текущая."""
     from datetime import date as _d
     from gspread.utils import rowcol_to_a1
     values = ws.get_all_values()
@@ -568,37 +569,42 @@ def fill_month_detail(ws, token, login, all_goals, month_from, query_to,
                               "values": [[row[j] if row else ""]]})
     info["campaigns"] = len(camp_list)
 
-    # --- нижний блок: upsert текущей недели ---
+    # --- нижний блок: upsert недель (по умолчанию — текущая) ---
     if bot_h is not None:
-        y, m, d = (int(x) for x in query_to.split("-"))
-        today = _d(y, m, d)
-        monday = today.fromordinal(today.toordinal() - today.weekday())
-        wk_from = monday.isoformat()
-        wk_to = monday.fromordinal(monday.toordinal() + 6).isoformat()
+        if not weeks:
+            y, m, d = (int(x) for x in query_to.split("-"))
+            today = _d(y, m, d)
+            monday = today.fromordinal(today.toordinal() - today.weekday())
+            weeks = [(monday.isoformat(),
+                      monday.fromordinal(monday.toordinal() + 6).isoformat(), query_to)]
         tf_bot = formulas[bot_h + 1] if bot_h + 1 < len(formulas) else []
         bot_specs = classify_columns(values[bot_h], tf_bot, all_goals)
         bot_goals = [{"id": s["goal_id"], "name": s["title"]} for s in bot_specs if s["kind"] == "goal"]
-        wdata = account_period(token, login, wk_from, query_to, bot_goals, attribution,
-                               want_positions=True)
         bperiods = [i for i in _block_bounds(values, bot_h)[0]
                     if values[i] and re.search(r"\d", str(values[i][0]))
                     and _norm(values[i][0]) not in _NONPERIOD]
-        existing = next((i for i in bperiods if _row_start_iso(values[i][0]) == wk_from), None)
-        if existing is not None:
-            tr = existing + 1
-            tmpl_i = existing
-        else:
-            last_p = bperiods[-1] if bperiods else bot_h
-            tr = last_p + 2
-            tmpl_i = last_p
-        sample = next((str(values[tmpl_i][s["idx"]]) for s in bot_specs
-                       if s["kind"] == "period" and s["idx"] < len(values[tmpl_i])), "")
-        wrow = build_weekly_row(bot_specs, wdata, wk_from, wk_to, tr, tmpl_i + 1,
-                                formulas[tmpl_i], sample, "week")
-        for j, s in enumerate(bot_specs):
-            if s["idx"] == 0 or _is_input(s["kind"]):
-                batch.append({"range": rowcol_to_a1(tr, s["idx"] + 1), "values": [[wrow[j]]]})
-        info["week_row"] = tr
+        append_at = (bperiods[-1] if bperiods else bot_h) + 1  # 0-based след. свободный слот
+        last_p = bperiods[-1] if bperiods else bot_h
+        week_rows = []
+        for (wf, wt, wq) in weeks:
+            wdata = account_period(token, login, wf, wq, bot_goals, attribution, want_positions=True)
+            existing = next((i for i in bperiods if _row_start_iso(values[i][0]) == wf), None)
+            if existing is not None:
+                tr = existing + 1
+                tmpl_i = existing
+            else:
+                tr = append_at + 1
+                tmpl_i = last_p
+                append_at += 1
+            sample = next((str(values[tmpl_i][s["idx"]]) for s in bot_specs
+                           if s["kind"] == "period" and s["idx"] < len(values[tmpl_i])), "")
+            wrow = build_weekly_row(bot_specs, wdata, wf, wt, tr, tmpl_i + 1,
+                                    formulas[tmpl_i], sample, "week")
+            for j, s in enumerate(bot_specs):
+                if s["idx"] == 0 or _is_input(s["kind"]):
+                    batch.append({"range": rowcol_to_a1(tr, s["idx"] + 1), "values": [[wrow[j]]]})
+            week_rows.append(tr)
+        info["week_rows"] = week_rows
 
     if dry_run:
         return dict(info, batch_size=len(batch))

@@ -406,11 +406,34 @@ class Api:
 
     @safe
     def report_campaigns(self, login):
-        """Список кампаний клиента для фильтра конструктора (только чтение)."""
-        from . import yandex
+        """Список кампаний клиента для фильтра конструктора (только чтение).
+
+        Объединяет campaigns.get (быстро, настроенные кампании) и кампании из отчёта за
+        90 дней — последнее ловит товарные/перформанс-кампании, которые campaigns.get v5
+        не возвращает вообще (тип не поддержан методом)."""
+        from . import yandex, report
+        from datetime import date, timedelta
         token = load_secrets()["yandex_oauth_token"]
-        camps = yandex.get_campaigns(token, login)
-        return [{"id": str(c.get("Id")), "name": c.get("Name") or str(c.get("Id"))} for c in camps]
+        seen = {}
+        try:
+            for c in yandex.get_campaigns(token, login):
+                seen[str(c.get("Id"))] = c.get("Name") or str(c.get("Id"))
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            today = date.today()
+            rows = report.fetch_report(token, login, (today - timedelta(days=90)).isoformat(),
+                                       today.isoformat(), ["CampaignId", "CampaignName"],
+                                       report_type="CAMPAIGN_PERFORMANCE_REPORT")
+            for r in rows:
+                cid = str(r.get("CampaignId"))
+                if cid:
+                    seen[cid] = r.get("CampaignName") or seen.get(cid, cid)
+        except Exception:  # noqa: BLE001 — отчёт мог не успеть; вернём хотя бы campaigns.get
+            pass
+        out = [{"id": cid, "name": nm} for cid, nm in seen.items()]
+        out.sort(key=lambda x: (x["name"] or "").lower())
+        return out
 
     def _report_build(self, login, level, date_from, date_to, attribution, limit,
                       segments=None, date_grain="day", campaign=None, goal_ids=None):
@@ -530,43 +553,51 @@ class Api:
         from datetime import date, timedelta
         today = date.today()
         monday = today - timedelta(days=today.weekday())
+        prev_monday = monday - timedelta(days=7)
         first = today.replace(day=1)
+        prev_last = first - timedelta(days=1)
+        prev_first = prev_last.replace(day=1)
         tod = today.isoformat()
-        # (date_from, date_to_подписи, query_to=сегодня) — данные ВКЛЮЧАЯ сегодняшний день
-        plan = {
-            "week":  (monday.isoformat(), (monday + timedelta(days=6)).isoformat(), tod),
-            "month": (first.isoformat(), tod, tod),
-        }
-        _MODE = {"update": "обновлено (live, до сегодня)", "insert": "добавлено",
-                 "append": "добавлено"}
+
+        def _wk(mon, q):  # (date_from, date_to_подписи, query_to)
+            return mon.isoformat(), (mon + timedelta(days=6)).isoformat(), q
+        # ВСЕГДА обновляем ПРОШЛЫЙ закрытый период (финализируем) + ТЕКУЩИЙ (live до сегодня).
+        # Так на стыке (понедельник/1-е число) прошлая неделя/месяц не остаётся недозаполненной.
+        WEEKS = [_wk(prev_monday, (monday - timedelta(days=1)).isoformat()), _wk(monday, tod)]
+        MONTHS = [(prev_first.isoformat(), prev_last.isoformat(), prev_last.isoformat()),
+                  (first.isoformat(), tod, tod)]
+        plan = {"week": WEEKS, "month": MONTHS}
+        _MODE = {"update": "обновлено (live)", "insert": "добавлено", "append": "добавлено"}
         cur_key = "{:04d}-{:02d}".format(today.year, today.month)
+        comp_weeks = [w for w in WEEKS if w[0][:7] == first.isoformat()[:7]]  # недели текущего месяца
         sh = gc.open_by_key(sid)
         results = []
         for ws in sh.worksheets():
             t = ws.title.lower()
             grain = "week" if "по неделям" in t else ("month" if "по месяц" in t else None)
+            period = None
             try:
-                if grain:  # листы-ленты
-                    df, dl, qt = plan[grain]
-                    r = G.fill_weekly(ws, token, login, goals, df, dl, query_to=qt,
-                                      dry_run=False, grain=grain)
-                    status = "{} (строка {})".format(_MODE.get(r.get("mode"), "записано"),
-                                                     r.get("target_row"))
-                    period = [df, qt]
+                if grain:  # листы-ленты: прошлый + текущий период
+                    parts = []
+                    for df, dl, qt in plan[grain]:
+                        r = G.fill_weekly(ws, token, login, goals, df, dl, query_to=qt,
+                                          dry_run=False, grain=grain)
+                        parts.append("{} — {} (стр {})".format(
+                            df, _MODE.get(r.get("mode"), "записано"), r.get("target_row")))
+                    status = "; ".join(parts)
                 elif G._label_key(ws.title, "month") == cur_key:
                     # составной помесячный лист текущего месяца («Июнь 26»)
                     r = G.fill_month_detail(ws, token, login, goals, first.isoformat(), tod,
-                                            dry_run=False)
+                                            weeks=comp_weeks, dry_run=False)
                     grain = "month-detail"
-                    status = "обновлён (кампаний {}, неделя строка {})".format(
-                        r.get("campaigns"), r.get("week_row"))
+                    status = "кампаний {}, недели строки {}".format(
+                        r.get("campaigns"), r.get("week_rows"))
                     period = [first.isoformat(), tod]
                 else:
                     continue
             except Exception as e:  # noqa: BLE001 — один лист не должен ронять остальные
                 grain = grain or "?"
                 status = "ошибка: " + str(e)
-                period = None
             results.append({"tab": ws.title, "grain": grain, "period": period, "status": status})
         if not results:
             raise RuntimeError("В таблице нет листов-лент («Общий по неделям»/«по месяцам»).")
