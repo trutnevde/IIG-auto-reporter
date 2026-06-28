@@ -1,5 +1,8 @@
 # --- СЕКРЕТЫ: никогда не коммитим ---
 secrets.json
+sa_key.json
+*service_account*.json
+iig-autoreporter-*.json
 .env
 .env.*
 .audit-key

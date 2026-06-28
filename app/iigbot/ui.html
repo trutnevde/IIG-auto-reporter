@@ -628,6 +628,8 @@ async function renderBuilder(clientOpts){
         <button class="btn primary" onclick="doReportQuery()">📊 Сформировать</button>
         <button class="btn" onclick="doReportCopy()">📋 Скопировать текст</button>
         <button class="btn" onclick="doReportXlsx()">⬇ Скачать xlsx</button>
+        <button class="btn" onclick="doReportGSheets()" title="Дописать свежие данные в ленты клиента (неделя + месяц)">📗 В Google-таблицу</button>
+        <button class="btn" onclick="doReportGSheetsBreak()" title="Создать новые листы-разрезы за прошлый месяц (По РК/группам/ключам/регионам)">📊 Разрезы в таблицу</button>
         <span id="rbSendNote" class="muted" style="margin-left:auto;font-size:12px;display:none">🔒 не привязано к чату — отправка недоступна</span>
         <button class="btn" id="rbSendBtn" onclick="doReportSend()" title="Уйдёт реальным людям в чате клиента" style="border-color:var(--red);color:var(--red)">📨 Отправить в чат</button>
       </div>
@@ -712,6 +714,24 @@ async function doReportXlsx(){
   const p=rbParams();if(!p[0])return;
   toast('Готовлю xlsx…');
   try{const r=await api('report_export_xlsx',...p);toast('Сохранено: reports\\'+r.filename+' ('+r.n_rows+' строк)','ok');}catch(e){}
+}
+async function doReportGSheets(){
+  const p=rbParams();if(!p[0])return;
+  if(!confirm('Заполнить Google-таблицу клиента свежими данными (прошлая неделя + прошлый месяц)? Изменит реальную таблицу.'))return;
+  toast('Пишу в Google-таблицу…');
+  try{const r=await api('gsheets_push',p[0]);
+    if(r&&r.results){const lines=r.results.map(x=>'• '+x.tab+': '+x.status).join('\n');
+      toast('Готово ('+r.domain+'):\n'+lines,'ok');}
+  }catch(e){}
+}
+async function doReportGSheetsBreak(){
+  const p=rbParams();if(!p[0])return;
+  if(!confirm('Создать новые листы-разрезы (По РК/группам/ключам/поисковым фразам/регионам) за прошлый месяц в Google-таблице клиента?'))return;
+  toast('Строю разрезы…');
+  try{const r=await api('gsheets_breakdowns',p[0]);
+    if(r&&r.results){const lines=r.results.map(x=>'• '+x.which+': '+x.status).join('\n');
+      toast('Разрезы ('+r.domain+'):\n'+lines,'ok');}
+  }catch(e){}
 }
 async function doReportSend(){
   const p=rbParams();if(!p[0])return;

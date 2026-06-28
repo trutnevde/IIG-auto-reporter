@@ -11,12 +11,16 @@ binaries = []
 hiddenimports = ['iigbot.' + m for m in (
     'cli', 'desktop', 'web', 'report', 'report_custom', 'api', 'bot', 'run_weekly',
     'sync_clients', 'import_config', 'storage', 'telegram_api', 'yandex', 'metrika',
-    'settings', 'listener',
+    'settings', 'listener', 'gsheets',
 )]
+# google-auth/gspread — подмодули, которые PyInstaller не находит сам
+hiddenimports += ['google.oauth2.service_account', 'google.auth.transport.requests',
+                  'google.auth.crypt', 'google.auth._helpers']
 
-# pywebview/flask тянут необязательные подмодули — собираем их целиком, без падения,
+# pywebview/flask/gspread тянут необязательные подмодули — собираем их целиком, без падения,
 # если пакета нет.
-for pkg in ('pywebview', 'flask', 'requests', 'bottle', 'proxy_tools', 'openpyxl'):
+for pkg in ('pywebview', 'flask', 'requests', 'bottle', 'proxy_tools', 'openpyxl',
+            'gspread', 'google.auth', 'google.oauth2'):
     try:
         d, b, h = collect_all(pkg)
         datas += d

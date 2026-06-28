@@ -474,6 +474,111 @@ class Api:
         RC.to_xlsx(res, path)
         return {"path": path, "filename": fn, "n_rows": res["n_shown"]}
 
+    # ---------- Google-таблицы (выгрузка «как в табличках клиента») ----------
+    def _find_client_sheet(self, gc, client_name):
+        """Ищет Google-таблицу клиента (заголовок «Auto-Reporter ОТЧЕТ <домен>») по домену.
+        Возвращает (spreadsheet_id, domain) или (None, None)."""
+        from . import gsheets as G
+        sheets = G.discover(gc)
+        for d in self._client_domains(client_name):
+            key = str(d).strip().lower().replace("www.", "")
+            if key in sheets:
+                return sheets[key]["id"], key
+        return None, None
+
+    @safe
+    def gsheets_status(self):
+        """Доступен ли сервисный ключ и какие таблицы расшарены на сервисный аккаунт."""
+        from . import gsheets as G
+        if not G.available():
+            return {"available": False,
+                    "note": "Ключ sa_key.json не найден рядом с программой — положи его туда."}
+        sheets = G.discover()
+        return {"available": True,
+                "sheets": [{"domain": k, "title": v["title"]} for k, v in sorted(sheets.items())]}
+
+    @staticmethod
+    def _last_full_month():
+        """(date_from, date_to) прошлого ПОЛНОГО месяца относительно сегодня."""
+        from datetime import date, timedelta
+        first = date.today().replace(day=1)
+        last_prev = first - timedelta(days=1)
+        return last_prev.replace(day=1).isoformat(), last_prev.isoformat()
+
+    @safe
+    def gsheets_push(self, login):
+        """Авто-заполняет листы-ленты Google-таблицы клиента свежими данными из Директа:
+        «Общий по неделям» → прошлая закрытая неделя, «Общий по месяцам» → прошлый полный месяц.
+
+        Пишет сырые входы (Показы/Клики/Расход с НДС/цели Метрики); формулы (CTR/CPC/CR/
+        конверсии total/CPA) продлеваются; внешние столбцы (Callibri/Ticketscloud) не трогаются;
+        повтор того же периода пропускается (дедуп).
+        """
+        from . import gsheets as G
+        if not G.available():
+            raise RuntimeError("Ключ sa_key.json не найден рядом с программой.")
+        c = self.db.get_client(login)
+        if not c:
+            raise RuntimeError("Клиент не найден")
+        token = load_secrets()["yandex_oauth_token"]
+        goals = self._metrika_goals_for(login).get("goals", [])
+        gc = G.client(readonly=False)
+        sid, domain = self._find_client_sheet(gc, c["name"])
+        if not sid:
+            raise RuntimeError("Не нашёл Google-таблицу «Auto-Reporter ОТЧЕТ …» для клиента {} "
+                               "(домен из карточки: {})".format(c["name"] or login, c["name"]))
+        per = report.period()
+        mf, mt = self._last_full_month()
+        plan = {"week": (per["date_from"], per["date_to"]), "month": (mf, mt)}
+        sh = gc.open_by_key(sid)
+        results = []
+        for ws in sh.worksheets():
+            t = ws.title.lower()
+            grain = "week" if "по неделям" in t else ("month" if "по месяц" in t else None)
+            if not grain:
+                continue
+            df, dt = plan[grain]
+            try:
+                r = G.fill_weekly(ws, token, login, goals, df, dt, dry_run=False, grain=grain)
+                status = ("пропущено: " + str(r.get("label") or "уже есть")) if r.get("skipped") \
+                    else ("записано в строку " + str(r.get("target_row")))
+            except Exception as e:  # noqa: BLE001 — один лист не должен ронять остальные
+                status = "ошибка: " + str(e)
+            results.append({"tab": ws.title, "grain": grain, "period": [df, dt], "status": status})
+        if not results:
+            raise RuntimeError("В таблице нет листов-лент («Общий по неделям»/«по месяцам»).")
+        return {"domain": domain, "results": results}
+
+    @safe
+    def gsheets_breakdowns(self, login, which=None, date_from=None, date_to=None):
+        """Создаёт НОВЫЕ листы-снимки разрезов (По РК/группам/ключам/поисковым фразам/регионам)
+        за период (по умолчанию — прошлый полный месяц). which=None → все разрезы."""
+        from . import gsheets as G
+        if not G.available():
+            raise RuntimeError("Ключ sa_key.json не найден рядом с программой.")
+        c = self.db.get_client(login)
+        if not c:
+            raise RuntimeError("Клиент не найден")
+        token = load_secrets()["yandex_oauth_token"]
+        if not (date_from and date_to):
+            date_from, date_to = self._last_full_month()
+        keys = [which] if which else list(G.BREAKDOWNS.keys())
+        gc = G.client(readonly=False)
+        sid, domain = self._find_client_sheet(gc, c["name"])
+        if not sid:
+            raise RuntimeError("Не нашёл Google-таблицу «Auto-Reporter ОТЧЕТ …» для клиента {}"
+                               .format(c["name"] or login))
+        results = []
+        for k in keys:
+            try:
+                r = G.push_breakdown(gc, sid, token, login, k, date_from, date_to)
+                results.append({"which": k,
+                                "status": "создан «{}» ({} из {} строк)".format(
+                                    r["created"], r["n_rows"], r["n_total"])})
+            except Exception as e:  # noqa: BLE001 — один разрез не должен ронять остальные
+                results.append({"which": k, "status": "ошибка: " + str(e)})
+        return {"domain": domain, "period": [date_from, date_to], "results": results}
+
     # ---------- settings ----------
     @safe
     def settings(self):
