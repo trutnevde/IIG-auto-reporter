@@ -611,3 +611,116 @@ def fill_month_detail(ws, token, login, all_goals, month_from, query_to, weeks=N
     if batch:
         ws.batch_update(batch, value_input_option="USER_ENTERED")
     return dict(info, written=True)
+
+
+# ---- высокоуровневая выгрузка по клиенту (общая для кнопки и headless-синка) ----
+def push_timeseries(gc, sid, token, login, all_goals):
+    """Заполняет листы-ленты («по неделям»/«по месяцам») + составной лист текущего месяца:
+    ПРОШЛЫЙ закрытый период (финализация) + ТЕКУЩИЙ (live до сегодня). Список результатов."""
+    from datetime import date, timedelta
+    today = date.today()
+    monday = today - timedelta(days=today.weekday())
+    prev_monday = monday - timedelta(days=7)
+    first = today.replace(day=1)
+    prev_last = first - timedelta(days=1)
+    prev_first = prev_last.replace(day=1)
+    tod = today.isoformat()
+
+    def _wk(mon, q):
+        return mon.isoformat(), (mon + timedelta(days=6)).isoformat(), q
+    weeks = [_wk(prev_monday, (monday - timedelta(days=1)).isoformat()), _wk(monday, tod)]
+    months = [(prev_first.isoformat(), prev_last.isoformat(), prev_last.isoformat()),
+              (first.isoformat(), tod, tod)]
+    plan = {"week": weeks, "month": months}
+    mode = {"update": "обновлено", "insert": "добавлено", "append": "добавлено"}
+    cur_key = "{:04d}-{:02d}".format(today.year, today.month)
+    comp_weeks = [w for w in weeks if w[0][:7] == first.isoformat()[:7]]
+    sh = gc.open_by_key(sid)
+    results = []
+    for ws in sh.worksheets():
+        t = ws.title.lower()
+        grain = "week" if "по неделям" in t else ("month" if "по месяц" in t else None)
+        try:
+            if grain:
+                parts = []
+                for df, dl, qt in plan[grain]:
+                    r = fill_weekly(ws, token, login, all_goals, df, dl, query_to=qt,
+                                    dry_run=False, grain=grain)
+                    parts.append("{} — {} (стр {})".format(
+                        df, mode.get(r.get("mode"), "записано"), r.get("target_row")))
+                status = "; ".join(parts)
+            elif _label_key(ws.title, "month") == cur_key:
+                r = fill_month_detail(ws, token, login, all_goals, first.isoformat(), tod,
+                                      weeks=comp_weeks, dry_run=False)
+                grain = "month-detail"
+                status = "кампаний {}, недели {}".format(r.get("campaigns"), r.get("week_rows"))
+            else:
+                continue
+        except Exception as e:  # noqa: BLE001 — один лист не должен ронять остальные
+            grain = grain or "?"
+            status = "ошибка: " + str(e)
+        results.append({"tab": ws.title, "grain": grain, "status": status})
+    return results
+
+
+def goals_for_login(token, login):
+    """Все цели клиента из Метрики БЕЗ обращения к локальной базе (для headless-синка):
+    счётчики из настроек кампаний → их цели."""
+    from . import yandex, metrika
+    goals, seen = [], set()
+    try:
+        counters = yandex.get_campaign_counters(token, login)
+    except Exception:  # noqa: BLE001
+        counters = []
+    for cid in counters:
+        try:
+            gs = metrika.get_counter_goals(token, cid)
+        except Exception:  # noqa: BLE001 — 403/нет доступа: пропускаем счётчик
+            continue
+        for g in gs:
+            if g["id"] not in seen:
+                seen.add(g["id"])
+                goals.append(g)
+    return goals
+
+
+def sync_all(token, log=None, do_breakdowns=False):
+    """Headless-выгрузка по ВСЕМ клиентам с таблицами (для cron/планировщика). Без локальной базы:
+    таблицы берём из Drive (расшарены на сервисный аккаунт), логин — по домену из agencyclients."""
+    from datetime import date
+    from . import yandex
+    log = log or (lambda *a: None)
+    gc = client(readonly=False)
+    sheets = discover(gc)                                   # {домен: {id,title}}
+    dom2login = {}
+    for c in yandex.get_agency_clients(token):
+        info = str(c.get("ClientInfo") or "").strip().lower().replace("www.", "")
+        if info:
+            dom2login[info] = c.get("Login")
+    out = []
+    for domain, sh in sorted(sheets.items()):
+        login = dom2login.get(domain) or dom2login.get(domain.replace("www.", ""))
+        if not login:
+            log("· {}: логин не найден в agencyclients — пропуск".format(domain))
+            out.append({"domain": domain, "ok": False, "error": "логин не найден"})
+            continue
+        try:
+            goals = goals_for_login(token, login)
+            results = push_timeseries(gc, sh["id"], token, login, goals)
+            if do_breakdowns:
+                t = date.today()
+                for which in BREAKDOWNS:
+                    try:
+                        push_breakdown(gc, sh["id"], token, login, which,
+                                       t.replace(day=1).isoformat(), t.isoformat())
+                    except Exception as e:  # noqa: BLE001
+                        log("    ! {} разрез {}: {}".format(domain, which, str(e)[:80]))
+            errs = [r for r in results if r["status"].startswith("ошибка")]
+            log("  ✓ {} ({}): листов {}{}".format(
+                domain, login, len(results), (", ошибок " + str(len(errs))) if errs else ""))
+            out.append({"domain": domain, "login": login, "ok": True,
+                        "tabs": len(results), "errors": len(errs)})
+        except Exception as e:  # noqa: BLE001
+            log("  ✗ {} ({}): {}".format(domain, login, str(e)[:120]))
+            out.append({"domain": domain, "login": login, "ok": False, "error": str(e)})
+    return out

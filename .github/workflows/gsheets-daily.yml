@@ -1,0 +1,58 @@
+name: Google-таблицы — ежедневная выгрузка
+
+# Запускается сам каждый день и наполняет таблицы клиентов свежими данными Директа.
+# Работает в облаке GitHub — компьютер пользователя НЕ нужен.
+#
+# Перед первым запуском задать два секрета репозитория (Settings → Secrets and variables → Actions):
+#   YANDEX_OAUTH_TOKEN — OAuth-токен Яндекса (тот же, что в secrets.json; нужен доступ Директ + Метрика)
+#   GOOGLE_SA_KEY      — содержимое JSON-ключа сервисного аккаунта (sa_key.json целиком)
+
+on:
+  schedule:
+    - cron: "0 5 * * *"          # каждый день в 05:00 UTC (08:00 МСК)
+  workflow_dispatch:             # + кнопка ручного запуска во вкладке Actions
+    inputs:
+      breakdowns:
+        description: "Пересоздать листы-разрезы за текущий месяц"
+        type: boolean
+        default: false
+
+concurrency:
+  group: gsheets-daily
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Установка зависимостей
+        run: python -m pip install --upgrade pip requests gspread google-auth
+
+      - name: Подготовка ключей из секретов
+        working-directory: app
+        env:
+          YANDEX_OAUTH_TOKEN: ${{ secrets.YANDEX_OAUTH_TOKEN }}
+          GOOGLE_SA_KEY: ${{ secrets.GOOGLE_SA_KEY }}
+        run: |
+          if [ -z "$YANDEX_OAUTH_TOKEN" ] || [ -z "$GOOGLE_SA_KEY" ]; then
+            echo "::error::Не заданы секреты YANDEX_OAUTH_TOKEN и/или GOOGLE_SA_KEY в настройках репозитория."
+            exit 1
+          fi
+          printf '%s' "$GOOGLE_SA_KEY" > sa_key.json
+          python -c "import json,os; json.dump({'yandex_oauth_token': os.environ['YANDEX_OAUTH_TOKEN']}, open('secrets.json','w'))"
+
+      - name: Выгрузка в Google-таблицы
+        working-directory: app
+        run: python -m iigbot gsheets-sync ${{ (github.event_name == 'workflow_dispatch' && inputs.breakdowns) && '--breakdowns' || '' }}
+
+      - name: Убрать ключи
+        if: always()
+        working-directory: app
+        run: rm -f sa_key.json secrets.json

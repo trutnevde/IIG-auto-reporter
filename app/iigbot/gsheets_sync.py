@@ -1,0 +1,44 @@
+# -*- coding: utf-8 -*-
+"""CLI: ежедневная выгрузка Директа в Google-таблицы ВСЕХ клиентов (headless, без окна).
+
+Для GitHub Actions (cron) или Планировщика задач Windows. Не зависит от локальной базы:
+клиентов берёт из таблиц, расшаренных на сервисный аккаунт (домен из заголовка ↔ логин из
+agencyclients). Нужны только secrets.json (yandex_oauth_token) и sa_key.json рядом с программой.
+
+Запуск:  python -m iigbot gsheets-sync            (только ленты + составной лист текущего месяца)
+         python -m iigbot gsheets-sync --breakdowns   (+ пересоздать листы-разрезы за текущий месяц)
+"""
+import sys
+
+from .settings import load_secrets
+from . import gsheets as G
+
+
+def main():
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+    if not G.available():
+        print("sa_key.json не найден рядом с программой — нет ключа Google.")
+        return 1
+    try:
+        token = (load_secrets().get("yandex_oauth_token") or "").strip()
+    except Exception as e:  # noqa: BLE001
+        print("Не удалось прочитать secrets.json: {}".format(e))
+        return 1
+    if not token:
+        print("Не задан yandex_oauth_token в secrets.json")
+        return 1
+
+    do_break = any(a.lstrip("-").lower() in ("breakdowns", "break") for a in sys.argv[2:])
+    print("Старт выгрузки в Google-таблицы{}…".format(" (+ разрезы)" if do_break else ""))
+    res = G.sync_all(token, log=print, do_breakdowns=do_break)
+    ok = sum(1 for r in res if r.get("ok"))
+    bad = len(res) - ok
+    print("Готово: {} ок, {} с ошибкой, всего таблиц {}.".format(ok, bad, len(res)))
+    return 0 if bad == 0 else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

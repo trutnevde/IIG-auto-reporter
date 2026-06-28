@@ -11,7 +11,7 @@ binaries = []
 hiddenimports = ['iigbot.' + m for m in (
     'cli', 'desktop', 'web', 'report', 'report_custom', 'api', 'bot', 'run_weekly',
     'sync_clients', 'import_config', 'storage', 'telegram_api', 'yandex', 'metrika',
-    'settings', 'listener', 'gsheets',
+    'settings', 'listener', 'gsheets', 'gsheets_sync',
 )]
 # google-auth/gspread — подмодули, которые PyInstaller не находит сам
 hiddenimports += ['google.oauth2.service_account', 'google.auth.transport.requests',

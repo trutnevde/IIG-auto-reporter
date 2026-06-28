@@ -550,55 +550,7 @@ class Api:
         if not sid:
             raise RuntimeError("Не нашёл Google-таблицу «Auto-Reporter ОТЧЕТ …» для клиента {} "
                                "(домен из карточки: {})".format(c["name"] or login, c["name"]))
-        from datetime import date, timedelta
-        today = date.today()
-        monday = today - timedelta(days=today.weekday())
-        prev_monday = monday - timedelta(days=7)
-        first = today.replace(day=1)
-        prev_last = first - timedelta(days=1)
-        prev_first = prev_last.replace(day=1)
-        tod = today.isoformat()
-
-        def _wk(mon, q):  # (date_from, date_to_подписи, query_to)
-            return mon.isoformat(), (mon + timedelta(days=6)).isoformat(), q
-        # ВСЕГДА обновляем ПРОШЛЫЙ закрытый период (финализируем) + ТЕКУЩИЙ (live до сегодня).
-        # Так на стыке (понедельник/1-е число) прошлая неделя/месяц не остаётся недозаполненной.
-        WEEKS = [_wk(prev_monday, (monday - timedelta(days=1)).isoformat()), _wk(monday, tod)]
-        MONTHS = [(prev_first.isoformat(), prev_last.isoformat(), prev_last.isoformat()),
-                  (first.isoformat(), tod, tod)]
-        plan = {"week": WEEKS, "month": MONTHS}
-        _MODE = {"update": "обновлено (live)", "insert": "добавлено", "append": "добавлено"}
-        cur_key = "{:04d}-{:02d}".format(today.year, today.month)
-        comp_weeks = [w for w in WEEKS if w[0][:7] == first.isoformat()[:7]]  # недели текущего месяца
-        sh = gc.open_by_key(sid)
-        results = []
-        for ws in sh.worksheets():
-            t = ws.title.lower()
-            grain = "week" if "по неделям" in t else ("month" if "по месяц" in t else None)
-            period = None
-            try:
-                if grain:  # листы-ленты: прошлый + текущий период
-                    parts = []
-                    for df, dl, qt in plan[grain]:
-                        r = G.fill_weekly(ws, token, login, goals, df, dl, query_to=qt,
-                                          dry_run=False, grain=grain)
-                        parts.append("{} — {} (стр {})".format(
-                            df, _MODE.get(r.get("mode"), "записано"), r.get("target_row")))
-                    status = "; ".join(parts)
-                elif G._label_key(ws.title, "month") == cur_key:
-                    # составной помесячный лист текущего месяца («Июнь 26»)
-                    r = G.fill_month_detail(ws, token, login, goals, first.isoformat(), tod,
-                                            weeks=comp_weeks, dry_run=False)
-                    grain = "month-detail"
-                    status = "кампаний {}, недели строки {}".format(
-                        r.get("campaigns"), r.get("week_rows"))
-                    period = [first.isoformat(), tod]
-                else:
-                    continue
-            except Exception as e:  # noqa: BLE001 — один лист не должен ронять остальные
-                grain = grain or "?"
-                status = "ошибка: " + str(e)
-            results.append({"tab": ws.title, "grain": grain, "period": period, "status": status})
+        results = G.push_timeseries(gc, sid, token, login, goals)
         if not results:
             raise RuntimeError("В таблице нет листов-лент («Общий по неделям»/«по месяцам»).")
         return {"domain": domain, "results": results}

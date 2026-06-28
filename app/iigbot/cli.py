@@ -40,6 +40,7 @@ HELP = (
     "  web              веб-версия (открывается в браузере)\n"
     "  weekly           рассылка отчётов (для Планировщика задач)\n"
     "  sync             подтянуть клиентов из Директа\n"
+    "  gsheets-sync     выгрузить Директ в Google-таблицы всех клиентов (cron/headless)\n"
     "  import           импорт config.json\n"
     "  bot              только слушатель чатов (консоль)\n"
 )
@@ -68,6 +69,9 @@ def main(argv=None):
     elif cmd in ("sync", "sync_clients"):
         from . import sync_clients
         sync_clients.main()
+    elif cmd in ("gsheets-sync", "gsheets_sync", "gsheets", "gs-sync"):
+        from . import gsheets_sync
+        raise SystemExit(gsheets_sync.main())
     elif cmd in ("import", "import_config"):
         from . import import_config
         import_config.main()
