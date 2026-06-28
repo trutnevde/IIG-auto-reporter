@@ -527,9 +527,18 @@ class Api:
         if not sid:
             raise RuntimeError("Не нашёл Google-таблицу «Auto-Reporter ОТЧЕТ …» для клиента {} "
                                "(домен из карточки: {})".format(c["name"] or login, c["name"]))
-        per = report.period()
-        mf, mt = self._last_full_month()
-        plan = {"week": (per["date_from"], per["date_to"]), "month": (mf, mt)}
+        from datetime import date, timedelta
+        today = date.today()
+        monday = today - timedelta(days=today.weekday())
+        first = today.replace(day=1)
+        tod = today.isoformat()
+        # (date_from, date_to_подписи, query_to=сегодня) — данные ВКЛЮЧАЯ сегодняшний день
+        plan = {
+            "week":  (monday.isoformat(), (monday + timedelta(days=6)).isoformat(), tod),
+            "month": (first.isoformat(), tod, tod),
+        }
+        _MODE = {"update": "обновлено (live, до сегодня)", "insert": "добавлено",
+                 "append": "добавлено"}
         sh = gc.open_by_key(sid)
         results = []
         for ws in sh.worksheets():
@@ -537,14 +546,15 @@ class Api:
             grain = "week" if "по неделям" in t else ("month" if "по месяц" in t else None)
             if not grain:
                 continue
-            df, dt = plan[grain]
+            df, dl, qt = plan[grain]
             try:
-                r = G.fill_weekly(ws, token, login, goals, df, dt, dry_run=False, grain=grain)
-                status = ("пропущено: " + str(r.get("label") or "уже есть")) if r.get("skipped") \
-                    else ("записано в строку " + str(r.get("target_row")))
+                r = G.fill_weekly(ws, token, login, goals, df, dl, query_to=qt,
+                                  dry_run=False, grain=grain)
+                status = "{} (строка {})".format(_MODE.get(r.get("mode"), "записано"),
+                                                 r.get("target_row"))
             except Exception as e:  # noqa: BLE001 — один лист не должен ронять остальные
                 status = "ошибка: " + str(e)
-            results.append({"tab": ws.title, "grain": grain, "period": [df, dt], "status": status})
+            results.append({"tab": ws.title, "grain": grain, "period": [df, qt], "status": status})
         if not results:
             raise RuntimeError("В таблице нет листов-лент («Общий по неделям»/«по месяцам»).")
         return {"domain": domain, "results": results}
@@ -561,7 +571,9 @@ class Api:
             raise RuntimeError("Клиент не найден")
         token = load_secrets()["yandex_oauth_token"]
         if not (date_from and date_to):
-            date_from, date_to = self._last_full_month()
+            from datetime import date
+            today = date.today()
+            date_from, date_to = today.replace(day=1).isoformat(), today.isoformat()
         keys = [which] if which else list(G.BREAKDOWNS.keys())
         gc = G.client(readonly=False)
         sid, domain = self._find_client_sheet(gc, c["name"])

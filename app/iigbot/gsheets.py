@@ -322,40 +322,65 @@ def _period_rows(values, header_idx):
     return out
 
 
-def fill_weekly(ws, token, login, all_goals, date_from, date_to,
-                attribution=DEFAULT_ATTR, dry_run=True, grain="week"):
-    """Дописывает строку-период (неделя/месяц) в лист-ленту («по неделям»/«по месяцам»).
+_INPUT_KINDS = ("period", "goal")  # + всё metric:* (см. _is_input)
 
-    all_goals — ВСЕ цели клиента [{'id','name'}]; по ним матчатся столбцы.
-    grain — "week" или "month" (формат подписи периода и дедуп).
-    dry_run=True — ничего не пишет, возвращает предпросмотр {target_row, header, row, specs}.
-    Иначе пишет новую строку (USER_ENTERED: формулы продлеваются, числа — числами).
+
+def _is_input(kind):
+    return kind in _INPUT_KINDS or kind.startswith("metric:")
+
+
+def fill_weekly(ws, token, login, all_goals, date_from, date_to, query_to=None,
+                attribution=DEFAULT_ATTR, dry_run=True, grain="week"):
+    """Заполняет строку-период (неделя/месяц) в листе-ленте «свежими данными».
+
+    date_from/date_to — границы периода для ПОДПИСИ (полная неделя Пн–Вс / месяц).
+    query_to — фактический конец запроса к Директу (по умолчанию date_to). Для «живого»
+        текущего периода передают сегодняшнюю дату → строка включает данные за сегодня.
+    UPSERT: если строка периода уже есть — ОБНОВЛЯЕТ только входные ячейки (Период/Показы/
+        Клики/Расход/цели), не трогая формулы и внешние столбцы (Callibri/Ticketscloud).
+        Если строки нет — дописывает (формулы продлеваются), вставляя перед футером-итогом.
     """
+    query_to = query_to or date_to
     values = ws.get_all_values()
     formulas = ws.get_all_values(value_render_option="FORMULA")
     hi = find_header_row(values)
     header = values[hi]
     periods = _period_rows(values, hi)
-    # дедуп: если период с таким ключом уже есть — не плодим дубликат
     tkey = _target_key(date_from, grain)
-    for i in periods:
-        if _label_key(values[i][0], grain) == tkey:
-            return {"skipped": "already_present", "row": i + 1,
-                    "label": str(values[i][0]).strip()}
-    tmpl = periods[-1] if periods else _last_data_row(values, hi)  # образец = реальная строка-период
+    existing = next((i for i in periods if _label_key(values[i][0], grain) == tkey), None)
+
+    # образец для разметки/формата: сама строка (если обновляем) или последняя строка-период
+    tmpl = existing if existing is not None else (periods[-1] if periods else _last_data_row(values, hi))
     specs = classify_columns(header, formulas[tmpl], all_goals)
     goal_defs = [{"id": s["goal_id"], "name": s["title"]} for s in specs if s["kind"] == "goal"]
-    data = account_period(token, login, date_from, date_to, goal_defs, attribution)
-    # есть ли ниже строки-периода непустые строки (футер-итог)? тогда вставляем, иначе дописываем
-    has_footer = any(any(str(c).strip() for c in values[i]) for i in range(tmpl + 1, len(values)))
-    target_row = tmpl + 2  # 1-based: сразу под последней строкой-периодом
+    data = account_period(token, login, date_from, query_to, goal_defs, attribution)
     sample_period = next((str(values[tmpl][s["idx"]]) for s in specs
                           if s["kind"] == "period" and s["idx"] < len(values[tmpl])), "")
+
+    if existing is not None:
+        # ОБНОВЛЕНИЕ на месте: пишем только входные ячейки, формулы/внешние не трогаем
+        target_row = existing + 1
+        row = build_weekly_row(specs, data, date_from, date_to, target_row, target_row,
+                               formulas[existing], sample_period, grain)
+        if dry_run:
+            return {"target_row": target_row, "header": header, "row": row, "specs": specs,
+                    "mode": "update"}
+        from gspread.utils import rowcol_to_a1
+        batch = [{"range": rowcol_to_a1(target_row, s["idx"] + 1), "values": [[row[k]]]}
+                 for k, s in enumerate(specs) if _is_input(s["kind"])]
+        if batch:
+            ws.batch_update(batch, value_input_option="USER_ENTERED")
+        return {"target_row": target_row, "header": header, "row": row,
+                "mode": "update", "written": True}
+
+    # ДОБАВЛЕНИЕ новой строки-периода
+    has_footer = any(any(str(c).strip() for c in values[i]) for i in range(tmpl + 1, len(values)))
+    target_row = tmpl + 2
     row = build_weekly_row(specs, data, date_from, date_to, target_row, tmpl + 1,
                            formulas[tmpl], sample_period, grain)
     if dry_run:
         return {"target_row": target_row, "header": header, "row": row, "specs": specs,
-                "insert": has_footer}
+                "mode": "insert" if has_footer else "append"}
     if has_footer:
         ws.insert_row(row, index=target_row, value_input_option="USER_ENTERED")
     else:
@@ -363,7 +388,7 @@ def fill_weekly(ws, token, login, all_goals, date_from, date_to,
         rng = "A{}:{}".format(target_row, rowcol_to_a1(target_row, len(row)))
         ws.update(values=[row], range_name=rng, value_input_option="USER_ENTERED")
     return {"target_row": target_row, "header": header, "row": row,
-            "inserted": has_footer, "written": True}
+            "mode": "insert" if has_footer else "append", "written": True}
 
 
 # ---- разрез-листы (снимок за период новым листом) ----
