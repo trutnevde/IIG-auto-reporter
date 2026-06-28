@@ -245,10 +245,10 @@ def build_weekly_row(specs, data, date_from, date_to, target_row, from_row,
             out.append(int(round(data["clicks"])))
         elif k == "metric:cost":
             out.append(round(data["cost"], 2))
-        elif k in ("metric:pos_imp", "metric:pos_clk"):
-            # Ср. позиция из account-отчёта не сходится с тем, как считали в таблице
-            # (взвешенная метрика) — не рискуем кривыми числами, оставляем пусто.
-            out.append("")
+        elif k == "metric:pos_imp":
+            out.append(round(data["pos_imp"], 2) if data["pos_imp"] else "")
+        elif k == "metric:pos_clk":
+            out.append(round(data["pos_clk"], 2) if data["pos_clk"] else "")
         elif k == "goal":
             out.append(int(round(data["by_goal"].get(s["goal_id"], 0))))
         elif k == "formula":
@@ -353,7 +353,8 @@ def fill_weekly(ws, token, login, all_goals, date_from, date_to, query_to=None,
     tmpl = existing if existing is not None else (periods[-1] if periods else _last_data_row(values, hi))
     specs = classify_columns(header, formulas[tmpl], all_goals)
     goal_defs = [{"id": s["goal_id"], "name": s["title"]} for s in specs if s["kind"] == "goal"]
-    data = account_period(token, login, date_from, query_to, goal_defs, attribution)
+    data = account_period(token, login, date_from, query_to, goal_defs, attribution,
+                          want_positions=True)
     sample_period = next((str(values[tmpl][s["idx"]]) for s in specs
                           if s["kind"] == "period" and s["idx"] < len(values[tmpl])), "")
 

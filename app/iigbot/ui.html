@@ -261,6 +261,7 @@
       <a data-go="chats"><span class="ic">💬</span><span>Чаты</span></a>
       <a data-go="match"><span class="ic">🔗</span><span>Привязки</span><span class="badge b-amber nav-badge" id="navMatch" style="display:none">0</span></a>
       <a data-go="reports"><span class="ic">📨</span><span>Отчёты</span></a>
+      <a data-go="gsheets"><span class="ic">📗</span><span>Таблицы</span></a>
       <a data-go="settings"><span class="ic">⚙️</span><span>Настройки</span></a>
       <a data-go="guide"><span class="ic">📖</span><span>Гайд</span></a>
     </nav>
@@ -283,6 +284,7 @@
       <section data-view="chats"><div id="v_chats"></div></section>
       <section data-view="match"><div id="v_match"></div></section>
       <section data-view="reports"><div id="v_reports"></div></section>
+      <section data-view="gsheets"><div id="v_gsheets"></div></section>
       <section data-view="settings"><div id="v_settings"></div></section>
       <section data-view="guide"><div id="v_guide"></div></section>
     </div>
@@ -335,7 +337,7 @@ function applyTheme(t){document.documentElement.setAttribute('data-theme',t);try
 function toggleTheme(){const cur=document.documentElement.getAttribute('data-theme')||'light';applyTheme(cur==='dark'?'light':'dark');}
 
 /* ---------- роутинг ---------- */
-const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',settings:'Настройки',guide:'Гайд'};
+const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',gsheets:'Google-таблицы',settings:'Настройки',guide:'Гайд'};
 function go(v){
   document.querySelectorAll('section[data-view]').forEach(s=>s.classList.toggle('on',s.dataset.view===v));
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active',a.dataset.go===v));
@@ -344,7 +346,7 @@ function go(v){
 }
 document.getElementById('nav').addEventListener('click',e=>{const a=e.target.closest('a');if(a)go(a.dataset.go);});
 let CURRENT='dashboard';
-function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,settings:renderSettings,guide:renderGuide}[v]||(()=>{}))();}
+function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,gsheets:renderGSheets,settings:renderSettings,guide:renderGuide}[v]||(()=>{}))();}
 function refresh(){render(CURRENT);loadBadges();}
 
 /* ---------- бейджи/статус ---------- */
@@ -628,8 +630,6 @@ async function renderBuilder(clientOpts){
         <button class="btn primary" onclick="doReportQuery()">📊 Сформировать</button>
         <button class="btn" onclick="doReportCopy()">📋 Скопировать текст</button>
         <button class="btn" onclick="doReportXlsx()">⬇ Скачать xlsx</button>
-        <button class="btn" onclick="doReportGSheets()" title="Дописать свежие данные в ленты клиента (неделя + месяц)">📗 В Google-таблицу</button>
-        <button class="btn" onclick="doReportGSheetsBreak()" title="Создать новые листы-разрезы за прошлый месяц (По РК/группам/ключам/регионам)">📊 Разрезы в таблицу</button>
         <span id="rbSendNote" class="muted" style="margin-left:auto;font-size:12px;display:none">🔒 не привязано к чату — отправка недоступна</span>
         <button class="btn" id="rbSendBtn" onclick="doReportSend()" title="Уйдёт реальным людям в чате клиента" style="border-color:var(--red);color:var(--red)">📨 Отправить в чат</button>
       </div>
@@ -715,29 +715,54 @@ async function doReportXlsx(){
   toast('Готовлю xlsx…');
   try{const r=await api('report_export_xlsx',...p);toast('Сохранено: reports\\'+r.filename+' ('+r.n_rows+' строк)','ok');}catch(e){}
 }
-async function doReportGSheets(){
-  const p=rbParams();if(!p[0])return;
-  if(!confirm('Заполнить Google-таблицу клиента свежими данными (прошлая неделя + прошлый месяц)? Изменит реальную таблицу.'))return;
-  toast('Пишу в Google-таблицу…');
-  try{const r=await api('gsheets_push',p[0]);
-    if(r&&r.results){const lines=r.results.map(x=>'• '+x.tab+': '+x.status).join('\n');
-      toast('Готово ('+r.domain+'):\n'+lines,'ok');}
-  }catch(e){}
-}
-async function doReportGSheetsBreak(){
-  const p=rbParams();if(!p[0])return;
-  if(!confirm('Создать новые листы-разрезы (По РК/группам/ключам/поисковым фразам/регионам) за прошлый месяц в Google-таблице клиента?'))return;
-  toast('Строю разрезы…');
-  try{const r=await api('gsheets_breakdowns',p[0]);
-    if(r&&r.results){const lines=r.results.map(x=>'• '+x.which+': '+x.status).join('\n');
-      toast('Разрезы ('+r.domain+'):\n'+lines,'ok');}
-  }catch(e){}
-}
 async function doReportSend(){
   const p=rbParams();if(!p[0])return;
   if(!RB_BOUND.has(p[0])){toast('Клиент не привязан к чату — отправка недоступна','err');return;}
   if(!confirm('Отправить этот отчёт в привязанный чат клиента? Уйдёт реальным людям в чате.'))return;
   try{const r=await api('report_send',...p);toast('Отправлено в чатов: '+r.sent,'ok');}catch(e){}
+}
+
+/* ---------- GOOGLE-ТАБЛИЦЫ ---------- */
+async function renderGSheets(){
+  const host=el('v_gsheets');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
+  let st,clients;
+  try{st=await api('gsheets_status');clients=await api('clients');}
+  catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  if(!st.available){
+    host.innerHTML='<h2 class="title">Google-таблицы</h2><div class="note" style="margin-top:12px">⚠️ '+esc(st.note||'Ключ сервисного аккаунта не найден.')+'</div>';return;
+  }
+  const opts=clients.map(c=>'<option value="'+esc(c.login)+'">'+esc(c.name||c.login)+'</option>').join('')||'<option value="">нет клиентов</option>';
+  const sheetList=(st.sheets||[]).map(s=>'<li>'+esc(s.title)+'</li>').join('')||'<li class="muted">нет расшаренных таблиц</li>';
+  host.innerHTML=`
+    <h2 class="title">Google-таблицы</h2>
+    <p class="sub">Выгрузка данных Директа в таблицы клиентов (live — включая сегодняшний день). Доступ — сервисный аккаунт, по домену клиента находится его таблица «Auto-Reporter ОТЧЕТ …».</p>
+    <div class="panel"><h3><span class="h3-ic">📤</span> Выгрузка по клиенту</h3><div class="body">
+      <div class="field"><label>Клиент</label><select id="gsClient">${opts}</select></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+        <button class="btn primary" onclick="gsPush()" title="Дописать/обновить ленты (неделя+месяц) свежими данными до сегодня">📗 Заполнить ленты (неделя + месяц)</button>
+        <button class="btn" onclick="gsBreak()" title="Создать листы-снимки разрезов за текущий месяц">📊 Создать разрезы (текущий месяц)</button>
+      </div>
+      <div id="gsResult" class="note" style="margin-top:14px;white-space:pre-line;display:none"></div>
+    </div></div>
+    <div class="panel" style="margin-top:14px"><h3><span class="h3-ic">📑</span> Таблицы на сервисном аккаунте (${(st.sheets||[]).length})</h3>
+      <div class="body"><ul style="margin:0;padding-left:18px;line-height:1.8">${sheetList}</ul></div></div>`;
+}
+function gsShow(t){const r=el('gsResult');r.style.display='block';r.textContent=t;}
+async function gsPush(){
+  const login=el('gsClient').value;if(!login){toast('Выбери клиента','err');return;}
+  if(!confirm('Заполнить ленты Google-таблицы клиента свежими данными (неделя + месяц, до сегодня)? Изменит реальную таблицу.'))return;
+  gsShow('Пишу в таблицу…');
+  try{const r=await api('gsheets_push',login);
+    gsShow('Готово ('+r.domain+'):\n'+r.results.map(x=>'• '+x.tab+': '+x.status).join('\n'));toast('Готово','ok');
+  }catch(e){gsShow('Ошибка: '+e.message);}
+}
+async function gsBreak(){
+  const login=el('gsClient').value;if(!login){toast('Выбери клиента','err');return;}
+  if(!confirm('Создать листы-разрезы (По РК/группам/ключам/поисковым фразам/регионам) за текущий месяц?'))return;
+  gsShow('Строю разрезы…');
+  try{const r=await api('gsheets_breakdowns',login);
+    gsShow('Разрезы ('+r.domain+'):\n'+r.results.map(x=>'• '+x.which+': '+x.status).join('\n'));toast('Готово','ok');
+  }catch(e){gsShow('Ошибка: '+e.message);}
 }
 
 /* ---------- SETTINGS ---------- */
