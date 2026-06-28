@@ -539,22 +539,35 @@ class Api:
         }
         _MODE = {"update": "обновлено (live, до сегодня)", "insert": "добавлено",
                  "append": "добавлено"}
+        cur_key = "{:04d}-{:02d}".format(today.year, today.month)
         sh = gc.open_by_key(sid)
         results = []
         for ws in sh.worksheets():
             t = ws.title.lower()
             grain = "week" if "по неделям" in t else ("month" if "по месяц" in t else None)
-            if not grain:
-                continue
-            df, dl, qt = plan[grain]
             try:
-                r = G.fill_weekly(ws, token, login, goals, df, dl, query_to=qt,
-                                  dry_run=False, grain=grain)
-                status = "{} (строка {})".format(_MODE.get(r.get("mode"), "записано"),
-                                                 r.get("target_row"))
+                if grain:  # листы-ленты
+                    df, dl, qt = plan[grain]
+                    r = G.fill_weekly(ws, token, login, goals, df, dl, query_to=qt,
+                                      dry_run=False, grain=grain)
+                    status = "{} (строка {})".format(_MODE.get(r.get("mode"), "записано"),
+                                                     r.get("target_row"))
+                    period = [df, qt]
+                elif G._label_key(ws.title, "month") == cur_key:
+                    # составной помесячный лист текущего месяца («Июнь 26»)
+                    r = G.fill_month_detail(ws, token, login, goals, first.isoformat(), tod,
+                                            dry_run=False)
+                    grain = "month-detail"
+                    status = "обновлён (кампаний {}, неделя строка {})".format(
+                        r.get("campaigns"), r.get("week_row"))
+                    period = [first.isoformat(), tod]
+                else:
+                    continue
             except Exception as e:  # noqa: BLE001 — один лист не должен ронять остальные
+                grain = grain or "?"
                 status = "ошибка: " + str(e)
-            results.append({"tab": ws.title, "grain": grain, "period": [df, qt], "status": status})
+                period = None
+            results.append({"tab": ws.title, "grain": grain, "period": period, "status": status})
         if not results:
             raise RuntimeError("В таблице нет листов-лент («Общий по неделям»/«по месяцам»).")
         return {"domain": domain, "results": results}

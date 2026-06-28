@@ -458,3 +458,150 @@ def push_breakdown(gc, sid, token, login, which, date_from, date_to,
     rng = "A1:{}".format(rowcol_to_a1(len(values), len(values[0])))
     ws.update(values=values, range_name=rng, value_input_option="USER_ENTERED")
     return {"created": title, "n_rows": res["n_shown"], "n_total": res["n_total"]}
+
+
+# ---- составные помесячные листы («Июнь 26»): блок по кампаниям + под-блок по неделям ----
+def _campaign_period(token, login, date_from, date_to, goal_defs, attribution=DEFAULT_ATTR):
+    """{имя_кампании: {imp,clicks,cost,pos_imp,pos_clk,by_goal}} за период (CAMPAIGN-отчёт)."""
+    base = R.fetch_report(token, login, date_from, date_to,
+                          ["CampaignName", "Impressions", "Clicks", "Cost",
+                           "AvgImpressionPosition", "AvgClickPosition"],
+                          report_type="CAMPAIGN_PERFORMANCE_REPORT")
+    out = {}
+    for r in base:
+        nm = str(r.get("CampaignName") or "")
+        out[nm] = {"name": nm, "imp": R.parse_num(r.get("Impressions")),
+                   "clicks": R.parse_num(r.get("Clicks")), "cost": R.parse_num(r.get("Cost")),
+                   "pos_imp": R.parse_num(r.get("AvgImpressionPosition")),
+                   "pos_clk": R.parse_num(r.get("AvgClickPosition")), "by_goal": {}}
+    gids = [g["id"] for g in goal_defs]
+    for s in range(0, len(gids), GOALS_PER_REQUEST):
+        batch = gids[s:s + GOALS_PER_REQUEST]
+        rows = R.fetch_report(token, login, date_from, date_to,
+                              ["CampaignName", "Impressions", "Clicks", "Cost", "Conversions"],
+                              goal_ids=batch, attribution=attribution,
+                              report_type="CAMPAIGN_PERFORMANCE_REPORT")
+        for r in rows:
+            o = out.get(str(r.get("CampaignName") or ""))
+            if o:
+                for gid in batch:
+                    col = R._find_goal_col(r, gid)
+                    if col:
+                        o["by_goal"][gid] = o["by_goal"].get(gid, 0.0) + R.parse_num(r.get(col))
+    return out
+
+
+def _build_entity_row(specs, ent, target_row, from_row, tmpl_formula_row, name=None):
+    """Строка сущности (кампании): столбец 0 = имя, метрики/цели/формулы как обычно.
+    ent — словарь с imp/clicks/cost/pos_*/by_goal. name переопределяет столбец 0."""
+    out = []
+    for s in specs:
+        k = s["kind"]
+        if s["idx"] == 0:
+            out.append(name if name is not None else ent.get("name", ""))
+        elif k == "metric:imp":
+            out.append(int(round(ent["imp"])))
+        elif k == "metric:clicks":
+            out.append(int(round(ent["clicks"])))
+        elif k == "metric:cost":
+            out.append(round(ent["cost"], 2))
+        elif k == "metric:pos_imp":
+            out.append(round(ent["pos_imp"], 2) if ent.get("pos_imp") else "")
+        elif k == "metric:pos_clk":
+            out.append(round(ent["pos_clk"], 2) if ent.get("pos_clk") else "")
+        elif k == "goal":
+            out.append(int(round(ent["by_goal"].get(s["goal_id"], 0))))
+        elif k == "formula":
+            f = str(tmpl_formula_row[s["idx"]]) if s["idx"] < len(tmpl_formula_row) else ""
+            out.append(bump_formula(f, from_row, target_row) if f.startswith("=") else "")
+        else:
+            out.append("")
+    return out
+
+
+def _block_bounds(values, header_idx):
+    """(индексы строк-данных, индекс футера|None) для блока, начиная под шапкой header_idx,
+    до строки-итога (NONPERIOD) или конца."""
+    foot = None
+    for i in range(header_idx + 1, len(values)):
+        if _norm(values[i][0]) in _NONPERIOD:
+            foot = i
+            break
+    end = (foot - 1) if foot is not None else (len(values) - 1)
+    return list(range(header_idx + 1, end + 1)), foot
+
+
+def fill_month_detail(ws, token, login, all_goals, month_from, query_to,
+                      attribution=DEFAULT_ATTR, dry_run=True):
+    """Составной помесячный лист («Июнь 26»): обновляет верхний блок по кампаниям за месяц
+    (1-е..сегодня) и upsert текущей недели в нижний под-блок «по неделям». Пишет только
+    входные ячейки — формулы, футеры и внешние столбцы (Комиссия) не трогает."""
+    from datetime import date as _d
+    from gspread.utils import rowcol_to_a1
+    values = ws.get_all_values()
+    formulas = ws.get_all_values(value_render_option="FORMULA")
+
+    top_h = next((i for i, r in enumerate(values) if r and _norm(r[0]) == "кампания"), None)
+    bot_h = next((i for i, r in enumerate(values) if r and _norm(r[0]) in ("период", "неделя")), None)
+    if top_h is None:
+        raise RuntimeError("Не нашёл шапку «Кампания» в составном листе")
+
+    batch = []
+    info = {}
+
+    # --- верхний блок: по кампаниям ---
+    tf_top = formulas[top_h + 1] if top_h + 1 < len(formulas) else []
+    top_specs = classify_columns(values[top_h], tf_top, all_goals)
+    top_goals = [{"id": s["goal_id"], "name": s["title"]} for s in top_specs if s["kind"] == "goal"]
+    camps = _campaign_period(token, login, month_from, query_to, top_goals, attribution)
+    camp_list = sorted(camps.values(), key=lambda c: -c["cost"])
+    slots, _ = _block_bounds(values[:bot_h] if bot_h else values, top_h)
+    for k, ridx in enumerate(slots):
+        tr = ridx + 1
+        if k < len(camp_list):
+            row = _build_entity_row(top_specs, camp_list[k], tr, top_h + 2, tf_top)
+        else:
+            row = None  # лишний слот — чистим входы
+        for j, s in enumerate(top_specs):
+            if s["idx"] == 0 or _is_input(s["kind"]):
+                batch.append({"range": rowcol_to_a1(tr, s["idx"] + 1),
+                              "values": [[row[j] if row else ""]]})
+    info["campaigns"] = len(camp_list)
+
+    # --- нижний блок: upsert текущей недели ---
+    if bot_h is not None:
+        y, m, d = (int(x) for x in query_to.split("-"))
+        today = _d(y, m, d)
+        monday = today.fromordinal(today.toordinal() - today.weekday())
+        wk_from = monday.isoformat()
+        wk_to = monday.fromordinal(monday.toordinal() + 6).isoformat()
+        tf_bot = formulas[bot_h + 1] if bot_h + 1 < len(formulas) else []
+        bot_specs = classify_columns(values[bot_h], tf_bot, all_goals)
+        bot_goals = [{"id": s["goal_id"], "name": s["title"]} for s in bot_specs if s["kind"] == "goal"]
+        wdata = account_period(token, login, wk_from, query_to, bot_goals, attribution,
+                               want_positions=True)
+        bperiods = [i for i in _block_bounds(values, bot_h)[0]
+                    if values[i] and re.search(r"\d", str(values[i][0]))
+                    and _norm(values[i][0]) not in _NONPERIOD]
+        existing = next((i for i in bperiods if _row_start_iso(values[i][0]) == wk_from), None)
+        if existing is not None:
+            tr = existing + 1
+            tmpl_i = existing
+        else:
+            last_p = bperiods[-1] if bperiods else bot_h
+            tr = last_p + 2
+            tmpl_i = last_p
+        sample = next((str(values[tmpl_i][s["idx"]]) for s in bot_specs
+                       if s["kind"] == "period" and s["idx"] < len(values[tmpl_i])), "")
+        wrow = build_weekly_row(bot_specs, wdata, wk_from, wk_to, tr, tmpl_i + 1,
+                                formulas[tmpl_i], sample, "week")
+        for j, s in enumerate(bot_specs):
+            if s["idx"] == 0 or _is_input(s["kind"]):
+                batch.append({"range": rowcol_to_a1(tr, s["idx"] + 1), "values": [[wrow[j]]]})
+        info["week_row"] = tr
+
+    if dry_run:
+        return dict(info, batch_size=len(batch))
+    if batch:
+        ws.batch_update(batch, value_input_option="USER_ENTERED")
+    return dict(info, written=True)
