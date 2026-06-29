@@ -477,13 +477,23 @@ async function renderMatch(){
       <div class="src">💬 ${esc(m.chat_title)}<small>чат ${m.chat_id}</small></div>
       <div class="arrow">↔ <div class="conf ${cc}">${m.suggest_login?(m.confidence+'%'):'нет совпадений'}</div></div>
       ${right}${act}</div>`;}).join('');
+  const confN=d.matches.filter(m=>m.suggest_login&&m.confidence>=75).length;
+  const bulk=confN?`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn primary" onclick="doBindBulk()">⚡ Привязать все уверенные (≥75%) — ${confN} шт.</button>
+      <span class="muted" style="font-size:12.5px">Массово привяжет очевидные совпадения; спорные останутся для ручной правки.</span>
+    </div>`:'';
   host.innerHTML=`
     <h2 class="title">Привязки</h2>
-    <p class="sub">Главный ручной шаг — сопоставить «чат ↔ клиент». Система предлагает совпадение, тебе остаётся подтвердить.</p>
+    <p class="sub">Главный ручной шаг — сопоставить «чат ↔ клиент». Система предлагает совпадение, тебе остаётся подтвердить (или привязать все уверенные разом).</p>
     <div class="panel"><div class="body">
+      ${bulk}
       ${d.matches.length?rows:'<div class="empty">Нет чатов без привязки 🎉</div>'}
       <div class="note" style="margin-top:6px">🔒 В Telegram привязку командой /bind подтверждает только администратор (защита от ошибочной привязки чужого чата).</div>
     </div></div>`;
+}
+async function doBindBulk(){
+  if(!confirm('Привязать все чаты с уверенным совпадением (≥75%) разом? Спорные останутся, их поправишь вручную.'))return;
+  try{const r=await api('bind_bulk',75);toast('Привязано разом: '+r.bound,'ok');refresh();}catch(e){}
 }
 async function doBind2(chatId,login){try{await api('bind',chatId,login);toast('Привязано','ok');refresh();}catch(e){}}
 async function doBindManual(chatId){const s=el('mansel_'+chatId);if(!s.value){toast('Выбери клиента','err');return;}try{await api('bind',chatId,s.value);toast('Привязано','ok');refresh();}catch(e){}}

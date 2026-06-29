@@ -334,8 +334,7 @@ class Api:
         return {"deleted": True}
 
     # ---------- matcher (подсказки привязок) ----------
-    @safe
-    def suggestions(self):
+    def _suggest_matches(self):
         binds = self.db.list_bindings()
         bound_chat_ids = {b["chat_id"] for b in binds}
         bound_logins = {b["login"] for b in binds}
@@ -348,10 +347,21 @@ class Api:
             best, best_score = None, 0.0
             title = (ch["title"] or "").lower()
             for c in clients:
+                name = (c["name"] or "").lower()
+                login = (c["login"] or "").lower()
                 score = max(
-                    difflib.SequenceMatcher(None, title, (c["name"] or "").lower()).ratio(),
-                    difflib.SequenceMatcher(None, title, (c["login"] or "").lower()).ratio(),
+                    difflib.SequenceMatcher(None, title, name).ratio(),
+                    difflib.SequenceMatcher(None, title, login).ratio(),
                 )
+                # буст за прямое вхождение домена/имени/логина в название чата —
+                # это почти всегда верная привязка (для массового авто-подключения)
+                dom = name.split(".")[0].strip()
+                if title and dom and len(dom) >= 3 and dom in title:
+                    score = max(score, 0.95)
+                if title and name and len(name) >= 4 and name in title:
+                    score = max(score, 0.97)
+                if title and login and len(login) >= 5 and login in title:
+                    score = max(score, 0.95)
                 if score > best_score:
                     best, best_score = c, score
             out.append({
@@ -362,6 +372,27 @@ class Api:
                 "confidence": int(best_score * 100),
             })
         return {"matches": out, "free_clients": free_clients}
+
+    @safe
+    def suggestions(self):
+        return self._suggest_matches()
+
+    @safe
+    def bind_bulk(self, min_confidence=75):
+        """Массовая привязка: привязывает все непривязанные чаты, где уверенность подсказки
+        >= порога. Возвращает {bound, min_confidence, details}. Остальное правишь вручную."""
+        thr = int(min_confidence)
+        bound, details = 0, []
+        for x in self._suggest_matches()["matches"]:
+            if x.get("suggest_login") and x.get("confidence", 0) >= thr:
+                try:
+                    self.db.set_binding(int(x["chat_id"]), x["suggest_login"])
+                    bound += 1
+                    details.append({"chat_title": x["chat_title"], "login": x["suggest_login"],
+                                    "confidence": x["confidence"]})
+                except Exception as e:  # noqa: BLE001
+                    details.append({"chat_title": x["chat_title"], "error": str(e)})
+        return {"bound": bound, "min_confidence": thr, "details": details}
 
     # ---------- reports ----------
     @safe
