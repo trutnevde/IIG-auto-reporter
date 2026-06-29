@@ -166,6 +166,8 @@ class Api:
             goals=normalize_goals(goals) if goals is not None else None,
             attribution=attribution,
         )
+        if goals is not None:
+            self._cloud_push_safe()
         return True
 
     def _metrika_goals_for(self, login):
@@ -318,13 +320,16 @@ class Api:
     def bind(self, chat_id, login):
         if not login:
             self.db.remove_binding(int(chat_id))
+            self._cloud_push_safe()
             return {"bound": False}
         self.db.set_binding(int(chat_id), login)
+        self._cloud_push_safe()
         return {"bound": True}
 
     @safe
     def unbind(self, chat_id):
         self.db.remove_binding(int(chat_id))
+        self._cloud_push_safe()
         return {"bound": False}
 
     @safe
@@ -392,6 +397,8 @@ class Api:
                                     "confidence": x["confidence"]})
                 except Exception as e:  # noqa: BLE001
                     details.append({"chat_title": x["chat_title"], "error": str(e)})
+        if bound:
+            self._cloud_push_safe()
         return {"bound": bound, "min_confidence": thr, "details": details}
 
     # ---------- reports ----------
@@ -617,6 +624,51 @@ class Api:
             except Exception as e:  # noqa: BLE001 — один разрез не должен ронять остальные
                 results.append({"which": k, "status": "ошибка: " + str(e)})
         return {"domain": domain, "period": [date_from, date_to], "results": results}
+
+    # ---------- общая онлайн-база (привязки/цели через Google-таблицу) ----------
+    def _sa_email(self):
+        try:
+            import json as _json
+            from . import gsheets as G
+            return _json.load(open(G.key_path(), encoding="utf-8")).get("client_email", "")
+        except Exception:  # noqa: BLE001
+            return ""
+
+    def _cloud_push_safe(self):
+        """Заливает состояние в облако после изменений. Тихо, не роняет операцию при сбое."""
+        try:
+            from . import cloudsync
+            if cloudsync.available():
+                cloudsync.push(self.db)
+        except Exception as e:  # noqa: BLE001
+            try:
+                print("[api] cloud push: {}".format(e))
+            except Exception:  # noqa: BLE001
+                pass
+
+    @safe
+    def cloud_status(self):
+        from . import cloudsync
+        if not cloudsync.available():
+            return {"available": False, "note": "Нет ключа sa_key.json рядом с программой."}
+        _, sid, name = cloudsync.find_config()
+        if not sid:
+            return {"available": True, "configured": False, "sa_email": self._sa_email(),
+                    "note": "Создай Google-таблицу «Auto-Reporter КОНФИГ» и расшарь её (Редактор) "
+                            "на сервисный аккаунт — тогда привязки станут общими для всех устройств."}
+        return {"available": True, "configured": True, "sheet": name}
+
+    @safe
+    def cloud_pull(self):
+        """Тянет привязки/цели из общей таблицы в локальную базу."""
+        from . import cloudsync
+        return cloudsync.pull(self.db)
+
+    @safe
+    def cloud_push(self):
+        """Заливает локальные привязки/цели в общую таблицу."""
+        from . import cloudsync
+        return cloudsync.push(self.db)
 
     # ---------- settings ----------
     @safe

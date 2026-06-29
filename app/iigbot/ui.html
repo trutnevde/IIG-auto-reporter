@@ -463,7 +463,20 @@ async function doDeleteChat(chatId){
 /* ---------- MATCH ---------- */
 async function renderMatch(){
   const host=el('v_match');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
+  let cloud=null;try{cloud=await api('cloud_status');}catch(e){}
+  if(cloud&&cloud.configured){try{await api('cloud_pull');}catch(e){}}   // тянем общее состояние из облака
   let d;try{d=await api('suggestions');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  let cloudPanel='';
+  if(cloud&&cloud.available&&!cloud.configured){
+    cloudPanel=`<div class="note" style="margin-bottom:12px">☁ <b>Общая база (все устройства)</b>: не настроена. ${esc(cloud.note||'')}${cloud.sa_email?(' <code>'+esc(cloud.sa_email)+'</code>'):''}</div>`;
+  }else if(cloud&&cloud.configured){
+    cloudPanel=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <span class="badge b-green">☁ Общая база: ${esc(cloud.sheet)}</span>
+      <button class="btn sm" onclick="doCloudPull()">↓ Загрузить из облака</button>
+      <button class="btn sm" onclick="doCloudPush()">↑ Выгрузить в облако</button>
+      <span class="muted" style="font-size:12px">Привязки тянутся автоматически при открытии и заливаются при изменении.</span>
+    </div>`;
+  }
   const opts=d.free_clients.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
   let rows=d.matches.map(m=>{
     const cc=m.confidence>=70?'hi':(m.confidence>=45?'mid':'lo');
@@ -485,6 +498,7 @@ async function renderMatch(){
   host.innerHTML=`
     <h2 class="title">Привязки</h2>
     <p class="sub">Главный ручной шаг — сопоставить «чат ↔ клиент». Система предлагает совпадение, тебе остаётся подтвердить (или привязать все уверенные разом).</p>
+    ${cloudPanel}
     <div class="panel"><div class="body">
       ${bulk}
       ${d.matches.length?rows:'<div class="empty">Нет чатов без привязки 🎉</div>'}
@@ -495,6 +509,8 @@ async function doBindBulk(){
   if(!confirm('Привязать все чаты с уверенным совпадением (≥75%) разом? Спорные останутся, их поправишь вручную.'))return;
   try{const r=await api('bind_bulk',75);toast('Привязано разом: '+r.bound,'ok');refresh();}catch(e){}
 }
+async function doCloudPull(){try{const r=await api('cloud_pull');toast('Из облака: привязок '+r.bindings+', целей '+r.goals,'ok');refresh();}catch(e){}}
+async function doCloudPush(){try{const r=await api('cloud_push');toast('В облако: привязок '+r.bindings+', целей '+r.goals,'ok');}catch(e){}}
 async function doBind2(chatId,login){try{await api('bind',chatId,login);toast('Привязано','ok');refresh();}catch(e){}}
 async function doBindManual(chatId){const s=el('mansel_'+chatId);if(!s.value){toast('Выбери клиента','err');return;}try{await api('bind',chatId,s.value);toast('Привязано','ok');refresh();}catch(e){}}
 
