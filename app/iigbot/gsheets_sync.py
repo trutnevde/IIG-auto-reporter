@@ -40,6 +40,8 @@ def main():
         return 1
     token = clean_token(raw)
     print("Токен: длина {} (исходно {}, ascii={})".format(len(token), len(raw), raw.isascii()))
+    if not raw.isascii():  # диагностика порчи секрета: коды первых символов (не сам токен)
+        print("DIAG ords[:24]: {}".format([ord(c) for c in raw[:24]]))
     if not token:
         print("Не задан/повреждён yandex_oauth_token в secrets.json")
         return 1
