@@ -46,7 +46,7 @@ jobs:
             exit 1
           fi
           printf '%s' "$GOOGLE_SA_KEY" > sa_key.json
-          python -c "import json,os; json.dump({'yandex_oauth_token': os.environ['YANDEX_OAUTH_TOKEN']}, open('secrets.json','w'))"
+          python -c "import json,os; json.dump({'yandex_oauth_token': os.environ['YANDEX_OAUTH_TOKEN'].strip()}, open('secrets.json','w'))"
 
       - name: Выгрузка в Google-таблицы
         working-directory: app
