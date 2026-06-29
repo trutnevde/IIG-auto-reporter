@@ -8,10 +8,21 @@ agencyclients). Нужны только secrets.json (yandex_oauth_token) и sa_
 Запуск:  python -m iigbot gsheets-sync            (только ленты + составной лист текущего месяца)
          python -m iigbot gsheets-sync --breakdowns   (+ пересоздать листы-разрезы за текущий месяц)
 """
+import re
 import sys
 
 from .settings import load_secrets
 from . import gsheets as G
+
+
+def clean_token(raw):
+    """Чистый ASCII-токен. Чистый токен — без изменений; если в секрет затесались стрей-символы
+    (BOM/мусор при заливке из консоли), оставляем только валидные символы токена [A-Za-z0-9_.-].
+    Никаких «умных» перекодировок — чтобы не выдать правдоподобно-неверный токен."""
+    t = (raw or "").strip()
+    if t.isascii():
+        return t
+    return re.sub(r"[^A-Za-z0-9_.\-]", "", t)
 
 
 def main():
@@ -23,12 +34,14 @@ def main():
         print("sa_key.json не найден рядом с программой — нет ключа Google.")
         return 1
     try:
-        token = (load_secrets().get("yandex_oauth_token") or "").strip()
+        raw = load_secrets().get("yandex_oauth_token") or ""
     except Exception as e:  # noqa: BLE001
         print("Не удалось прочитать secrets.json: {}".format(e))
         return 1
+    token = clean_token(raw)
+    print("Токен: длина {} (исходно {}, ascii={})".format(len(token), len(raw), raw.isascii()))
     if not token:
-        print("Не задан yandex_oauth_token в secrets.json")
+        print("Не задан/повреждён yandex_oauth_token в secrets.json")
         return 1
 
     do_break = any(a.lstrip("-").lower() in ("breakdowns", "break") for a in sys.argv[2:])
