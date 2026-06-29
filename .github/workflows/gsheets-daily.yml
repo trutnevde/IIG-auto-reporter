@@ -12,6 +12,10 @@ on:
     - cron: "0 5 * * *"          # каждый день в 05:00 UTC (08:00 МСК)
   workflow_dispatch:             # + кнопка ручного запуска во вкладке Actions
     inputs:
+      check:
+        description: "Только проверить токен (ничего не писать в таблицы)"
+        type: boolean
+        default: false
       breakdowns:
         description: "Пересоздать листы-разрезы за текущий месяц"
         type: boolean
@@ -50,7 +54,7 @@ jobs:
 
       - name: Выгрузка в Google-таблицы
         working-directory: app
-        run: python -m iigbot gsheets-sync ${{ (github.event_name == 'workflow_dispatch' && inputs.breakdowns) && '--breakdowns' || '' }}
+        run: python -m iigbot gsheets-sync ${{ (github.event_name == 'workflow_dispatch' && inputs.check) && '--check' || '' }} ${{ (github.event_name == 'workflow_dispatch' && inputs.breakdowns) && '--breakdowns' || '' }}
 
       - name: Убрать ключи
         if: always()

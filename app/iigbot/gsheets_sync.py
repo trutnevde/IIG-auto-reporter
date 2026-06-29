@@ -44,7 +44,19 @@ def main():
         print("Не задан/повреждён yandex_oauth_token в secrets.json")
         return 1
 
-    do_break = any(a.lstrip("-").lower() in ("breakdowns", "break") for a in sys.argv[2:])
+    flags = [a.lstrip("-").lower() for a in sys.argv[2:]]
+    if any(f in ("check", "validate") for f in flags):
+        # безопасная проверка токена: read-only вызов к Директу, в таблицы НИЧЕГО не пишем
+        from . import yandex
+        try:
+            clients = yandex.get_agency_clients(token)
+        except Exception as e:  # noqa: BLE001
+            print("Токен НЕ работает: {}".format(e))
+            return 1
+        print("Токен ОК: клиентов в агентстве {}.".format(len(clients)))
+        return 0
+
+    do_break = any(f in ("breakdowns", "break") for f in flags)
     print("Старт выгрузки в Google-таблицы{}…".format(" (+ разрезы)" if do_break else ""))
     res = G.sync_all(token, log=print, do_breakdowns=do_break)
     ok = sum(1 for r in res if r.get("ok"))
