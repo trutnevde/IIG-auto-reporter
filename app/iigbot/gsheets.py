@@ -531,12 +531,69 @@ def _block_bounds(values, header_idx):
     return list(range(header_idx + 1, end + 1)), foot
 
 
+def _derive_month_label(template_title, month_from):
+    """Имя листа текущего месяца в формате шаблона: «Июнь 26» + 2026-07 → «Июль 26»."""
+    y, m, _ = month_from.split("-")
+    new_month = _MONTHS_RU[int(m)]
+    has4 = bool(re.search(r"\d{4}", template_title))
+    yr = y if has4 else y[2:]
+    t = re.sub(r"[А-Яа-яЁё]+", new_month, template_title, count=1)
+    t = re.sub(r"\d{2,4}", yr, t, count=1)
+    return t.strip()
+
+
+def _month_weeks(month_from, query_to):
+    """Недели, чей ПОНЕДЕЛЬНИК приходится на месяц month_from, до сегодня (query_to).
+    Каждая: (date_from, date_to_подписи, query_to). Так недели не перетекают между месяцами."""
+    from datetime import date, timedelta
+    y, m, _ = (int(x) for x in month_from.split("-"))
+    qy, qm, qd = (int(x) for x in query_to.split("-"))
+    today = date(qy, qm, qd)
+    d = date(y, m, 1)
+    monday = d - timedelta(days=d.weekday())
+    if monday.month != m:
+        monday += timedelta(days=7)
+    out = []
+    while monday.month == m and monday <= today:
+        wk_to = monday + timedelta(days=6)
+        out.append((monday.isoformat(), wk_to.isoformat(), min(wk_to, today).isoformat()))
+        monday += timedelta(days=7)
+    return out
+
+
+def ensure_month_detail(gc, sid, month_from):
+    """(worksheet, is_new) для составного листа месяца month_from. Если листа нет — клонирует
+    самый свежий ПРЕДЫДУЩИЙ месячный лист (та же структура/формулы) и переименовывает в текущий.
+    (None, False) — если нет ни одного месячного листа-шаблона."""
+    sh = gc.open_by_key(sid)
+    cur = month_from[:7]
+    prior, prior_key = None, None
+    for w in sh.worksheets():
+        k = _label_key(w.title, "month")
+        if not k:
+            continue
+        if k == cur:
+            return w, False
+        if k < cur and (prior_key is None or k > prior_key):
+            prior, prior_key = w, k
+    if prior is None:
+        return None, False
+    label = _derive_month_label(prior.title, month_from)
+    try:
+        return sh.worksheet(label), False       # вдруг уже создан с таким именем
+    except Exception:  # noqa: BLE001
+        pass
+    return prior.duplicate(new_sheet_name=label), True
+
+
 def fill_month_detail(ws, token, login, all_goals, month_from, query_to, weeks=None,
-                      attribution=DEFAULT_ATTR, dry_run=True):
+                      reset=False, attribution=DEFAULT_ATTR, dry_run=True):
     """Составной помесячный лист («Июнь 26»): обновляет верхний блок по кампаниям за месяц
-    (1-е..сегодня) и upsert недель в нижний под-блок «по неделям». Пишет только входные
-    ячейки — формулы, футеры и внешние столбцы (Комиссия) не трогает.
-    weeks — список (date_from, date_to_подписи, query_to) недель для upsert; None → текущая."""
+    (1-е..сегодня) и недели в нижнем под-блоке. Пишет только входные ячейки — формулы, футеры
+    и внешние столбцы (Комиссия) не трогает.
+    weeks — недели (date_from, date_to_подписи, query_to); None → текущая (или все недели месяца
+    при reset). reset=True — ПЕРЕПИСАТЬ недельный блок с нуля (для только что клонированного листа
+    прошлого месяца): недели месяца по порядку, лишние строки очистить."""
     from datetime import date as _d
     from gspread.utils import rowcol_to_a1
     values = ws.get_all_values()
@@ -569,41 +626,66 @@ def fill_month_detail(ws, token, login, all_goals, month_from, query_to, weeks=N
                               "values": [[row[j] if row else ""]]})
     info["campaigns"] = len(camp_list)
 
-    # --- нижний блок: upsert недель (по умолчанию — текущая) ---
+    # --- нижний блок: недели ---
     if bot_h is not None:
-        if not weeks:
-            y, m, d = (int(x) for x in query_to.split("-"))
-            today = _d(y, m, d)
-            monday = today.fromordinal(today.toordinal() - today.weekday())
-            weeks = [(monday.isoformat(),
-                      monday.fromordinal(monday.toordinal() + 6).isoformat(), query_to)]
         tf_bot = formulas[bot_h + 1] if bot_h + 1 < len(formulas) else []
         bot_specs = classify_columns(values[bot_h], tf_bot, all_goals)
         bot_goals = [{"id": s["goal_id"], "name": s["title"]} for s in bot_specs if s["kind"] == "goal"]
-        bperiods = [i for i in _block_bounds(values, bot_h)[0]
-                    if values[i] and re.search(r"\d", str(values[i][0]))
-                    and _norm(values[i][0]) not in _NONPERIOD]
-        append_at = (bperiods[-1] if bperiods else bot_h) + 1  # 0-based след. свободный слот
-        last_p = bperiods[-1] if bperiods else bot_h
         week_rows = []
-        for (wf, wt, wq) in weeks:
-            wdata = account_period(token, login, wf, wq, bot_goals, attribution, want_positions=True)
-            existing = next((i for i in bperiods if _row_start_iso(values[i][0]) == wf), None)
-            if existing is not None:
-                tr = existing + 1
-                tmpl_i = existing
-            else:
-                tr = append_at + 1
-                tmpl_i = last_p
-                append_at += 1
-            sample = next((str(values[tmpl_i][s["idx"]]) for s in bot_specs
-                           if s["kind"] == "period" and s["idx"] < len(values[tmpl_i])), "")
-            wrow = build_weekly_row(bot_specs, wdata, wf, wt, tr, tmpl_i + 1,
-                                    formulas[tmpl_i], sample, "week")
-            for j, s in enumerate(bot_specs):
-                if s["idx"] == 0 or _is_input(s["kind"]):
-                    batch.append({"range": rowcol_to_a1(tr, s["idx"] + 1), "values": [[wrow[j]]]})
-            week_rows.append(tr)
+
+        if reset:
+            # ПЕРЕПИСАТЬ блок с нуля: все недели месяца по порядку в строки блока (свежий клон)
+            if weeks is None:
+                weeks = _month_weeks(month_from, query_to)
+            block_rows, _foot = _block_bounds(values, bot_h)
+            for i, ridx in enumerate(block_rows):
+                tr = ridx + 1
+                if i < len(weeks):
+                    wf, wt, wq = weeks[i]
+                    wdata = account_period(token, login, wf, wq, bot_goals, attribution,
+                                           want_positions=True)
+                    tf = formulas[ridx] if ridx < len(formulas) else tf_bot
+                    sample = next((str(values[ridx][s["idx"]]) for s in bot_specs
+                                   if s["kind"] == "period" and s["idx"] < len(values[ridx])), "")
+                    wrow = build_weekly_row(bot_specs, wdata, wf, wt, tr, tr, tf, sample, "week")
+                    for j, s in enumerate(bot_specs):
+                        if s["idx"] == 0 or _is_input(s["kind"]):
+                            batch.append({"range": rowcol_to_a1(tr, s["idx"] + 1), "values": [[wrow[j]]]})
+                    week_rows.append(tr)
+                else:                       # лишняя строка клона — чистим входные ячейки
+                    for s in bot_specs:
+                        if s["idx"] == 0 or _is_input(s["kind"]):
+                            batch.append({"range": rowcol_to_a1(tr, s["idx"] + 1), "values": [[""]]})
+            info["reset"] = True
+        else:
+            # UPSERT переданных недель в существующий лист (добавить/обновить)
+            if not weeks:
+                y, m, d = (int(x) for x in query_to.split("-"))
+                today = _d(y, m, d)
+                monday = today.fromordinal(today.toordinal() - today.weekday())
+                weeks = [(monday.isoformat(),
+                          monday.fromordinal(monday.toordinal() + 6).isoformat(), query_to)]
+            bperiods = [i for i in _block_bounds(values, bot_h)[0]
+                        if values[i] and re.search(r"\d", str(values[i][0]))
+                        and _norm(values[i][0]) not in _NONPERIOD]
+            append_at = (bperiods[-1] if bperiods else bot_h) + 1
+            last_p = bperiods[-1] if bperiods else bot_h
+            for (wf, wt, wq) in weeks:
+                wdata = account_period(token, login, wf, wq, bot_goals, attribution, want_positions=True)
+                existing = next((i for i in bperiods if _row_start_iso(values[i][0]) == wf), None)
+                if existing is not None:
+                    tr, tmpl_i = existing + 1, existing
+                else:
+                    tr, tmpl_i = append_at + 1, last_p
+                    append_at += 1
+                sample = next((str(values[tmpl_i][s["idx"]]) for s in bot_specs
+                               if s["kind"] == "period" and s["idx"] < len(values[tmpl_i])), "")
+                wrow = build_weekly_row(bot_specs, wdata, wf, wt, tr, tmpl_i + 1,
+                                        formulas[tmpl_i], sample, "week")
+                for j, s in enumerate(bot_specs):
+                    if s["idx"] == 0 or _is_input(s["kind"]):
+                        batch.append({"range": rowcol_to_a1(tr, s["idx"] + 1), "values": [[wrow[j]]]})
+                week_rows.append(tr)
         info["week_rows"] = week_rows
 
     if dry_run:
@@ -635,6 +717,12 @@ def push_timeseries(gc, sid, token, login, all_goals):
     mode = {"update": "обновлено", "insert": "добавлено", "append": "добавлено"}
     cur_key = "{:04d}-{:02d}".format(today.year, today.month)
     comp_weeks = [w for w in weeks if w[0][:7] == first.isoformat()[:7]]
+    # составной лист текущего месяца: создать (клон прошлого), если его ещё нет
+    md_new = False
+    try:
+        _md_ws, md_new = ensure_month_detail(gc, sid, first.isoformat())
+    except Exception:  # noqa: BLE001
+        md_new = False
     sh = gc.open_by_key(sid)
     results = []
     for ws in sh.worksheets():
@@ -651,9 +739,11 @@ def push_timeseries(gc, sid, token, login, all_goals):
                 status = "; ".join(parts)
             elif _label_key(ws.title, "month") == cur_key:
                 r = fill_month_detail(ws, token, login, all_goals, first.isoformat(), tod,
-                                      weeks=comp_weeks, dry_run=False)
+                                      weeks=(None if md_new else comp_weeks),
+                                      reset=md_new, dry_run=False)
                 grain = "month-detail"
-                status = "кампаний {}, недели {}".format(r.get("campaigns"), r.get("week_rows"))
+                status = "{}кампаний {}, недель {}".format(
+                    "СОЗДАН + " if md_new else "", r.get("campaigns"), len(r.get("week_rows") or []))
             else:
                 continue
         except Exception as e:  # noqa: BLE001 — один лист не должен ронять остальные
