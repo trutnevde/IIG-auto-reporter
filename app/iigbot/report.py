@@ -148,32 +148,39 @@ def build_campaign_data(token, login, goal_defs, attribution, per, _post=None, _
     goal_ids = [g["id"] for g in goal_defs]
 
     week_fields = ["CampaignId", "CampaignName", "Impressions", "Clicks", "Cost", "Conversions"]
-    week_rows = fetch_report(token, login, per["date_from"], per["date_to"], week_fields,
-                             goal_ids, attribution, _post=_post, _sleep=_sleep)
+    # Reports API: массив Goals не может содержать более 10 элементов — поэтому цели
+    # запрашиваем БАТЧАМИ по 10 и склеиваем byGoal по кампаниям (базовые метрики — из первого
+    # батча, они от целей не зависят). Без этого клиенты с >10 активными целями роняли рассылку.
+    batches = [goal_ids[i:i + 10] for i in range(0, len(goal_ids), 10)] or [None]
 
     month_fields = ["CampaignId", "CampaignName", "Impressions", "Cost"]
     month_rows = fetch_report(token, login, per["month_from"], per["month_to"], month_fields,
                               None, attribution, _post=_post, _sleep=_sleep)
 
     week = {}
-    for r in week_rows:
-        cid = str(r.get("CampaignId"))
-        obj = {
-            "id": cid, "name": str(r.get("CampaignName") or ""),
-            "imp": parse_num(r.get("Impressions")), "clicks": parse_num(r.get("Clicks")),
-            "cost": parse_num(r.get("Cost")), "conv": 0.0, "byGoal": {},
-        }
-        if goal_ids:
-            total = 0.0
-            for g in goal_defs:
-                key = _find_goal_col(r, g["id"])
-                cv = parse_num(r.get(key)) if key else 0.0
-                obj["byGoal"][g["id"]] = cv
-                total += cv
-            obj["conv"] = total
-        else:
-            obj["conv"] = parse_num(r.get("Conversions"))
-        week[cid] = obj
+    for batch in batches:
+        week_rows = fetch_report(token, login, per["date_from"], per["date_to"], week_fields,
+                                 batch, attribution, _post=_post, _sleep=_sleep)
+        for r in week_rows:
+            cid = str(r.get("CampaignId"))
+            obj = week.get(cid)
+            if obj is None:
+                obj = {
+                    "id": cid, "name": str(r.get("CampaignName") or ""),
+                    "imp": parse_num(r.get("Impressions")), "clicks": parse_num(r.get("Clicks")),
+                    "cost": parse_num(r.get("Cost")), "conv": 0.0, "byGoal": {},
+                }
+                week[cid] = obj
+            if batch:
+                for gid in batch:
+                    key = _find_goal_col(r, gid)
+                    if key:
+                        obj["byGoal"][gid] = parse_num(r.get(key))
+            elif not goal_ids:
+                obj["conv"] = parse_num(r.get("Conversions"))
+    if goal_ids:
+        for obj in week.values():
+            obj["conv"] = sum(obj["byGoal"].values())
 
     # вселенная активных кампаний = крутившиеся за 4 недели
     universe = {}
@@ -272,13 +279,32 @@ def build_message(client_name, goal_defs, camps, per, intro, note):
     return "\n".join(m)
 
 
+# ---------- определение «лид»-целей (для отчётов) ----------
+_LEAD_GOAL_TYPES = {"form", "phone", "messenger", "e_purchase",
+                    "a_purchase", "a_create_order", "contact_data_sent"}
+_MICRO_GOAL_TYPES = {"number", "search", "step", "file", "social"}
+_LEAD_GOAL_WORDS = ("заявк", "звон", "покупк", "заказ", "купить", "обратн", "лид")
+MAX_REPORT_GOALS = 15   # потолок целей в отчёте: и от лимита Reports API, и от 100+ целей в мусоре
+
+
+def _is_lead_goal(name, gtype):
+    """Бизнес-лид (заявка/звонок/покупка/заказ), а не микро-действие (просмотр/поиск)?"""
+    t = (gtype or "").lower()
+    if t in _LEAD_GOAL_TYPES:
+        return True
+    if t in _MICRO_GOAL_TYPES:
+        return False
+    return any(w in (name or "").lower() for w in _LEAD_GOAL_WORDS)
+
+
 # ---------- высокоуровневые операции поверх базы ----------
 def goal_defs_from_client(client_row, only_active=True, only_ids=None):
     """Цели клиента -> [{'id','name'}].
 
     only_ids — взять ровно эти id (конструктор: выбор пользователя), игнорируя active.
-    Иначе при only_active=True остаются только активные («для отчётов»).
-    Цели без поля active считаются активными (обратная совместимость).
+    Иначе при only_active=True остаются только активные, но ДЛЯ ОТЧЁТА берём из них только
+    лид-цели и не больше MAX_REPORT_GOALS (иначе клиент с сотней активных микро-целей роняет
+    рассылку по лимиту Reports API и раздувает отчёт). Цели без active считаются активными.
     """
     try:
         items = json.loads(client_row["goals"] or "[]")
@@ -289,14 +315,16 @@ def goal_defs_from_client(client_row, only_active=True, only_ids=None):
         if isinstance(g, dict):
             gid = str(g.get("id"))
             norm.append({"id": gid, "name": g.get("name") or "Цель " + gid,
-                         "active": (g.get("active") is not False)})
+                         "active": (g.get("active") is not False), "type": g.get("type", "")})
         else:
-            norm.append({"id": str(g), "name": "Цель " + str(g), "active": True})
+            norm.append({"id": str(g), "name": "Цель " + str(g), "active": True, "type": ""})
     if only_ids is not None:
         want = set(str(x) for x in only_ids)
         sel = [g for g in norm if g["id"] in want]
     elif only_active:
-        sel = [g for g in norm if g["active"]]
+        active = [g for g in norm if g["active"]]
+        lead = [g for g in active if _is_lead_goal(g["name"], g.get("type"))]
+        sel = (lead or active)[:MAX_REPORT_GOALS]
     else:
         sel = norm
     return [{"id": g["id"], "name": g["name"]} for g in sel]
@@ -334,21 +362,36 @@ def send_for_login(token, tg, db, login, intro, note, default_attr="LSC"):
     return {"status": "sent", "chats": sent, "campaigns": len(camps)}
 
 
-def run_weekly(token, tg, db, intro, note, default_attr="LSC"):
-    """Прогон по всем привязанным клиентам (для планировщика/кнопки «Запустить рассылку»)."""
-    logins = sorted({b["login"] for b in db.list_bindings()})
-    results = {"sent": 0, "skipped": 0, "no_chat": 0, "errors": 0, "details": []}
+def run_weekly(token, tg, db, intro, note, default_attr="LSC", on_progress=None, logins=None):
+    """Прогон по всем привязанным клиентам (для планировщика/кнопки «Запустить рассылку»).
+
+    on_progress(done, total, detail) — колбэк после каждого клиента (для окна прогресса).
+    logins — если задан, слать только этим (для «переотправить недошедшим»)."""
+    if logins is None:
+        logins = sorted({b["login"] for b in db.list_bindings()})
+    total = len(logins)
+    results = {"sent": 0, "skipped": 0, "no_chat": 0, "errors": 0, "total": total, "details": []}
     per = period()
-    for login in logins:
+
+    def _name(lg):
+        c = db.get_client(lg)
+        return (c["name"] if c and c["name"] else lg)
+
+    for i, login in enumerate(logins, 1):
+        detail = {"login": login, "name": _name(login)}
         try:
             res = send_for_login(token, tg, db, login, intro, note, default_attr)
+            detail.update(res)
         except Exception as e:  # noqa: BLE001
             results["errors"] += 1
             try:                       # фиксируем ошибку в Историю (раньше терялась)
                 db.log_send(login, None, per["date_from"], per["date_to"], "error", str(e))
             except Exception:          # noqa: BLE001
                 pass
-            results["details"].append({"login": login, "status": "error", "reason": str(e)})
+            detail.update({"status": "error", "reason": str(e)})
+            results["details"].append(detail)
+            if on_progress:
+                on_progress(i, total, detail)
             continue
         if res["status"] == "sent":
             results["sent"] += 1
@@ -356,5 +399,7 @@ def run_weekly(token, tg, db, intro, note, default_attr="LSC"):
             results["skipped"] += 1
         elif res["status"] == "no_chat":
             results["no_chat"] += 1
-        results["details"].append(dict(res, login=login))
+        results["details"].append(detail)
+        if on_progress:
+            on_progress(i, total, detail)
     return results

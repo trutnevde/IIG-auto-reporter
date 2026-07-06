@@ -423,6 +423,54 @@ class Api:
         intro, note, attr = self._report_ctx()
         return report.run_weekly(token, self._tg_client(), self.db, intro, note, attr)
 
+    # ---------- рассылка с окном прогресса ----------
+    def _run_weekly_worker(self, logins=None):
+        try:
+            token = load_secrets()["yandex_oauth_token"]
+            tg = self._tg_client()
+            intro, note, attr = self._report_ctx()
+
+            def prog(done, total, detail):
+                self._run["done"] = done
+                self._run["total"] = total
+                self._run["details"].append(detail)
+
+            res = report.run_weekly(token, tg, self.db, intro, note, attr,
+                                    on_progress=prog, logins=logins)
+            self._run["summary"] = res
+        except Exception as e:  # noqa: BLE001
+            self._run["error"] = str(e)
+        finally:
+            self._run["running"] = False
+
+    @safe
+    def run_weekly_start(self, only_failed=False):
+        """Запускает рассылку в фоне (для окна прогресса). only_failed=True — только тем, кто в
+        прошлый прогон не получил (ошибка/не отправлено). Прогресс — через run_weekly_progress()."""
+        if getattr(self, "_run", None) and self._run.get("running"):
+            return {"already_running": True}
+        logins = None
+        if only_failed:
+            prev = getattr(self, "_run", None) or {}
+            summ = prev.get("summary") or {}
+            logins = sorted({d["login"] for d in summ.get("details", [])
+                             if d.get("status") in ("error", "no_chat")})
+            if not logins:
+                raise RuntimeError("Нет недошедших клиентов из прошлого прогона.")
+        self._run = {"running": True, "done": 0, "total": (len(logins) if logins else 0),
+                     "details": [], "summary": None, "error": None, "only_failed": only_failed}
+        import threading
+        threading.Thread(target=self._run_weekly_worker, args=(logins,), daemon=True).start()
+        return {"started": True, "only_failed": only_failed}
+
+    @safe
+    def run_weekly_progress(self):
+        r = getattr(self, "_run", None) or {"running": False, "done": 0, "total": 0, "details": []}
+        return {"running": r.get("running", False), "done": r.get("done", 0),
+                "total": r.get("total", 0), "details": r.get("details", []),
+                "summary": r.get("summary"), "error": r.get("error"),
+                "only_failed": r.get("only_failed", False)}
+
     @safe
     def history(self):
         rows = self.db.conn.execute(

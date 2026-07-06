@@ -607,9 +607,44 @@ async function doSendTest(){
 }
 async function runWeekly(){
   if(!confirm('Запустить рассылку по ВСЕМ привязанным клиентам за прошлую неделю?'))return;
-  toast('Запускаю рассылку…');
-  try{const r=await api('run_weekly');toast(`Готово: отправлено ${r.sent}, пропущено ${r.skipped}, без чата ${r.no_chat}, ошибок ${r.errors}`,'ok');}catch(e){}
+  try{await api('run_weekly_start');}catch(e){toast('Ошибка старта: '+esc(e.message),'err');return;}
+  openRunModal();
 }
+async function runFailedAgain(){
+  try{await api('run_weekly_start',true);}catch(e){toast(esc(e.message),'err');return;}
+  openRunModal();
+}
+function openRunModal(){
+  let m=document.getElementById('runModal');
+  if(!m){m=document.createElement('div');m.id='runModal';
+    m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999';
+    document.body.appendChild(m);}
+  m.innerHTML=`<div style="background:var(--surface,#1b1e27);color:var(--ink,#e8eaf0);border-radius:16px;max-width:640px;width:92%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.5)">
+    <div style="padding:15px 20px;font-weight:700;font-size:16px;border-bottom:1px solid rgba(150,150,170,.18)">📨 Рассылка — прогресс <span id="runHead" class="muted" style="font-weight:400;font-size:13px"></span></div>
+    <div id="runBody" style="padding:10px 20px;overflow:auto;flex:1"></div>
+    <div id="runFoot" style="padding:12px 20px;border-top:1px solid rgba(150,150,170,.18);display:flex;gap:10px;align-items:center;justify-content:flex-end"></div></div>`;
+  pollRun();
+}
+async function pollRun(){
+  let p;try{p=await api('run_weekly_progress');}catch(e){return;}
+  const H=el('runHead');if(H)H.textContent=p.total?('('+p.done+'/'+p.total+')'):'…';
+  const ic=s=>s==='sent'?'✅':s==='error'?'❌':s==='no_chat'?'🚫':s==='skipped'?'⏭️':'•';
+  const rows=(p.details||[]).slice().reverse().map(d=>{
+    const ex=d.status==='sent'?('отправлено в чатов: '+(d.chats||0)):esc(d.reason||d.status||'');
+    return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(150,150,170,.12)"><span>'+ic(d.status)+'</span><div style="flex:1;min-width:0"><b>'+esc(d.name||d.login)+'</b><div class="muted" style="font-size:12px;word-break:break-word">'+ex+'</div></div></div>';}).join('');
+  el('runBody').innerHTML=rows||'<div class="muted" style="padding:14px 0"><span class="spin"></span> запускаю…</div>';
+  const F=el('runFoot');
+  if(p.running){F.innerHTML='<span class="muted" style="margin-right:auto;font-size:12.5px"><span class="spin"></span> идёт рассылка…</span>';setTimeout(pollRun,1200);}
+  else{
+    const s=p.summary||{};const failed=(s.details||[]).filter(d=>d.status==='error'||d.status==='no_chat').length;
+    F.innerHTML=(failed?('<button class="btn" onclick="runFailedAgain()">🔁 Переотправить недошедшим ('+failed+')</button>'):'')+
+      '<span class="muted" style="margin-right:auto;font-size:12.5px">Итог: ✅ '+(s.sent||0)+' · ⏭️ '+(s.skipped||0)+' · 🚫 '+(s.no_chat||0)+' · ❌ '+(s.errors||0)+'</span>'+
+      '<button class="btn primary" onclick="closeRunModal()">Закрыть</button>';
+    if(p.error)el('runBody').innerHTML+='<div style="color:var(--red,#e5484d);padding-top:8px">Ошибка запуска: '+esc(p.error)+'</div>';
+    loadBadges();
+  }
+}
+function closeRunModal(){const m=el('runModal');if(m)m.remove();}
 
 /* ---------- REPORT BUILDER (конструктор) ---------- */
 function fmtInt(n){return Math.round(Number(n)||0).toLocaleString('ru-RU');}
