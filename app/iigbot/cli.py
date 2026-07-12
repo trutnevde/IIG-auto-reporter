@@ -42,7 +42,12 @@ HELP = (
     "  sync             подтянуть клиентов из Директа\n"
     "  gsheets-sync     выгрузить Директ в Google-таблицы всех клиентов (cron/headless)\n"
     "  import           импорт config.json\n"
-    "  bot              только слушатель чатов (консоль)\n"
+    "  bot              только слушатель чатов (консоль, long-polling)\n"
+    "  webhook          вебхук для хостинга: webhook set <url> | delete | info\n"
+    "  useradd          создать веб-аккаунт: useradd <email> <пароль> [Имя] [--admin]\n"
+    "  users            список веб-аккаунтов\n"
+    "  passwd           сменить пароль: passwd <email> <пароль>\n"
+    "  assign           назначить клиентов: assign <email> <login> ...\n"
 )
 
 
@@ -78,6 +83,27 @@ def main(argv=None):
     elif cmd == "bot":
         from . import bot
         bot.main()
+    elif cmd in ("webhook", "hook"):
+        from . import bot
+        raise SystemExit(bot.webhook_command(args[1:]))
+    elif cmd in ("useradd", "adduser", "create-admin"):
+        from . import usercli
+        raise SystemExit(usercli.useradd(args[1:]))
+    elif cmd in ("users", "userlist"):
+        from . import usercli
+        raise SystemExit(usercli.users(args[1:]))
+    elif cmd in ("passwd", "password"):
+        from . import usercli
+        raise SystemExit(usercli.passwd(args[1:]))
+    elif cmd in ("useroff", "userdisable"):
+        from . import usercli
+        raise SystemExit(usercli.set_active(args[1:], False))
+    elif cmd in ("useron", "userenable"):
+        from . import usercli
+        raise SystemExit(usercli.set_active(args[1:], True))
+    elif cmd in ("assign", "assign-client"):
+        from . import usercli
+        raise SystemExit(usercli.assign(args[1:]))
     elif cmd in ("h", "help"):
         print(HELP)
     else:

@@ -263,6 +263,7 @@
       <a data-go="reports"><span class="ic">📨</span><span>Отчёты</span></a>
       <a data-go="gsheets"><span class="ic">📗</span><span>Таблицы</span></a>
       <a data-go="settings"><span class="ic">⚙️</span><span>Настройки</span></a>
+      <a data-go="users" id="navUsers" style="display:none"><span class="ic">🔑</span><span>Пользователи</span></a>
       <a data-go="guide"><span class="ic">📖</span><span>Гайд</span></a>
     </nav>
     <div class="btn-connect" onclick="openOnboard()"><span>＋</span><span>Подключить клиента</span></div>
@@ -277,6 +278,11 @@
       <span class="pill" id="botPill"><span class="dot"></span> Слушатель</span>
       <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Светлая / тёмная тема">🌙</button>
       <button class="btn sm" onclick="refresh()"><span class="r-ic">⟳</span> Обновить</button>
+      <span class="userbox" id="userBox" style="display:none">
+        <span class="user-ava" id="userAva">?</span>
+        <span class="user-meta"><b id="userName">—</b><span class="mini-2" id="userRole"></span></span>
+        <button class="icon-btn" onclick="logout()" title="Выйти">⎋</button>
+      </span>
     </header>
     <div class="content">
       <section data-view="dashboard" class="on"><div id="v_dashboard" class="empty">…</div></section>
@@ -286,6 +292,7 @@
       <section data-view="reports"><div id="v_reports"></div></section>
       <section data-view="gsheets"><div id="v_gsheets"></div></section>
       <section data-view="settings"><div id="v_settings"></div></section>
+      <section data-view="users"><div id="v_users"></div></section>
       <section data-view="guide"><div id="v_guide"></div></section>
     </div>
   </div>
@@ -310,11 +317,44 @@
   <footer><button class="btn" onclick="closeOnboard()">Закрыть</button></footer>
 </div>
 
+<!-- LOGIN -->
+<style>
+  .userbox{display:inline-flex;align-items:center;gap:9px;padding-left:6px;margin-left:2px;border-left:1px solid var(--line)}
+  .user-ava{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+    font-weight:800;color:#fff;background:var(--grad);text-transform:uppercase;font-size:13px}
+  .user-meta{display:flex;flex-direction:column;line-height:1.15;max-width:180px}
+  .user-meta b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .login-bg{position:fixed;inset:0;z-index:100;background:var(--bg);display:none;align-items:center;justify-content:center;padding:20px}
+  .login-bg.on{display:flex}
+  .login-card{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--line);border-radius:16px;
+    box-shadow:var(--shadow-sm);padding:30px 28px}
+  .login-card .lg-brand{display:flex;align-items:center;gap:9px;font-size:19px;font-weight:800;margin-bottom:4px}
+  .login-card .lg-sub{color:var(--muted);margin:0 0 22px;font-size:13px}
+  .login-card label{display:block;font-size:12px;color:var(--muted);font-weight:650;margin:0 0 5px}
+  .login-card input{width:100%;margin-bottom:15px}
+  .login-card .btn.primary{width:100%;justify-content:center;padding:11px}
+  .login-err{color:var(--red,#e5484d);font-size:13px;min-height:18px;margin:2px 0 10px}
+  .login-note{color:var(--muted);font-size:12.5px;margin-top:16px;text-align:center;line-height:1.5}
+</style>
+<div class="login-bg" id="loginBg">
+  <form class="login-card" id="loginForm" onsubmit="doLogin(event)">
+    <div class="lg-brand"><span>📊</span><span>IIG <b>Reporter</b></span></div>
+    <p class="lg-sub">Вход в кабинет агентства</p>
+    <label>Email</label>
+    <input id="lgEmail" type="email" autocomplete="username" placeholder="you@iig.ru" required>
+    <label>Пароль</label>
+    <input id="lgPass" type="password" autocomplete="current-password" placeholder="••••••••" required>
+    <div class="login-err" id="lgErr"></div>
+    <button class="btn primary" type="submit" id="lgBtn">Войти</button>
+    <div class="login-note" id="lgNote"></div>
+  </form>
+</div>
+
 <div id="toast"></div>
 
 <script>
 /* ---------- инфраструктура ---------- */
-let READY=false, CLIENTS=[], CHATS=[];
+let READY=false, CLIENTS=[], CHATS=[], ME=null;
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function toast(msg,kind){const w=document.getElementById('toast');const d=document.createElement('div');d.className='toast'+(kind?(' '+kind):'');d.textContent=msg;w.appendChild(d);setTimeout(()=>d.remove(),kind==='err'?6000:3500);}
 async function callBackend(method,args){
@@ -327,7 +367,9 @@ async function api(method,...args){
   let r;
   try{r=await callBackend(method,args);}
   catch(e){toast('Нет связи с backend: '+e.message,'err');throw e;}
-  if(!r||r.ok!==true){const e=(r&&r.error)||'Неизвестная ошибка';toast(e,'err');throw new Error(e);}
+  if(!r||r.ok!==true){const e=(r&&r.error)||'Неизвестная ошибка';
+    if(e==='not_authenticated'){ME=null;applyUser();showLogin(false);throw new Error(e);}
+    toast(e,'err');throw new Error(e);}
   return r.data;
 }
 function el(id){return document.getElementById(id);}
@@ -337,7 +379,7 @@ function applyTheme(t){document.documentElement.setAttribute('data-theme',t);try
 function toggleTheme(){const cur=document.documentElement.getAttribute('data-theme')||'light';applyTheme(cur==='dark'?'light':'dark');}
 
 /* ---------- роутинг ---------- */
-const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',gsheets:'Google-таблицы',settings:'Настройки',guide:'Гайд'};
+const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',gsheets:'Google-таблицы',settings:'Настройки',users:'Пользователи',guide:'Гайд'};
 function go(v){
   document.querySelectorAll('section[data-view]').forEach(s=>s.classList.toggle('on',s.dataset.view===v));
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active',a.dataset.go===v));
@@ -346,7 +388,7 @@ function go(v){
 }
 document.getElementById('nav').addEventListener('click',e=>{const a=e.target.closest('a');if(a)go(a.dataset.go);});
 let CURRENT='dashboard';
-function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,gsheets:renderGSheets,settings:renderSettings,guide:renderGuide}[v]||(()=>{}))();}
+function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,gsheets:renderGSheets,settings:renderSettings,users:renderUsers,guide:renderGuide}[v]||(()=>{}))();}
 function refresh(){render(CURRENT);loadBadges();}
 
 /* ---------- бейджи/статус ---------- */
@@ -938,20 +980,142 @@ async function genLink(){
 }
 function closeOnboard(){el('modalBg').classList.remove('on');el('modal').classList.remove('on');}
 
+/* ---------- вход / пользователь ---------- */
+function showLogin(setup){
+  el('loginBg').classList.add('on');
+  el('lgNote').textContent = setup
+    ? 'Пользователей ещё нет. Создайте администратора в консоли:  python -m iigbot useradd <email> <пароль> --admin'
+    : '';
+  setTimeout(()=>{try{el('lgEmail').focus();}catch(e){}},60);
+}
+function hideLogin(){el('loginBg').classList.remove('on');el('lgErr').textContent='';}
+function applyUser(){
+  const box=el('userBox');
+  if(!ME){box.style.display='none';el('navUsers').style.display='none';return;}
+  box.style.display='inline-flex';
+  el('userName').textContent=ME.name||ME.email;
+  el('userRole').textContent=(ME.role==='admin'?'Администратор':'Специалист');
+  el('userAva').textContent=((ME.name||ME.email||'?').trim().charAt(0)||'?');
+  el('navUsers').style.display=(ME.role==='admin')?'':'none';
+}
+async function doLogin(ev){
+  ev.preventDefault();
+  const email=el('lgEmail').value.trim(), pass=el('lgPass').value;
+  el('lgErr').textContent=''; el('lgBtn').disabled=true;
+  let r;
+  try{ r=await callBackend('login',[email,pass]); }
+  catch(e){ el('lgErr').textContent='Нет связи с сервером'; el('lgBtn').disabled=false; return; }
+  el('lgBtn').disabled=false;
+  if(r&&r.ok&&r.user){ ME=r.user; el('lgPass').value=''; hideLogin(); applyUser();
+    if(!READY){ init(); } else { refresh(); } }
+  else { el('lgErr').textContent=(r&&r.error)||'Не удалось войти'; }
+}
+async function logout(){
+  try{ await callBackend('logout',[]); }catch(e){}
+  ME=null; location.reload();
+}
+async function bootWeb(){
+  if(READY) return;
+  let me;
+  try{ me=await callBackend('me',[]); }
+  catch(e){ return; }                       // нет связи — сработает нижний fallback
+  if(me&&me.ok&&me.user){ ME=me.user; applyUser(); init(); }
+  else { showLogin(me&&me.setup); }
+}
+
+/* ---------- раздел «Пользователи» (админ) ---------- */
+let POOL=[];
+async function renderUsers(){
+  const box=el('v_users');
+  if(!ME||ME.role!=='admin'){box.innerHTML='<div class="empty">Раздел доступен только администратору.</div>';return;}
+  box.innerHTML='<div class="empty">Загрузка…</div>';
+  let users;
+  try{ users=await api('users_list'); POOL=await api('pool_clients'); }
+  catch(e){ box.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>'; return; }
+  const opts=users.map(u=>'<option value="'+u.id+'">'+esc(u.name||u.email)+'</option>').join('');
+  const rows=users.map(u=>`<tr>
+      <td><b>${esc(u.name||'—')}</b><div class="mini-2">${esc(u.email)}</div></td>
+      <td>${u.role==='admin'?'<span class="badge b-grey">админ</span>':'специалист'}</td>
+      <td>${u.active?'<span class="badge b-green">активен</span>':'<span class="badge b-grey">заблокирован</span>'}</td>
+      <td class="right">${u.clients}</td>
+      <td class="right nowrap">
+        <button class="btn sm" onclick="userPass(${u.id})">Пароль</button>
+        <button class="btn sm" onclick="userToggle(${u.id},${u.active?0:1})">${u.active?'Заблокировать':'Разблокировать'}</button>
+      </td></tr>`).join('');
+  const unassigned=POOL.filter(c=>!c.owner).length;
+  box.innerHTML=`
+    <div class="panel" style="margin-bottom:16px">
+      <h3>Новый пользователь</h3>
+      <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr 1fr 140px 100px;gap:10px;align-items:end">
+        <div><label class="mini-2">Email</label><input id="nuEmail" type="email" placeholder="ivan@iig.ru"></div>
+        <div><label class="mini-2">Имя</label><input id="nuName" placeholder="Иван"></div>
+        <div><label class="mini-2">Пароль</label><input id="nuPass" placeholder="временный пароль"></div>
+        <div><label class="mini-2">Роль</label><select id="nuRole"><option value="user">Специалист</option><option value="admin">Администратор</option></select></div>
+        <button class="btn primary" onclick="userCreate()">Создать</button>
+      </div>
+    </div>
+    <div class="panel" style="margin-bottom:16px">
+      <h3>Пользователи (${users.length})</h3>
+      <table><thead><tr><th>Пользователь</th><th>Роль</th><th>Статус</th><th class="right">Клиентов</th><th></th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="5" class="muted">Пусто</td></tr>'}</tbody></table>
+    </div>
+    <div class="panel">
+      <h3>Клиенты и владельцы — не назначено: ${unassigned} из ${POOL.length}</h3>
+      <div style="padding:12px 16px 4px"><input id="poolFilter" placeholder="Поиск клиента…" oninput="poolFilter()" style="width:100%"></div>
+      <table><thead><tr><th>Клиент</th><th style="width:240px">Владелец</th></tr></thead>
+      <tbody id="poolBody">${poolRows(POOL,opts)}</tbody></table>
+    </div>`;
+}
+function poolRows(list,opts){
+  return list.map(c=>`<tr data-q="${esc((c.name||'')+' '+c.login).toLowerCase()}">
+      <td><b>${esc(c.name||c.login)}</b><div class="mini-2">${esc(c.login)}</div></td>
+      <td><select onchange="assignClient('${esc(c.login)}',this.value)">
+        <option value="">— общий пул —</option>
+        ${opts.replace('value="'+(c.owner||'')+'"','value="'+(c.owner||'')+'" selected')}
+      </select></td></tr>`).join('');
+}
+function poolFilter(){
+  const q=(el('poolFilter').value||'').trim().toLowerCase();
+  document.querySelectorAll('#poolBody tr').forEach(tr=>{
+    tr.style.display = (!q || (tr.dataset.q||'').indexOf(q)>=0) ? '' : 'none';
+  });
+}
+async function userCreate(){
+  const email=el('nuEmail').value.trim(), name=el('nuName').value.trim(),
+        pass=el('nuPass').value, role=el('nuRole').value;
+  if(!email||!pass){toast('Нужны email и пароль','err');return;}
+  try{ await api('user_create',email,pass,name,role); toast('Пользователь создан'); renderUsers(); }
+  catch(e){}
+}
+async function userToggle(id,active){ try{ await api('user_set_active',id,!!active); renderUsers(); }catch(e){} }
+async function userPass(id){
+  const p=prompt('Новый пароль для пользователя:');
+  if(!p)return;
+  try{ await api('user_set_password',id,p); toast('Пароль обновлён'); }catch(e){}
+}
+async function assignClient(login,uid){
+  try{ await api('assign_client',login,uid||null);
+    const c=POOL.find(x=>x.login===login); if(c)c.owner=uid?parseInt(uid):null;
+    toast('Сохранено'); }
+  catch(e){ renderUsers(); }
+}
+
 /* ---------- init ---------- */
 function init(){
   if(READY)return;READY=true;
   const t=document.documentElement.getAttribute('data-theme')||'light';const tb=el('themeBtn');if(tb)tb.textContent=(t==='dark'?'☀️':'🌙');
   el('botInfo').textContent='Готово';
+  applyUser();
   go('dashboard');loadBadges();
-  api('settings').then(s=>{el('botInfo').innerHTML='Бот: @'+esc((s.telegram&&s.telegram.username)||'?')+'<br><span class="mini-2">Десктоп · ПК-режим</span>';
+  const modeTx = ME ? ('Веб · '+esc(ME.email)) : 'Десктоп · ПК-режим';
+  api('settings').then(s=>{el('botInfo').innerHTML='Бот: @'+esc((s.telegram&&s.telegram.username)||'?')+'<br><span class="mini-2">'+modeTx+'</span>';
     el('botPill').innerHTML='<span class="dot"></span> '+(s.telegram.status==='ок'?'Подключён':'Нет связи');
     if(s.telegram.status!=='ок')el('botPill').classList.add('grey');}).catch(()=>{});
 }
-window.addEventListener('pywebviewready',init);                                  // десктоп
-setTimeout(()=>{if(!READY&&location.protocol.indexOf('http')===0)init();},120);  // веб (браузер)
-setTimeout(()=>{if(!READY&&window.pywebview&&window.pywebview.api)init();},600);  // десктоп (запас)
-setTimeout(()=>{if(!READY)el('v_dashboard').innerHTML='<div class="empty">Нет связи с backend.<br>Десктоп: запусти IIGReporter.exe. Веб: открой адрес веб-версии в браузере.</div>';},2500);
+window.addEventListener('pywebviewready',init);                                     // десктоп (без входа)
+setTimeout(()=>{if(!READY&&location.protocol.indexOf('http')===0)bootWeb();},120);  // веб: сперва проверка входа
+setTimeout(()=>{if(!READY&&window.pywebview&&window.pywebview.api)init();},600);    // десктоп (запас)
+setTimeout(()=>{if(!READY&&!el('loginBg').classList.contains('on'))el('v_dashboard').innerHTML='<div class="empty">Нет связи с backend.<br>Десктоп: запусти IIGReporter.exe. Веб: открой адрес веб-версии в браузере.</div>';},2500);
 </script>
 </body>
 </html>

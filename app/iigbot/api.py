@@ -48,12 +48,66 @@ def _is_key_goal(name, gtype):
 
 
 class Api:
-    def __init__(self):
+    def __init__(self, user=None):
         self.cfg = load_app_config()
         self.db = Storage(self.cfg["db_path"])
+        self.user = user               # dict текущего пользователя (веб) или None (десктоп/легаси = «всё»)
         self._tg = None
         self._bot_username = None
         self._mk_counters = None       # кэш списка счётчиков Метрики
+
+    def _owner(self):
+        """Скоуп данных: 'all' для десктопа/админа, иначе id пользователя (видит только своих)."""
+        u = self.user
+        if not u or u.get("role") == "admin":
+            return "all"
+        return u.get("id")
+
+    def _is_admin_scope(self):
+        return self._owner() == "all"
+
+    def _require_admin(self):
+        if not self._is_admin_scope():
+            raise RuntimeError("Доступно только администратору")
+
+    def _owned_set(self):
+        """Множество логинов клиентов пользователя; None = видит всё (админ/десктоп)."""
+        if self._is_admin_scope():
+            return None
+        return set(self.db.owned_logins(self.user["id"]))
+
+    def _require_owned(self, login):
+        s = self._owned_set()
+        if s is not None and login not in s:
+            raise RuntimeError("Этот клиент не в вашем доступе")
+
+    def _scope_logins(self, logins):
+        """Ограничить список логинов клиентами пользователя (None→все свои; админ — как есть)."""
+        s = self._owned_set()
+        if s is None:
+            return logins
+        if logins is None:
+            return sorted(s)
+        return [l for l in logins if l in s]
+
+    def _visible_chats(self):
+        """Чаты, видимые пользователю: непривязанные + привязанные к его клиентам. Админ — все."""
+        chats = self.db.list_chats()
+        s = self._owned_set()
+        if s is None:
+            return chats
+        owner_of = {b["chat_id"]: b["login"] for b in self.db.list_bindings("all")}
+        return [c for c in chats
+                if owner_of.get(c["chat_id"]) is None or owner_of.get(c["chat_id"]) in s]
+
+    def _require_chat_visible(self, chat_id):
+        """Чат либо свободен, либо привязан к клиенту пользователя (иначе — чужой)."""
+        s = self._owned_set()
+        if s is None:
+            return
+        b = self.db.get_binding(chat_id)
+        if b and b["login"] not in s:
+            raise RuntimeError("Этот чат не в вашем доступе")
 
     # ---------- helpers ----------
     def _metrika_counters(self):
@@ -98,17 +152,24 @@ class Api:
     # ---------- dashboard ----------
     @safe
     def dashboard(self):
-        chats = [c for c in self.db.list_chats() if c["status"] == "active"]
-        clients = self.db.list_clients()
-        bindings = self.db.list_bindings()
+        chats = [c for c in self._visible_chats() if c["status"] == "active"]
+        clients = self.db.list_clients(self._owner())
+        bindings = self.db.list_bindings(self._owner())
         bound_chat_ids = {b["chat_id"] for b in bindings}
         bound_logins = {b["login"] for b in bindings}
         unbound_chats = [c for c in chats if c["chat_id"] not in bound_chat_ids]
         clients_no_chat = [c for c in clients if c["login"] not in bound_logins]
-        history = self.db.list_bindings  # placeholder, real history below
-        rows = self.db.conn.execute(
-            "SELECT status, COUNT(*) n FROM send_log GROUP BY status"
-        ).fetchall()
+        owned = self._owned_set()
+        if owned is None:
+            rows = self.db.conn.execute(
+                "SELECT status, COUNT(*) n FROM send_log GROUP BY status").fetchall()
+        elif owned:
+            ph = ",".join("?" * len(owned))
+            rows = self.db.conn.execute(
+                "SELECT status, COUNT(*) n FROM send_log WHERE login IN (%s) "
+                "GROUP BY status" % ph, tuple(owned)).fetchall()
+        else:
+            rows = []
         by_status = {r["status"]: r["n"] for r in rows}
         return {
             "clients": len(clients),
@@ -126,9 +187,9 @@ class Api:
     # ---------- clients ----------
     @safe
     def clients(self):
-        binds = {b["login"]: b for b in self.db.list_bindings()}
+        binds = {b["login"]: b for b in self.db.list_bindings(self._owner())}
         out = []
-        for c in self.db.list_clients():
+        for c in self.db.list_clients(self._owner()):
             b = binds.get(c["login"])
             try:
                 goals = json.loads(c["goals"] or "[]")
@@ -145,6 +206,7 @@ class Api:
 
     @safe
     def client(self, login):
+        self._require_owned(login)
         c = self.db.get_client(login)
         if not c:
             raise RuntimeError("Клиент не найден")
@@ -161,6 +223,7 @@ class Api:
 
     @safe
     def save_client(self, login, name=None, goals=None, attribution=None):
+        self._require_owned(login)
         self.db.upsert_client(
             login=login, name=name,
             goals=normalize_goals(goals) if goals is not None else None,
@@ -213,13 +276,14 @@ class Api:
     @safe
     def metrika_goals(self, login):
         """Для карточки клиента: цели из Метрики с пресетом active (ключевые отмечены). Не сохраняет."""
+        self._require_owned(login)
         return self._metrika_goals_for(login)
 
     @safe
     def metrika_goals_bulk(self):
         """Подтягивает цели из Метрики для всех ПРИВЯЗАННЫХ клиентов и СОХРАНЯЕТ их (с пресетом
         ключевых). Если у клиента цель уже была — её флаг active сохраняется (ручные правки не теряются)."""
-        logins = sorted({b["login"] for b in self.db.list_bindings()})
+        logins = sorted({b["login"] for b in self.db.list_bindings(self._owner())})
         res = {"clients": len(logins), "with_goals": 0, "no_counter": 0, "errors": 0, "details": []}
         for login in logins:
             try:
@@ -252,6 +316,7 @@ class Api:
     @safe
     def client_goals(self, login):
         """Цели клиента для выбора в конструкторе: [{'id','name','active'}]."""
+        self._require_owned(login)
         c = self.db.get_client(login)
         if not c:
             return []
@@ -271,6 +336,7 @@ class Api:
 
     @safe
     def sync_clients(self):
+        self._require_admin()
         clients = yandex.get_agency_clients(load_secrets()["yandex_oauth_token"])
         n = 0
         for c in clients:
@@ -281,6 +347,7 @@ class Api:
 
     @safe
     def import_config(self):
+        self._require_admin()
         rep = load_report_config()
         attribution = rep.get("attribution_model")
         n_cli = n_bind = 0
@@ -303,10 +370,10 @@ class Api:
     # ---------- chats ----------
     @safe
     def chats(self):
-        binds = {b["chat_id"]: b for b in self.db.list_bindings()}
-        names = {c["login"]: c["name"] for c in self.db.list_clients()}
+        binds = {b["chat_id"]: b for b in self.db.list_bindings(self._owner())}
+        names = {c["login"]: c["name"] for c in self.db.list_clients(self._owner())}
         out = []
-        for c in self.db.list_chats():
+        for c in self._visible_chats():
             b = binds.get(c["chat_id"])
             out.append({
                 "chat_id": c["chat_id"], "title": c["title"], "type": c["type"],
@@ -318,34 +385,39 @@ class Api:
 
     @safe
     def bind(self, chat_id, login):
+        cid = int(chat_id)
+        self._require_chat_visible(cid)
         if not login:
-            self.db.remove_binding(int(chat_id))
+            self.db.remove_binding(cid)
             self._cloud_push_safe()
             return {"bound": False}
-        self.db.set_binding(int(chat_id), login)
+        self._require_owned(login)
+        self.db.set_binding(cid, login)
         self._cloud_push_safe()
         return {"bound": True}
 
     @safe
     def unbind(self, chat_id):
-        self.db.remove_binding(int(chat_id))
+        cid = int(chat_id)
+        self._require_chat_visible(cid)
+        self.db.remove_binding(cid)
         self._cloud_push_safe()
         return {"bound": False}
 
     @safe
     def delete_chat(self, chat_id):
         """Удаляет чат из базы (для «висяков» — когда бота уже выгнали, а строка осталась)."""
+        self._require_admin()
         self.db.delete_chat(int(chat_id))
         return {"deleted": True}
 
     # ---------- matcher (подсказки привязок) ----------
     def _suggest_matches(self):
-        binds = self.db.list_bindings()
-        bound_chat_ids = {b["chat_id"] for b in binds}
-        bound_logins = {b["login"] for b in binds}
-        chats = [c for c in self.db.list_chats()
-                 if c["status"] == "active" and c["chat_id"] not in bound_chat_ids]
-        clients = [c for c in self.db.list_clients() if c["login"] not in bound_logins]
+        all_bound_ids = {b["chat_id"] for b in self.db.list_bindings("all")}
+        bound_logins = {b["login"] for b in self.db.list_bindings(self._owner())}
+        chats = [c for c in self._visible_chats()
+                 if c["status"] == "active" and c["chat_id"] not in all_bound_ids]
+        clients = [c for c in self.db.list_clients(self._owner()) if c["login"] not in bound_logins]
         free_clients = [{"login": c["login"], "name": c["name"]} for c in clients]
         out = []
         for ch in chats:
@@ -404,6 +476,7 @@ class Api:
     # ---------- reports ----------
     @safe
     def preview(self, login):
+        self._require_owned(login)
         token = load_secrets()["yandex_oauth_token"]
         intro, note, attr = self._report_ctx()
         text, camps, per = report.build_for_login(token, self.db, login, intro, note, attr)
@@ -413,6 +486,7 @@ class Api:
 
     @safe
     def send_test(self, login):
+        self._require_owned(login)
         token = load_secrets()["yandex_oauth_token"]
         intro, note, attr = self._report_ctx()
         return report.send_for_login(token, self._tg_client(), self.db, login, intro, note, attr)
@@ -421,7 +495,8 @@ class Api:
     def run_weekly(self):
         token = load_secrets()["yandex_oauth_token"]
         intro, note, attr = self._report_ctx()
-        return report.run_weekly(token, self._tg_client(), self.db, intro, note, attr)
+        return report.run_weekly(token, self._tg_client(), self.db, intro, note, attr,
+                                 logins=self._scope_logins(None))
 
     # ---------- рассылка с окном прогресса ----------
     def _run_weekly_worker(self, logins=None):
@@ -457,6 +532,9 @@ class Api:
                              if d.get("status") in ("error", "no_chat")})
             if not logins:
                 raise RuntimeError("Нет недошедших клиентов из прошлого прогона.")
+        logins = self._scope_logins(logins)   # рассылать только своих клиентов (админ — всех)
+        if self._owned_set() is not None and not logins:
+            raise RuntimeError("У вас нет назначенных клиентов для рассылки.")
         self._run = {"running": True, "done": 0, "total": (len(logins) if logins else 0),
                      "details": [], "summary": None, "error": None, "only_failed": only_failed}
         import threading
@@ -473,10 +551,18 @@ class Api:
 
     @safe
     def history(self):
-        rows = self.db.conn.execute(
-            "SELECT * FROM send_log ORDER BY id DESC LIMIT 100"
-        ).fetchall()
-        names = {c["login"]: c["name"] for c in self.db.list_clients()}
+        owned = self._owned_set()
+        if owned is None:
+            rows = self.db.conn.execute(
+                "SELECT * FROM send_log ORDER BY id DESC LIMIT 100").fetchall()
+        elif owned:
+            ph = ",".join("?" * len(owned))
+            rows = self.db.conn.execute(
+                "SELECT * FROM send_log WHERE login IN (%s) ORDER BY id DESC LIMIT 100" % ph,
+                tuple(owned)).fetchall()
+        else:
+            rows = []
+        names = {c["login"]: c["name"] for c in self.db.list_clients(self._owner())}
         return [{
             "sent_at": r["sent_at"], "login": r["login"], "client_name": names.get(r["login"], r["login"]),
             "chat_title": self._chat_title(r["chat_id"]) if r["chat_id"] else None,
@@ -497,6 +583,7 @@ class Api:
         Объединяет campaigns.get (быстро, настроенные кампании) и кампании из отчёта за
         90 дней — последнее ловит товарные/перформанс-кампании, которые campaigns.get v5
         не возвращает вообще (тип не поддержан методом)."""
+        self._require_owned(login)
         from . import yandex, report
         from datetime import date, timedelta
         token = load_secrets()["yandex_oauth_token"]
@@ -523,6 +610,7 @@ class Api:
 
     def _report_build(self, login, level, date_from, date_to, attribution, limit,
                       segments=None, date_grain="day", campaign=None, goal_ids=None):
+        self._require_owned(login)
         from . import report_custom as RC
         token = load_secrets()["yandex_oauth_token"]
         c = self.db.get_client(login)
@@ -623,6 +711,7 @@ class Api:
         конверсии total/CPA) продлеваются; внешние столбцы (Callibri/Ticketscloud) не трогаются;
         повтор того же периода пропускается (дедуп).
         """
+        self._require_owned(login)
         from . import gsheets as G
         if not G.available():
             raise RuntimeError("Ключ sa_key.json не найден рядом с программой.")
@@ -645,6 +734,7 @@ class Api:
     def gsheets_breakdowns(self, login, which=None, date_from=None, date_to=None):
         """Создаёт НОВЫЕ листы-снимки разрезов (По РК/группам/ключам/поисковым фразам/регионам)
         за период (по умолчанию — прошлый полный месяц). which=None → все разрезы."""
+        self._require_owned(login)
         from . import gsheets as G
         if not G.available():
             raise RuntimeError("Ключ sa_key.json не найден рядом с программой.")
@@ -683,7 +773,11 @@ class Api:
             return ""
 
     def _cloud_push_safe(self):
-        """Заливает состояние в облако после изменений. Тихо, не роняет операцию при сбое."""
+        """Заливает состояние в облако после изменений. Тихо, не роняет операцию при сбое.
+        В веб-режиме (мультиюзер, self.user задан) НЕ трогаем общую таблицу-конфиг — источником
+        истины стала БД; иначе привязки одного пользователя затирали бы общий лист."""
+        if self.user is not None:
+            return
         try:
             from . import cloudsync
             if cloudsync.available():
@@ -709,14 +803,82 @@ class Api:
     @safe
     def cloud_pull(self):
         """Тянет привязки/цели из общей таблицы в локальную базу."""
+        self._require_admin()
         from . import cloudsync
         return cloudsync.pull(self.db)
 
     @safe
     def cloud_push(self):
         """Заливает локальные привязки/цели в общую таблицу."""
+        self._require_admin()
         from . import cloudsync
         return cloudsync.push(self.db)
+
+    # ---------- пользователи (админ) ----------
+    @safe
+    def users_list(self):
+        self._require_admin()
+        out = []
+        for u in self.db.list_users():
+            out.append({"id": u["id"], "email": u["email"], "name": u["name"] or "",
+                        "role": u["role"], "active": bool(u["active"]),
+                        "clients": len(self.db.owned_logins(u["id"]))})
+        return out
+
+    @safe
+    def user_create(self, email, password, name=None, role="user"):
+        self._require_admin()
+        from . import auth
+        email = (email or "").strip().lower()
+        if not email or not password:
+            raise RuntimeError("Нужны email и пароль")
+        if role not in ("user", "admin"):
+            role = "user"
+        if self.db.get_user_by_email(email):
+            raise RuntimeError("Пользователь с таким email уже есть")
+        uid = self.db.create_user(email, auth.hash_password(password), name, role)
+        return {"id": uid, "email": email, "role": role}
+
+    @safe
+    def user_set_active(self, user_id, active):
+        self._require_admin()
+        self.db.set_user_active(int(user_id), bool(active))
+        return {"id": int(user_id), "active": bool(active)}
+
+    @safe
+    def user_set_password(self, user_id, password):
+        self._require_admin()
+        from . import auth
+        if not password:
+            raise RuntimeError("Пустой пароль")
+        self.db.set_user_password(int(user_id), auth.hash_password(password))
+        return {"id": int(user_id)}
+
+    @safe
+    def pool_clients(self):
+        """Все клиенты агентства с владельцем — для раздачи (админ)."""
+        self._require_admin()
+        emails = {u["id"]: u["email"] for u in self.db.list_users()}
+        out = []
+        for c in self.db.list_clients("all"):
+            owner = c["owner"] if "owner" in c.keys() else None
+            out.append({"login": c["login"], "name": c["name"],
+                        "owner": owner, "owner_email": emails.get(owner)})
+        return out
+
+    @safe
+    def assign_client(self, login, user_id=None):
+        """Назначить клиента пользователю (user_id=None/'' → вернуть в общий пул). Админ."""
+        self._require_admin()
+        if not self.db.get_client(login):
+            raise RuntimeError("Клиент не найден")
+        owner = None
+        if user_id not in (None, "", 0, "0"):
+            owner = int(user_id)
+            if not self.db.get_user(owner):
+                raise RuntimeError("Пользователь не найден")
+        self.db.set_client_owner(login, owner)
+        return {"login": login, "owner": owner}
 
     # ---------- settings ----------
     @safe

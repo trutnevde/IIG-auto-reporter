@@ -101,3 +101,18 @@ class Telegram:
 
     def get_chat_administrators(self, chat_id):
         return self._call("getChatAdministrators", {"chat_id": chat_id}, retries=2)
+
+    # ---- вебхук (для деплоя на хостинге: Telegram сам шлёт апдейты на HTTPS-эндпоинт) ----
+    def set_webhook(self, url, secret_token=None, allowed_updates=None, drop_pending=False):
+        params = {"url": url, "drop_pending_updates": bool(drop_pending)}
+        if secret_token:
+            params["secret_token"] = secret_token
+        if allowed_updates is not None:
+            params["allowed_updates"] = allowed_updates
+        return self._call("setWebhook", params, retries=2)
+
+    def delete_webhook(self, drop_pending=False):
+        return self._call("deleteWebhook", {"drop_pending_updates": bool(drop_pending)}, retries=2)
+
+    def get_webhook_info(self):
+        return self._call("getWebhookInfo", retries=2)

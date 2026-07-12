@@ -1,0 +1,6 @@
+# Python-зависимости веб-кабинета (ставятся в venv на сервере).
+# Postgres/gunicorn НЕ нужны: БД — SQLite, веб — Passenger (mod_passenger) на Beget shared.
+flask
+requests
+gspread
+google-auth

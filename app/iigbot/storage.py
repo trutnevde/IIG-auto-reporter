@@ -67,9 +67,26 @@ class Storage:
                 error       TEXT,
                 sent_at     TEXT
             );
+            CREATE TABLE IF NOT EXISTS users (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                email      TEXT NOT NULL UNIQUE,
+                pass_hash  TEXT NOT NULL,
+                name       TEXT,
+                role       TEXT NOT NULL DEFAULT 'user',   -- admin | user
+                active     INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT
+            );
             """
         )
         self.conn.commit()
+        self._migrate()
+
+    def _migrate(self):
+        """Безопасные миграции для уже существующих баз (только добавления)."""
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(clients)")}
+        if "owner" not in cols:   # владелец клиента (кому назначен); NULL = общий пул
+            self.conn.execute("ALTER TABLE clients ADD COLUMN owner INTEGER")
+            self.conn.commit()
 
     # ---------- kv ----------
     def get_kv(self, key, default=None):
@@ -144,8 +161,57 @@ class Storage:
     def get_client(self, login):
         return self.conn.execute("SELECT * FROM clients WHERE login=?", (login,)).fetchone()
 
-    def list_clients(self):
-        return self.conn.execute("SELECT * FROM clients ORDER BY name COLLATE NOCASE").fetchall()
+    def list_clients(self, owner="all"):
+        """owner='all' → все (админ/легаси); owner=<id> → клиенты этого пользователя;
+        owner=None → неназначенные (общий пул)."""
+        if owner == "all":
+            return self.conn.execute(
+                "SELECT * FROM clients ORDER BY name COLLATE NOCASE").fetchall()
+        if owner is None:
+            return self.conn.execute(
+                "SELECT * FROM clients WHERE owner IS NULL ORDER BY name COLLATE NOCASE").fetchall()
+        return self.conn.execute(
+            "SELECT * FROM clients WHERE owner=? ORDER BY name COLLATE NOCASE", (owner,)).fetchall()
+
+    def set_client_owner(self, login, owner):
+        """Назначить/снять владельца клиента (owner=None — вернуть в общий пул)."""
+        self.conn.execute("UPDATE clients SET owner=?, updated_at=? WHERE login=?",
+                          (owner, _now(), login))
+        self.conn.commit()
+
+    def owned_logins(self, owner):
+        """Логины клиентов пользователя (для скоупа привязок/рассылки)."""
+        return [r["login"] for r in
+                self.conn.execute("SELECT login FROM clients WHERE owner=?", (owner,))]
+
+    # ---------- users (веб-аккаунты) ----------
+    def create_user(self, email, pass_hash, name=None, role="user"):
+        cur = self.conn.execute(
+            "INSERT INTO users(email,pass_hash,name,role,active,created_at) VALUES(?,?,?,?,1,?)",
+            (email.strip().lower(), pass_hash, name, role, _now()))
+        self.conn.commit()
+        return cur.lastrowid
+
+    def get_user(self, user_id):
+        return self.conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+
+    def get_user_by_email(self, email):
+        return self.conn.execute("SELECT * FROM users WHERE email=?",
+                                 (email.strip().lower(),)).fetchone()
+
+    def list_users(self):
+        return self.conn.execute("SELECT * FROM users ORDER BY created_at").fetchall()
+
+    def count_users(self):
+        return self.conn.execute("SELECT COUNT(*) n FROM users").fetchone()["n"]
+
+    def set_user_active(self, user_id, active):
+        self.conn.execute("UPDATE users SET active=? WHERE id=?", (1 if active else 0, user_id))
+        self.conn.commit()
+
+    def set_user_password(self, user_id, pass_hash):
+        self.conn.execute("UPDATE users SET pass_hash=? WHERE id=?", (pass_hash, user_id))
+        self.conn.commit()
 
     # ---------- bindings ----------
     def set_binding(self, chat_id, login, bound_by=None):
@@ -167,8 +233,13 @@ class Storage:
         self.conn.execute("DELETE FROM bindings WHERE chat_id=?", (chat_id,))
         self.conn.commit()
 
-    def list_bindings(self):
-        return self.conn.execute("SELECT * FROM bindings").fetchall()
+    def list_bindings(self, owner="all"):
+        """owner='all' → все; owner=<id> → привязки клиентов этого пользователя (через clients.owner)."""
+        if owner == "all":
+            return self.conn.execute("SELECT * FROM bindings").fetchall()
+        return self.conn.execute(
+            "SELECT b.* FROM bindings b JOIN clients c ON c.login=b.login WHERE c.owner IS ?",
+            (owner,)).fetchall()
 
     def bindings_for_login(self, login):
         """Все чаты, привязанные к данному клиенту (клиент может вещать в несколько чатов)."""

@@ -229,6 +229,52 @@ def run_loop(db, tg, cfg, bot_username, stop_event=None):
             db.set_kv("update_offset", u["update_id"])
 
 
+def webhook_command(args):
+    """Управление вебхуком: python -m iigbot webhook set <https-url> | delete | info
+
+    На хостинге бот работает через вебхук, а не long-polling. `set` генерирует секрет,
+    сохраняет его в БД (kv.tg_webhook_secret — его же проверяет /tg/webhook) и регистрирует
+    URL в Telegram. ВАЖНО: у агентства один токен — вебхук и long-polling взаимоисключающи
+    (Telegram отдаёт 409 на getUpdates при активном вебхуке). Т.е. на сервере — вебхук,
+    десктоп-слушатель тогда не запускать."""
+    import os
+    secrets = load_secrets()
+    cfg = load_app_config()
+    token = (secrets.get("telegram_bot_token") or "").strip()
+    if not token or "ВСТАВЬ" in token:
+        print("❌ Не задан telegram_bot_token в secrets.json")
+        return 1
+    tg = Telegram(token, timeout=20)
+    db = Storage(cfg["db_path"])
+    sub = (args[0].lower() if args else "info")
+
+    if sub == "set":
+        if len(args) < 2:
+            print("Использование: webhook set https://<адрес>/tg/webhook")
+            return 2
+        url = args[1]
+        secret = db.get_kv("tg_webhook_secret")
+        if not secret:
+            secret = os.urandom(24).hex()
+            db.set_kv("tg_webhook_secret", secret)
+        tg.set_webhook(url, secret_token=secret, allowed_updates=ALLOWED_UPDATES, drop_pending=True)
+        print("✅ Вебхук установлен: {}".format(url))
+        print("   Секрет сохранён в БД (kv.tg_webhook_secret) — его проверяет эндпоинт /tg/webhook.")
+        print("   Слушатель по long-polling теперь НЕ запускать (конфликт 409).")
+        return 0
+    if sub in ("delete", "del", "off", "remove"):
+        tg.delete_webhook(drop_pending=False)
+        print("✅ Вебхук удалён. Бот снова может работать по long-polling (десктоп/консоль).")
+        return 0
+    info = tg.get_webhook_info() or {}
+    print("Состояние вебхука:")
+    print("  URL: {}".format(info.get("url") or "(не задан — работает long-polling)"))
+    for k in ("pending_update_count", "ip_address", "last_error_date", "last_error_message"):
+        if info.get(k):
+            print("  {}: {}".format(k, info[k]))
+    return 0
+
+
 def main():
     try:
         sys.stdout.reconfigure(encoding="utf-8")   # корректный вывод эмодзи/кириллицы в консоли Windows

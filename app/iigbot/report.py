@@ -343,14 +343,17 @@ def build_for_login(token, db, login, intro, note, default_attr="LSC", _post=Non
     return text, camps, per
 
 
-def send_for_login(token, tg, db, login, intro, note, default_attr="LSC"):
-    """Строит отчёт и отправляет во все привязанные к клиенту чаты. Пишет в send_log."""
+def send_for_login(token, tg, db, login, intro, note, default_attr="LSC", dry_run=False):
+    """Строит отчёт и отправляет во все привязанные к клиенту чаты. Пишет в send_log.
+    dry_run=True — только строит отчёт, НЕ отправляет клиентам и НЕ пишет в лог (безопасный тест)."""
     text, camps, per = build_for_login(token, db, login, intro, note, default_attr)
     if text is None:
         return {"status": "skipped", "reason": "нет активных кампаний за 4 недели"}
     chats = db.bindings_for_login(login)
     if not chats:
         return {"status": "no_chat", "reason": "клиент не привязан ни к одному чату"}
+    if dry_run:
+        return {"status": "dry", "chats": len(chats), "campaigns": len(camps)}
     sent = 0
     for b in chats:
         try:
@@ -362,15 +365,16 @@ def send_for_login(token, tg, db, login, intro, note, default_attr="LSC"):
     return {"status": "sent", "chats": sent, "campaigns": len(camps)}
 
 
-def run_weekly(token, tg, db, intro, note, default_attr="LSC", on_progress=None, logins=None):
+def run_weekly(token, tg, db, intro, note, default_attr="LSC", on_progress=None, logins=None, dry_run=False):
     """Прогон по всем привязанным клиентам (для планировщика/кнопки «Запустить рассылку»).
 
     on_progress(done, total, detail) — колбэк после каждого клиента (для окна прогресса).
-    logins — если задан, слать только этим (для «переотправить недошедшим»)."""
+    logins — если задан, слать только этим (для «переотправить недошедшим»).
+    dry_run=True — прогнать построение отчётов без отправки клиентам (безопасная проверка)."""
     if logins is None:
         logins = sorted({b["login"] for b in db.list_bindings()})
     total = len(logins)
-    results = {"sent": 0, "skipped": 0, "no_chat": 0, "errors": 0, "total": total, "details": []}
+    results = {"sent": 0, "skipped": 0, "no_chat": 0, "errors": 0, "dry": 0, "total": total, "details": []}
     per = period()
 
     def _name(lg):
@@ -380,7 +384,7 @@ def run_weekly(token, tg, db, intro, note, default_attr="LSC", on_progress=None,
     for i, login in enumerate(logins, 1):
         detail = {"login": login, "name": _name(login)}
         try:
-            res = send_for_login(token, tg, db, login, intro, note, default_attr)
+            res = send_for_login(token, tg, db, login, intro, note, default_attr, dry_run=dry_run)
             detail.update(res)
         except Exception as e:  # noqa: BLE001
             results["errors"] += 1
@@ -395,6 +399,8 @@ def run_weekly(token, tg, db, intro, note, default_attr="LSC", on_progress=None,
             continue
         if res["status"] == "sent":
             results["sent"] += 1
+        elif res["status"] == "dry":
+            results["dry"] += 1
         elif res["status"] == "skipped":
             results["skipped"] += 1
         elif res["status"] == "no_chat":
