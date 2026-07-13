@@ -433,21 +433,49 @@ def build_breakdown_values(res):
     return out
 
 
+def _lenta_goal_defs(sh, all_goals):
+    """Цели, по которым считает лента «Общий по неделям» (её целевые колонки) — чтобы разрезы
+    («тотал по РК/группам/…») считали конверсии по ТЕМ ЖЕ целям и цифры сходились с «по неделям».
+    Запас: если ленты/целевых колонок нет — активные цели клиента. Лимит 10 (RC.build шлёт цели
+    одним запросом Reports API)."""
+    active = [g for g in (all_goals or []) if g.get("active") is not False]
+    if not all_goals:
+        return []
+    ws = next((w for w in sh.worksheets() if "по неделям" in w.title.lower()), None)
+    if ws is None:
+        return active[:GOALS_PER_REQUEST]
+    try:
+        fv = ws.get_all_values(value_render_option="FORMULA")
+    except Exception:  # noqa: BLE001
+        return active[:GOALS_PER_REQUEST]
+    if not fv:
+        return active[:GOALS_PER_REQUEST]
+    hidx = find_header_row(fv)
+    frow = fv[hidx + 1] if len(fv) > hidx + 1 else []
+    specs = classify_columns(fv[hidx], frow, all_goals)
+    gids = {s["goal_id"] for s in specs if s["kind"] == "goal" and s["goal_id"]}
+    picked = [g for g in all_goals if g["id"] in gids]
+    return (picked or active)[:GOALS_PER_REQUEST]
+
+
 def push_breakdown(gc, sid, token, login, which, date_from, date_to,
-                   attribution=DEFAULT_ATTR, limit=200, replace=True):
+                   attribution=DEFAULT_ATTR, limit=200, replace=True, goals=None):
     """Создаёт НОВЫЙ лист-снимок разреза за период (имя «По группам (Июнь 2026)»).
 
-    which — ключ из BREAKDOWNS. Конверсии берутся «голым» полем Conversions (без целей —
-    надёжно и без лимита 10 целей). Если лист с таким именем уже есть: replace=True пересоздаёт.
+    which — ключ из BREAKDOWNS. Конверсии считаются по ТЕМ ЖЕ ключевым целям, что и лента
+    «Общий по неделям» (goals — все цели клиента, из них берём целевые колонки ленты), чтобы
+    «тотал кампании» сходился с недельными. Если целей нет — «голое» Conversions (запас).
+    Если лист с таким именем уже есть: replace=True пересоздаёт.
     """
     if which not in BREAKDOWNS:
         raise RuntimeError("Неизвестный разрез: {}".format(which))
     name, level, segments = BREAKDOWNS[which]
+    sh = gc.open_by_key(sid)
+    goal_defs = _lenta_goal_defs(sh, goals) if goals else None
     res = RC.build(token, login, level, date_from, date_to, attribution=attribution,
-                   goal_defs=None, segments=segments, limit=limit)
+                   goal_defs=goal_defs, segments=segments, limit=limit)
     values = build_breakdown_values(res)
     title = "{} ({})".format(name, _month_label(date_from))
-    sh = gc.open_by_key(sid)
     existing = {w.title: w for w in sh.worksheets()}
     if title in existing:
         if not replace:
@@ -802,7 +830,7 @@ def sync_all(token, log=None, do_breakdowns=False):
                 for which in BREAKDOWNS:
                     try:
                         push_breakdown(gc, sh["id"], token, login, which,
-                                       t.replace(day=1).isoformat(), t.isoformat())
+                                       t.replace(day=1).isoformat(), t.isoformat(), goals=goals)
                     except Exception as e:  # noqa: BLE001
                         log("    ! {} разрез {}: {}".format(domain, which, str(e)[:80]))
             errs = [r for r in results if r["status"].startswith("ошибка")]

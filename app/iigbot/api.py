@@ -747,6 +747,8 @@ class Api:
             today = date.today()
             date_from, date_to = today.replace(day=1).isoformat(), today.isoformat()
         keys = [which] if which else list(G.BREAKDOWNS.keys())
+        # цели клиента — чтобы разрезы считали конверсии как лента «по неделям» (сходятся)
+        goals = self._metrika_goals_for(login).get("goals", [])
         gc = G.client(readonly=False)
         sid, domain = self._find_client_sheet(gc, c["name"])
         if not sid:
@@ -755,7 +757,7 @@ class Api:
         results = []
         for k in keys:
             try:
-                r = G.push_breakdown(gc, sid, token, login, k, date_from, date_to)
+                r = G.push_breakdown(gc, sid, token, login, k, date_from, date_to, goals=goals)
                 results.append({"which": k,
                                 "status": "создан «{}» ({} из {} строк)".format(
                                     r["created"], r["n_rows"], r["n_total"])})
