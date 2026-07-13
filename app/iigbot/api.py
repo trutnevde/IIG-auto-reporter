@@ -82,13 +82,15 @@ class Api:
             raise RuntimeError("Этот клиент не в вашем доступе")
 
     def _scope_logins(self, logins):
-        """Ограничить список логинов клиентами пользователя (None→все свои; админ — как есть)."""
-        s = self._owned_set()
-        if s is None:
+        """Рассылка (кнопка) — по СВОИМ клиентам текущего пользователя: и специалист, и админ
+        ведут свой стек и шлют только своих. «Отправить всем разом» делает недельный cron
+        (agency-wide), а не кнопка. Десктоп/легаси без пользователя — все."""
+        if not self.user:
             return logins
+        own = set(self.db.owned_logins(self.user["id"]))
         if logins is None:
-            return sorted(s)
-        return [l for l in logins if l in s]
+            return sorted(own)
+        return [l for l in logins if l in own]
 
     def _visible_chats(self):
         """Чаты, видимые пользователю: непривязанные + привязанные к его клиентам. Админ — все."""
@@ -122,11 +124,10 @@ class Api:
             raise RuntimeError("Клиент закреплён за другим специалистом")
 
     def _claim_if_pool(self, login):
-        """Правило «привязал → взял»: если клиент свободен (ничей), закрепляем его за специалистом.
-        Раздачу клиентов админом это не отменяет — админ может переназначить поверх."""
-        if self._is_admin_scope():
-            return
-        if self._client_owner(login) is None:
+        """Правило «привязал → взял»: если клиент свободен (ничей), закрепляем за тем, кто привязал.
+        Работает и у специалиста, и у админа (админ тоже ведёт свой стек). Раздачу не отменяет —
+        владельца можно переназначить (assign_client)."""
+        if self.user and self._client_owner(login) is None:
             self.db.set_client_owner(login, self.user["id"])
 
     def _bindable_clients(self):
@@ -562,8 +563,8 @@ class Api:
                              if d.get("status") in ("error", "no_chat")})
             if not logins:
                 raise RuntimeError("Нет недошедших клиентов из прошлого прогона.")
-        logins = self._scope_logins(logins)   # рассылать только своих клиентов (админ — всех)
-        if self._owned_set() is not None and not logins:
+        logins = self._scope_logins(logins)   # рассылать только СВОИХ клиентов (и админ тоже)
+        if self.user and not logins:
             raise RuntimeError("У вас нет назначенных клиентов для рассылки.")
         self._run = {"running": True, "done": 0, "total": (len(logins) if logins else 0),
                      "details": [], "summary": None, "error": None, "only_failed": only_failed}
