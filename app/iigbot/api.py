@@ -109,6 +109,32 @@ class Api:
         if b and b["login"] not in s:
             raise RuntimeError("Этот чат не в вашем доступе")
 
+    def _client_owner(self, login):
+        c = self.db.get_client(login)
+        return (c["owner"] if (c and "owner" in c.keys()) else None)
+
+    def _require_bindable(self, login):
+        """Специалист может привязать чат только к СВОЕМУ или СВОБОДНОМУ клиенту (чужого — нельзя)."""
+        if self._is_admin_scope():
+            return
+        owner = self._client_owner(login)
+        if owner is not None and owner != self.user["id"]:
+            raise RuntimeError("Клиент закреплён за другим специалистом")
+
+    def _claim_if_pool(self, login):
+        """Правило «привязал → взял»: если клиент свободен (ничей), закрепляем его за специалистом.
+        Раздачу клиентов админом это не отменяет — админ может переназначить поверх."""
+        if self._is_admin_scope():
+            return
+        if self._client_owner(login) is None:
+            self.db.set_client_owner(login, self.user["id"])
+
+    def _bindable_clients(self):
+        """Клиенты, доступные специалисту для привязки: свои + свободные (пул). Админ — все."""
+        if self._is_admin_scope():
+            return self.db.list_clients("all")
+        return list(self.db.list_clients(self.user["id"])) + list(self.db.list_clients(None))
+
     # ---------- helpers ----------
     def _metrika_counters(self):
         if self._mk_counters is None:
@@ -391,8 +417,9 @@ class Api:
             self.db.remove_binding(cid)
             self._cloud_push_safe()
             return {"bound": False}
-        self._require_owned(login)
+        self._require_bindable(login)      # свой или свободный клиент (не чужой)
         self.db.set_binding(cid, login)
+        self._claim_if_pool(login)          # привязал свободного → закрепил за собой
         self._cloud_push_safe()
         return {"bound": True}
 
@@ -414,10 +441,11 @@ class Api:
     # ---------- matcher (подсказки привязок) ----------
     def _suggest_matches(self):
         all_bound_ids = {b["chat_id"] for b in self.db.list_bindings("all")}
-        bound_logins = {b["login"] for b in self.db.list_bindings(self._owner())}
+        bound_logins = {b["login"] for b in self.db.list_bindings("all")}
         chats = [c for c in self._visible_chats()
                  if c["status"] == "active" and c["chat_id"] not in all_bound_ids]
-        clients = [c for c in self.db.list_clients(self._owner()) if c["login"] not in bound_logins]
+        # свои + свободные клиенты (специалист привязкой закрепляет свободного за собой)
+        clients = [c for c in self._bindable_clients() if c["login"] not in bound_logins]
         free_clients = [{"login": c["login"], "name": c["name"]} for c in clients]
         out = []
         for ch in chats:
@@ -463,7 +491,9 @@ class Api:
         for x in self._suggest_matches()["matches"]:
             if x.get("suggest_login") and x.get("confidence", 0) >= thr:
                 try:
+                    self._require_bindable(x["suggest_login"])
                     self.db.set_binding(int(x["chat_id"]), x["suggest_login"])
+                    self._claim_if_pool(x["suggest_login"])   # привязал свободного → закрепил
                     bound += 1
                     details.append({"chat_title": x["chat_title"], "login": x["suggest_login"],
                                     "confidence": x["confidence"]})
