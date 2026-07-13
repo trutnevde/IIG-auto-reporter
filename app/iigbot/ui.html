@@ -416,9 +416,10 @@ async function renderDashboard(){
     <div class="grid2">
       <div class="panel"><h3><span class="h3-ic">🛎️</span> Требует внимания</h3><div class="body" id="dashAlerts"></div></div>
       <div class="panel hero"><h3><span class="h3-ic">📨</span> Рассылка</h3><div class="body">
-        <p class="muted">Сформировать и отправить отчёты во все привязанные чаты за прошлую неделю.</p>
+        <p class="muted">Сформировать и отправить отчёты в чаты ваших клиентов за прошлую неделю.</p>
         <div class="row-actions">
           <button class="btn primary" onclick="runWeekly()">📨 Запустить рассылку сейчас</button>
+          <button class="btn" onclick="runDry()" title="Собрать отчёты с прогрессом, но клиентам НЕ отправлять — проверка перед боевым запуском">🧪 Проба (без отправки)</button>
           <button class="btn" onclick="go('reports')">История</button>
         </div>
       </div></div>
@@ -648,8 +649,13 @@ async function doSendTest(){
   }catch(e){}
 }
 async function runWeekly(){
-  if(!confirm('Запустить рассылку по ВСЕМ привязанным клиентам за прошлую неделю?'))return;
+  if(!confirm('Запустить рассылку по вашим клиентам за прошлую неделю? Отчёты уйдут в чаты клиентов.'))return;
   try{await api('run_weekly_start');}catch(e){toast('Ошибка старта: '+esc(e.message),'err');return;}
+  openRunModal();
+}
+async function runDry(){
+  // проба: строит отчёты с прогрессом, но клиентам НЕ отправляет
+  try{await api('run_weekly_start',false,true);}catch(e){toast(esc(e.message),'err');return;}
   openRunModal();
 }
 async function runFailedAgain(){
@@ -669,18 +675,18 @@ function openRunModal(){
 }
 async function pollRun(){
   let p;try{p=await api('run_weekly_progress');}catch(e){return;}
-  const H=el('runHead');if(H)H.textContent=p.total?('('+p.done+'/'+p.total+')'):'…';
-  const ic=s=>s==='sent'?'✅':s==='error'?'❌':s==='no_chat'?'🚫':s==='skipped'?'⏭️':'•';
+  const H=el('runHead');if(H)H.textContent=(p.dry?'🧪 проба · ':'')+(p.total?('('+p.done+'/'+p.total+')'):'…');
+  const ic=s=>s==='sent'?'✅':s==='dry'?'🧪':s==='error'?'❌':s==='no_chat'?'🚫':s==='skipped'?'⏭️':'•';
   const rows=(p.details||[]).slice().reverse().map(d=>{
-    const ex=d.status==='sent'?('отправлено в чатов: '+(d.chats||0)):esc(d.reason||d.status||'');
+    const ex=d.status==='sent'?('отправлено в чатов: '+(d.chats||0)):d.status==='dry'?('проба: отчёт собран (чатов '+(d.chats||0)+')'):esc(d.reason||d.status||'');
     return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(150,150,170,.12)"><span>'+ic(d.status)+'</span><div style="flex:1;min-width:0"><b>'+esc(d.name||d.login)+'</b><div class="muted" style="font-size:12px;word-break:break-word">'+ex+'</div></div></div>';}).join('');
   el('runBody').innerHTML=rows||'<div class="muted" style="padding:14px 0"><span class="spin"></span> запускаю…</div>';
   const F=el('runFoot');
   if(p.running){F.innerHTML='<span class="muted" style="margin-right:auto;font-size:12.5px"><span class="spin"></span> идёт рассылка…</span>';setTimeout(pollRun,1200);}
   else{
     const s=p.summary||{};const failed=(s.details||[]).filter(d=>d.status==='error'||d.status==='no_chat').length;
-    F.innerHTML=(failed?('<button class="btn" onclick="runFailedAgain()">🔁 Переотправить недошедшим ('+failed+')</button>'):'')+
-      '<span class="muted" style="margin-right:auto;font-size:12.5px">Итог: ✅ '+(s.sent||0)+' · ⏭️ '+(s.skipped||0)+' · 🚫 '+(s.no_chat||0)+' · ❌ '+(s.errors||0)+'</span>'+
+    F.innerHTML=((!p.dry&&failed)?('<button class="btn" onclick="runFailedAgain()">🔁 Переотправить недошедшим ('+failed+')</button>'):'')+
+      '<span class="muted" style="margin-right:auto;font-size:12.5px">'+(p.dry?'Проба (без отправки) — ':'')+'Итог: ✅ '+(s.sent||0)+(s.dry?(' · 🧪 '+s.dry):'')+' · ⏭️ '+(s.skipped||0)+' · 🚫 '+(s.no_chat||0)+' · ❌ '+(s.errors||0)+'</span>'+
       '<button class="btn primary" onclick="closeRunModal()">Закрыть</button>';
     if(p.error)el('runBody').innerHTML+='<div style="color:var(--red,#e5484d);padding-top:8px">Ошибка запуска: '+esc(p.error)+'</div>';
     loadBadges();

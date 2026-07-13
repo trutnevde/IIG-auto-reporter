@@ -530,7 +530,7 @@ class Api:
                                  logins=self._scope_logins(None))
 
     # ---------- рассылка с окном прогресса ----------
-    def _run_weekly_worker(self, logins=None):
+    def _run_weekly_worker(self, logins=None, dry_run=False):
         try:
             token = load_secrets()["yandex_oauth_token"]
             tg = self._tg_client()
@@ -542,7 +542,7 @@ class Api:
                 self._run["details"].append(detail)
 
             res = report.run_weekly(token, tg, self.db, intro, note, attr,
-                                    on_progress=prog, logins=logins)
+                                    on_progress=prog, logins=logins, dry_run=dry_run)
             self._run["summary"] = res
         except Exception as e:  # noqa: BLE001
             self._run["error"] = str(e)
@@ -550,9 +550,10 @@ class Api:
             self._run["running"] = False
 
     @safe
-    def run_weekly_start(self, only_failed=False):
+    def run_weekly_start(self, only_failed=False, dry_run=False):
         """Запускает рассылку в фоне (для окна прогресса). only_failed=True — только тем, кто в
-        прошлый прогон не получил (ошибка/не отправлено). Прогресс — через run_weekly_progress()."""
+        прошлый прогон не получил (ошибка/не отправлено). dry_run=True — «проба»: строит отчёты
+        с прогрессом, но клиентам НЕ отправляет. Прогресс — через run_weekly_progress()."""
         if getattr(self, "_run", None) and self._run.get("running"):
             return {"already_running": True}
         logins = None
@@ -567,10 +568,12 @@ class Api:
         if self.user and not logins:
             raise RuntimeError("У вас нет назначенных клиентов для рассылки.")
         self._run = {"running": True, "done": 0, "total": (len(logins) if logins else 0),
-                     "details": [], "summary": None, "error": None, "only_failed": only_failed}
+                     "details": [], "summary": None, "error": None,
+                     "only_failed": only_failed, "dry": bool(dry_run)}
         import threading
-        threading.Thread(target=self._run_weekly_worker, args=(logins,), daemon=True).start()
-        return {"started": True, "only_failed": only_failed}
+        threading.Thread(target=self._run_weekly_worker, args=(logins, bool(dry_run)),
+                         daemon=True).start()
+        return {"started": True, "only_failed": only_failed, "dry": bool(dry_run)}
 
     @safe
     def run_weekly_progress(self):
@@ -578,7 +581,7 @@ class Api:
         return {"running": r.get("running", False), "done": r.get("done", 0),
                 "total": r.get("total", 0), "details": r.get("details", []),
                 "summary": r.get("summary"), "error": r.get("error"),
-                "only_failed": r.get("only_failed", False)}
+                "only_failed": r.get("only_failed", False), "dry": r.get("dry", False)}
 
     @safe
     def history(self):
