@@ -3,45 +3,53 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IIG Reporter</title>
+<title>IIG Reporter — кабинет</title>
+<link rel="icon" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/favicon.svg">
+<meta name="theme-color" content="#0171B0">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&family=Inter:wght@600;700&display=swap" rel="stylesheet">
 <script>/* тема до отрисовки — без мигания */(function(){try{var t=localStorage.getItem('iig-theme');if(!t)t=(window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
 <style>
   :root{
-    --bg:#eaeef6; --surface:#ffffff; --surface-2:#f5f8fc; --surface-3:#eef3fa;
-    --ink:#161d2c; --ink-soft:#3b4658; --muted:#6f7c90; --line:#e6ecf4; --line-soft:#eef3f9;
-    --brand:#2a9fe0; --brand-2:#5571f0;
-    --grad:linear-gradient(135deg,#36c5f0 0%,#2a9fe0 46%,#5571f0 100%);
-    --grad-soft:linear-gradient(135deg,rgba(54,197,240,.16),rgba(85,113,240,.12));
-    --ring:rgba(42,159,224,.30);
-    --green:#138a55; --green-bg:#e6f6ee; --amber:#a86a00; --amber-bg:#fdf2da;
+    --bg:#eef5fc; --surface:#ffffff; --surface-2:#f3f9fe; --surface-3:#e7f2fb;
+    --ink:#0c1f30; --ink-soft:#31465b; --muted:#647a90; --line:#dde9f5; --line-soft:#edf4fb;
+    --brand:#0171B0; --brand-2:#3897FF;
+    --grad:linear-gradient(135deg,#3897FF 0%,#0171B0 55%,#014281 100%);
+    --grad-soft:linear-gradient(135deg,rgba(56,151,255,.15),rgba(1,113,176,.10));
+    --ring:rgba(1,113,176,.32);
+    --green:#138a55; --green-bg:#e6f6ee; --amber:#a86a00; --amber-bg:#fff2d6;
     --red:#d23b32; --red-bg:#fdeceb; --violet:#7a5af0; --violet-bg:#efeafe;
-    --cyan:#0e9bc4; --cyan-bg:#e2f5fb; --slate:#5b6b80; --slate-bg:#eef2f7;
-    --shadow-sm:0 1px 2px rgba(16,24,40,.05),0 2px 6px rgba(16,24,40,.06);
-    --shadow-md:0 8px 24px rgba(16,24,40,.10);
-    --shadow-lg:0 24px 60px rgba(16,24,40,.22);
+    --cyan:#0e9bc4; --cyan-bg:#e2f5fb; --slate:#5b6b80; --slate-bg:#eaf1f8;
+    --accent:#FFB739; --accent-ink:#7a5200;
+    --shadow-sm:0 1px 2px rgba(1,66,129,.06),0 2px 8px rgba(1,66,129,.07);
+    --shadow-md:0 10px 28px rgba(1,66,129,.12);
+    --shadow-lg:0 24px 60px rgba(1,66,129,.22);
     --radius:14px;
-    --side-bg:linear-gradient(180deg,#15273e 0%,#0e1a2a 100%);
-    --side-ink:#c4d2e2; --side-muted:#8094a8;
+    --side-bg:linear-gradient(180deg,#013a6b 0%,#01213e 100%);
+    --side-ink:#c3d8ec; --side-muted:#7e97b2;
   }
   [data-theme="dark"]{
-    --bg:#0b1120; --surface:#141c2c; --surface-2:#1a2333; --surface-3:#212c42;
-    --ink:#e9eef7; --ink-soft:#c3cde0; --muted:#8a98b0; --line:#27324a; --line-soft:#202a40;
-    --grad-soft:linear-gradient(135deg,rgba(54,197,240,.18),rgba(85,113,240,.14));
-    --ring:rgba(85,113,240,.45);
+    --bg:#08111f; --surface:#0f1c2c; --surface-2:#152435; --surface-3:#1d3047;
+    --ink:#e9eef7; --ink-soft:#c3cde0; --muted:#8a98b0; --line:#233549; --line-soft:#1a2839;
+    --grad:linear-gradient(135deg,#3897FF 0%,#0171B0 60%,#01508a 100%);
+    --grad-soft:linear-gradient(135deg,rgba(56,151,255,.20),rgba(1,113,176,.15));
+    --ring:rgba(56,151,255,.48);
     --green:#34d399; --green-bg:#102a22; --amber:#fbbf57; --amber-bg:#2c2410;
     --red:#f87171; --red-bg:#2c1818; --violet:#a78bfa; --violet-bg:#211a39;
     --cyan:#38bdf8; --cyan-bg:#102733; --slate:#9aa7bd; --slate-bg:#1b2638;
+    --accent:#FFB739; --accent-ink:#FFB739;
     --shadow-sm:0 1px 2px rgba(0,0,0,.30),0 2px 8px rgba(0,0,0,.28);
     --shadow-md:0 10px 30px rgba(0,0,0,.40);
     --shadow-lg:0 28px 70px rgba(0,0,0,.55);
-    --side-bg:linear-gradient(180deg,#0f1828 0%,#0a1320 100%);
+    --side-bg:linear-gradient(180deg,#0a1c30 0%,#06111f 100%);
     --side-ink:#c4d2e2; --side-muted:#7d8ea4;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;font-family:"Segoe UI Variable Text","Segoe UI",Inter,system-ui,Roboto,Arial,sans-serif;
+  body{margin:0;font-family:'Rubik',"Segoe UI",system-ui,Roboto,Arial,sans-serif;
     background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;
-    background-image:radial-gradient(1100px 520px at 100% -10%,rgba(85,113,240,.10),transparent 60%),radial-gradient(900px 480px at -10% 110%,rgba(54,197,240,.10),transparent 55%);
+    background-image:radial-gradient(1100px 520px at 100% -10%,rgba(56,151,255,.12),transparent 60%),radial-gradient(900px 480px at -10% 110%,rgba(1,113,176,.10),transparent 55%);
     background-attachment:fixed;}
   a{color:var(--brand);text-decoration:none;cursor:pointer}
   a:hover{text-decoration:underline}
@@ -52,8 +60,9 @@
   .side{background:var(--side-bg);color:var(--side-ink);padding:16px 14px;display:flex;flex-direction:column;gap:4px;
     border-right:1px solid rgba(255,255,255,.04)}
   .brand{display:flex;align-items:center;gap:11px;padding:8px 8px 18px;font-size:17px;letter-spacing:.2px;color:#fff}
-  .brand .logo{width:34px;height:34px;border-radius:10px;background:var(--grad);display:grid;place-items:center;font-size:17px;
-    box-shadow:0 6px 16px rgba(42,159,224,.45)}
+  .brand .logo{width:36px;height:36px;border-radius:11px;background:#fff;display:grid;place-items:center;overflow:hidden;
+    box-shadow:0 6px 16px rgba(1,66,129,.38)}
+  .brand .logo img{width:30px;height:30px;display:block}
   .brand-tx{font-weight:600}.brand-tx b{font-weight:800}
   .nav{display:flex;flex-direction:column;gap:3px;margin-top:4px}
   .nav a{display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:11px;color:var(--side-ink);font-weight:500;
@@ -254,7 +263,7 @@
 <body>
 <div class="app">
   <aside class="side">
-    <div class="brand"><span class="logo">📊</span><span class="brand-tx">IIG <b>Reporter</b></span></div>
+    <div class="brand"><span class="logo"><img src="/favicon.svg" alt="IIG"></span><span class="brand-tx">IIG <b>Reporter</b></span></div>
     <nav class="nav" id="nav">
       <a data-go="dashboard" class="active"><span class="ic">🏠</span><span>Обзор</span></a>
       <a data-go="clients"><span class="ic">👥</span><span>Клиенты</span></a>
@@ -338,7 +347,7 @@
 </style>
 <div class="login-bg" id="loginBg">
   <form class="login-card" id="loginForm" onsubmit="doLogin(event)">
-    <div class="lg-brand"><span>📊</span><span>IIG <b>Reporter</b></span></div>
+    <div class="lg-brand"><img src="/favicon.svg" alt="IIG" style="width:30px;height:30px"><span>IIG <b>Reporter</b></span></div>
     <p class="lg-sub">Вход в кабинет агентства</p>
     <label>Email</label>
     <input id="lgEmail" type="email" autocomplete="username" placeholder="you@iig.ru" required>

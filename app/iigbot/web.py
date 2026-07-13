@@ -58,6 +58,16 @@ def create_app(api=None):
     app.secret_key = _secret_key(base.db)
     with open(package_file("ui.html"), encoding="utf-8") as f:
         ui_html = f.read()
+    try:
+        with open(package_file("favicon.svg"), "rb") as f:
+            favicon_svg = f.read()
+    except Exception:  # noqa: BLE001
+        favicon_svg = b""
+
+    @app.route("/favicon.svg")
+    @app.route("/favicon.ico")
+    def favicon():
+        return Response(favicon_svg, mimetype="image/svg+xml")
 
     @app.before_request
     def _load_user():
