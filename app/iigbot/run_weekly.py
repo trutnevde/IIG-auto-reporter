@@ -29,7 +29,7 @@ def main():
     tg = Telegram(bot_token, timeout=20)
     db = Storage(cfg["db_path"])
     intro = rep.get("intro") or "Отчёт за прошлую неделю."
-    note = rep.get("specialist_note") or "Через некоторое время специалист даст комментарий по этому отчёту."
+    note = rep.get("specialist_note") or ""   # приписка опциональна (пусто = не добавлять)
     attr = rep.get("attribution_model") or "LSC"
     if dry:
         print("=== DRY-RUN: строю отчёты, клиентам НЕ отправляю ===")

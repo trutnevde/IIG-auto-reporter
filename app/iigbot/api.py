@@ -168,7 +168,7 @@ class Api:
     def _report_ctx(self):
         rep = load_report_config()
         intro = rep.get("intro") or "Отчёт за прошлую неделю."
-        note = rep.get("specialist_note") or "Через некоторое время специалист даст комментарий по этому отчёту."
+        note = rep.get("specialist_note") or ""   # приписка опциональна (пусто = не добавлять)
         attr = rep.get("attribution_model") or "LSC"
         return intro, note, attr
 

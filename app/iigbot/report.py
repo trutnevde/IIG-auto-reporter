@@ -275,7 +275,10 @@ def build_message(client_name, goal_defs, camps, per, intro, note):
             m.append("⚠️ Кампания за прошлую неделю не расходовала средств, проверьте причину.")
         m.append("")
 
-    m.append(note)
+    if note:                       # приписка опциональна: пустая — не добавляем
+        m.append(note)
+    while m and m[-1] == "":       # без «висящей» пустой строки в конце
+        m.pop()
     return "\n".join(m)
 
 

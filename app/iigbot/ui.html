@@ -891,7 +891,7 @@ async function renderSettings(){
     </div>
     <div class="panel" style="margin-top:16px"><h3><span class="h3-ic">✍️</span> Тексты и расписание</h3><div class="body">
       <div class="field"><label>Вступление</label><input id="stIntro" value="${esc(s.intro)}"></div>
-      <div class="field"><label>Приписка специалиста</label><input id="stNote" value="${esc(s.specialist_note)}"></div>
+      <div class="field"><label>Приписка специалиста <span class="muted" style="font-weight:400">— необязательно, пусто = без приписки</span></label><textarea id="stNote" rows="2" placeholder="Например: «Специалист свяжется с вами по итогам». Оставьте пустым — приписка не добавляется.">${esc(s.specialist_note)}</textarea></div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
         <div class="field"><label>Атрибуция по умолчанию</label><select id="stAttr">${['LSC','LC','FC','LYDC'].map(a=>`<option ${a===s.attribution_model?'selected':''}>${a}</option>`).join('')}</select></div>
         <div class="field"><label>День рассылки</label><input id="stDay" value="${esc(s.report_day)}"></div>
