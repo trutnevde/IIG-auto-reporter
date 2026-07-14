@@ -967,6 +967,8 @@ class Api:
         sent_this = self.db.sent_logins_between(iso(mon), iso(today + timedelta(days=1)))
         sent_mon = self.db.sent_logins_between(iso(mon), iso(mon + timedelta(days=1)))  # именно в Пн
         sent_prev = self.db.sent_logins_between(iso(prev_mon), iso(mon))
+        skip_this = self.db.status_logins_between("skipped", iso(mon), iso(today + timedelta(days=1)))
+        excused = self.db.excused_logins(mon.isoformat())   # {login: {kind,reason,ongoing,id}}
         clients = self.db.list_clients("all")
         owner_of = {c["login"]: (c["owner"] if "owner" in c.keys() else None) for c in clients}
         names = {c["login"]: c["name"] for c in clients}
@@ -980,20 +982,33 @@ class Api:
             bset = bound_by_owner.get(u["id"], set())
             total = len(bset)
             done = bset & sent_this
-            miss = sorted(bset - sent_this)
+            exc_items = []   # уважительные: отдельно (авто-скип + закрытые долги)
+            for lg in sorted(bset - done):
+                if lg in excused:
+                    e = excused[lg]
+                    exc_items.append({"login": lg, "name": names.get(lg, lg),
+                                      "reason": e.get("reason") or ("проект отвалился" if e.get("kind") == "churned" else "уважительно"),
+                                      "excuse_id": e.get("id"), "ongoing": e.get("ongoing")})
+                elif lg in skip_this:
+                    exc_items.append({"login": lg, "name": names.get(lg, lg),
+                                      "reason": "нет открута (авто)", "excuse_id": None, "ongoing": False})
+            exc_logins = {x["login"] for x in exc_items}
+            debt = sorted(bset - done - exc_logins)   # реальные долги
+            covered = len(done) + len(exc_logins)      # обязательство выполнено или закрыто
             last = None
             for lg in bset:
                 ls = self.db.last_send_at(lg)
                 if ls and (last is None or ls > last):
                     last = ls
-            status = ("none" if total == 0 else "ok" if len(done) == total
-                      else "partial" if done else "miss")
+            status = ("none" if total == 0 else "ok" if not debt
+                      else "partial" if (done or exc_logins) else "miss")
             rows.append({
                 "user_id": u["id"], "name": u["name"] or u["email"], "email": u["email"],
                 "role": u["role"], "active": bool(u["active"]),
                 "bound": total, "sent": len(done), "on_monday": len(bset & sent_mon),
-                "missing": [{"login": m, "name": names.get(m, m)} for m in miss],
-                "coverage": (round(100 * len(done) / total) if total else None),
+                "excused": exc_items, "debt": len(debt),
+                "missing": [{"login": m, "name": names.get(m, m)} for m in debt],
+                "coverage": (round(100 * covered / total) if total else None),
                 "prev_coverage": (round(100 * len(bset & sent_prev) / total) if total else None),
                 "last_activity": last, "status": status,
             })
@@ -1001,12 +1016,57 @@ class Api:
         rows.sort(key=lambda r: (order.get(r["status"], 9), -(r["bound"] or 0)))
         bt = sum(r["bound"] for r in rows)
         st = sum(r["sent"] for r in rows)
+        ex = sum(len(r["excused"]) for r in rows)
+        dt = sum(r["debt"] for r in rows)
         agency = {"week_from": mon.isoformat(), "week_to": today.isoformat(),
                   "specialists": sum(1 for r in rows if r["bound"] or r["role"] == "admin"),
-                  "bound_total": bt, "sent_total": st,
-                  "coverage": (round(100 * st / bt) if bt else None),
+                  "bound_total": bt, "sent_total": st, "excused_total": ex, "debt_total": dt,
+                  "coverage": (round(100 * (st + ex) / bt) if bt else None),
                   "at_risk": sum(1 for r in rows if r["status"] in ("miss", "partial"))}
         return {"agency": agency, "rows": rows}
+
+    @safe
+    def excuse_add(self, login, kind="nospend", reason=None):
+        """Закрыть «долг» по клиенту: уважительная причина, что отчёт не отправлен.
+        kind: 'churned' (проект отвалился — бессрочно) | 'nospend'/'other' (на эту неделю).
+        Наблюдатель/админ — по любому; специалист — по своему клиенту."""
+        c = self.db.get_client(login)
+        if not c:
+            raise RuntimeError("Клиент не найден")
+        owner = c["owner"] if "owner" in c.keys() else None
+        if not (self._is_admin() or self._is_observer() or (self.user and owner == self.user["id"])):
+            raise RuntimeError("Можно закрывать долг только по своему клиенту")
+        if kind not in ("churned", "nospend", "other"):
+            kind = "other"
+        from datetime import date, timedelta
+        today = date.today()
+        week = None if kind == "churned" else (today - timedelta(days=today.weekday())).isoformat()
+        if not reason:
+            reason = {"churned": "проект отвалился", "nospend": "нет открута (деньги не крутятся)"}.get(kind, "уважительно")
+        eid = self.db.add_excuse(login, week, kind, reason, (self.user or {}).get("id"))
+        return {"id": eid, "login": login, "kind": kind, "reason": reason, "ongoing": week is None}
+
+    @safe
+    def excuse_remove(self, excuse_id):
+        """Вернуть долг (снять уважительную). Наблюдатель/админ, или владелец клиента."""
+        login = self.db.excuse_owner_login(int(excuse_id))
+        if login is None:
+            return {"removed": int(excuse_id)}
+        c = self.db.get_client(login)
+        owner = (c["owner"] if (c and "owner" in c.keys()) else None)
+        if not (self._is_admin() or self._is_observer() or (self.user and owner == self.user["id"])):
+            raise RuntimeError("Недостаточно прав")
+        self.db.remove_excuse(int(excuse_id))
+        return {"removed": int(excuse_id)}
+
+    @safe
+    def excuses_list(self):
+        """Список уважительных (для наблюдателя/админа) — что и почему закрыто."""
+        self._require_supervisor()
+        return [{"id": e["id"], "login": e["login"], "client_name": e["client_name"] or e["login"],
+                 "kind": e["kind"], "reason": e["reason"], "ongoing": e["week"] is None,
+                 "by_name": e["by_name"], "created_at": e["created_at"]}
+                for e in self.db.list_excuses()]
 
     @safe
     def note_create(self, to_user, text, kind="info"):

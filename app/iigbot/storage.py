@@ -90,6 +90,15 @@ class Storage:
                 ack_at   TEXT,
                 PRIMARY KEY (note_id, user_id)
             );
+            CREATE TABLE IF NOT EXISTS excuses (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                login      TEXT NOT NULL,
+                week       TEXT,          -- ISO понедельник недели; NULL = бессрочно (проект отвалился)
+                kind       TEXT,          -- churned | nospend | other
+                reason     TEXT,
+                by_user    INTEGER,
+                created_at TEXT
+            );
             """
         )
         self.conn.commit()
@@ -283,6 +292,45 @@ class Storage:
             "SELECT DISTINCT login FROM send_log WHERE status='sent' AND sent_at>=? AND sent_at<?",
             (iso_from, iso_to)).fetchall()
         return {r["login"] for r in rows}
+
+    def status_logins_between(self, status, iso_from, iso_to):
+        """Логины с данным статусом в окне (напр. 'skipped' — рассылка запускалась, но нет открута)."""
+        rows = self.conn.execute(
+            "SELECT DISTINCT login FROM send_log WHERE status=? AND sent_at>=? AND sent_at<?",
+            (status, iso_from, iso_to)).fetchall()
+        return {r["login"] for r in rows}
+
+    # ---------- уважительные (закрытые долги) ----------
+    def add_excuse(self, login, week, kind, reason, by_user):
+        cur = self.conn.execute(
+            "INSERT INTO excuses(login,week,kind,reason,by_user,created_at) VALUES(?,?,?,?,?,?)",
+            (login, week, kind, reason, by_user, _now()))
+        self.conn.commit()
+        return cur.lastrowid
+
+    def excused_logins(self, week):
+        """{login: {'kind','reason','id'}} — уважительные на эту неделю ИЛИ бессрочные (week IS NULL)."""
+        rows = self.conn.execute(
+            "SELECT * FROM excuses WHERE week=? OR week IS NULL", (week,)).fetchall()
+        out = {}
+        for r in rows:
+            out[r["login"]] = {"id": r["id"], "kind": r["kind"], "reason": r["reason"],
+                               "ongoing": r["week"] is None}
+        return out
+
+    def list_excuses(self):
+        return self.conn.execute(
+            """SELECT e.*, c.name AS client_name, u.name AS by_name FROM excuses e
+               LEFT JOIN clients c ON c.login=e.login
+               LEFT JOIN users u ON u.id=e.by_user ORDER BY e.id DESC""").fetchall()
+
+    def remove_excuse(self, excuse_id):
+        self.conn.execute("DELETE FROM excuses WHERE id=?", (excuse_id,))
+        self.conn.commit()
+
+    def excuse_owner_login(self, excuse_id):
+        r = self.conn.execute("SELECT login FROM excuses WHERE id=?", (excuse_id,)).fetchone()
+        return r["login"] if r else None
 
     def last_send_at(self, login):
         r = self.conn.execute(

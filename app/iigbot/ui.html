@@ -1199,11 +1199,12 @@ async function renderSupervision(){
   const recip=sup.rows.filter(r=>r.role!=='observer').map(r=>'<option value="'+r.user_id+'">'+esc(r.name)+'</option>').join('');
   const rows=sup.rows.map(r=>{
     const st=SUP_ST[r.status]||SUP_ST.none;
-    const miss=r.missing.length?('<details style="margin-top:6px"><summary class="muted" style="cursor:pointer;font-size:12.5px">не сдано: '+r.missing.length+'</summary><div class="mini-2" style="margin-top:4px">'+r.missing.map(m=>esc(m.name||m.login)).join(', ')+'</div></details>'):'';
+    const debtHtml=r.missing.length?('<div style="margin-top:6px">'+r.missing.map(m=>'<span class="debtchip">'+esc(m.name||m.login)+' <button onclick="supExcuse(\''+encodeURIComponent(m.login)+'\',this)" data-name="'+esc(m.name||m.login)+'" title="Закрыть долг — уважительная причина">закрыть долг</button></span>').join('')+'</div>'):'';
+    const excHtml=r.excused.length?('<details style="margin-top:5px"><summary class="muted" style="cursor:pointer;font-size:12px">уважительно закрыто: '+r.excused.length+'</summary>'+r.excused.map(x=>'<div class="mini-2" style="margin-top:3px">✓ '+esc(x.name)+' — '+esc(x.reason)+(x.excuse_id?(' · <a href="#" onclick="supUnexcuse('+x.excuse_id+');return false" style="color:var(--muted)">вернуть долг</a>'):'')+'</div>').join('')+'</details>'):'';
     return '<tr>'+
       '<td><b>'+esc(r.name)+'</b>'+(r.role==='admin'?' <span class="badge b-grey">админ</span>':'')+(!r.active?' <span class="badge b-grey">заблокирован</span>':'')+'<div class="mini-2">'+esc(r.email)+'</div></td>'+
       '<td class="right">'+r.bound+'</td>'+
-      '<td style="min-width:150px">'+covBar(r.coverage)+'<div class="mini-2">на пн: '+r.on_monday+'/'+r.bound+' · прошлая нед.: '+(r.prev_coverage==null?'—':r.prev_coverage+'%')+'</div>'+miss+'</td>'+
+      '<td style="min-width:200px">'+covBar(r.coverage)+'<div class="mini-2">сдано '+r.sent+' · уважит. '+r.excused.length+' · <b style="color:'+(r.debt?'var(--red)':'var(--muted)')+'">долг '+r.debt+'</b> · на пн '+r.on_monday+' · пред.нед. '+(r.prev_coverage==null?'—':r.prev_coverage+'%')+'</div>'+debtHtml+excHtml+'</td>'+
       '<td class="nowrap mini-2">'+fmtWhen(r.last_activity)+'</td>'+
       '<td><span class="badge" style="color:'+st.c+';background:'+st.bg+'">'+st.t+'</span></td>'+
       '<td class="right"><button class="btn sm" onclick="supNudge('+r.user_id+',this)" data-name="'+esc(r.name)+'" title="Написать сотруднику">✉️ Напомнить</button></td>'+
@@ -1212,10 +1213,16 @@ async function renderSupervision(){
     const kc=n.kind==='urgent'?'var(--red)':n.kind==='warn'?'var(--amber)':'var(--brand)';
     return '<div style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)"><span style="width:4px;border-radius:4px;background:'+kc+'"></span><div style="flex:1;min-width:0"><div>'+esc(n.text)+'</div><div class="mini-2">→ '+esc(n.to_name)+' · '+fmtWhen(n.created_at)+' · прочитали: '+n.acks+'</div></div><button class="btn sm" onclick="supDelNote('+n.id+')">✕</button></div>';}).join(''):'<div class="muted" style="padding:10px 0">Сообщений пока нет.</div>';
   box.innerHTML=`
+    <style>
+      .debtchip{display:inline-flex;align-items:center;gap:7px;background:var(--red-bg);color:var(--red);border:1px solid var(--red);border-radius:9px;padding:2px 4px 2px 10px;font-size:12px;font-weight:600;margin:3px 6px 0 0}
+      .debtchip button{background:var(--red);color:#fff;border:none;border-radius:6px;padding:2px 8px;font:inherit;font-size:11px;font-weight:700;cursor:pointer}
+      .debtchip button:hover{filter:brightness(1.08)}
+    </style>
     <h2 class="title">👁 Контроль</h2><p class="sub">Обязательства сотрудников (недельная рассылка с понедельника) и сообщения. Неделя ${esc(a.week_from)} — ${esc(a.week_to)}.</p>
     <div class="cards" style="margin-bottom:16px">
-      <div class="card"><div class="card-k">Покрытие агентства</div><div class="card-v" style="color:${a.coverage>=100?'var(--green)':a.coverage>=50?'var(--amber)':'var(--red)'}">${a.coverage==null?'—':a.coverage+'%'}</div><div class="card-s">${a.sent_total} из ${a.bound_total} клиентов</div></div>
-      <div class="card"><div class="card-k">Под риском</div><div class="card-v" style="color:${a.at_risk?'var(--red)':'var(--green)'}">${a.at_risk}</div><div class="card-s">сотрудников не сдали/частично</div></div>
+      <div class="card"><div class="card-k">Покрытие агентства</div><div class="card-v" style="color:${a.coverage>=100?'var(--green)':a.coverage>=50?'var(--amber)':'var(--red)'}">${a.coverage==null?'—':a.coverage+'%'}</div><div class="card-s">${a.sent_total} сдано · ${a.excused_total} уважит. из ${a.bound_total}</div></div>
+      <div class="card"><div class="card-k">Открытые долги</div><div class="card-v" style="color:${a.debt_total?'var(--red)':'var(--green)'}">${a.debt_total}</div><div class="card-s">не сдано без причины</div></div>
+      <div class="card"><div class="card-k">Под риском</div><div class="card-v" style="color:${a.at_risk?'var(--amber)':'var(--green)'}">${a.at_risk}</div><div class="card-s">сотрудников с долгами</div></div>
       <div class="card"><div class="card-k">Сотрудников</div><div class="card-v">${a.specialists}</div><div class="card-s">с обязательствами</div></div>
     </div>
     <div class="panel" style="margin-bottom:16px"><h3><span class="h3-ic">📋</span> Обязательства по сотрудникам</h3>
@@ -1228,7 +1235,7 @@ async function renderSupervision(){
         <select id="noTo"><option value="all">📢 Всем специалистам</option>${recip}</select>
         <select id="noKind"><option value="info">Обычное</option><option value="warn">Важное</option><option value="urgent">Срочное 🔴</option></select>
       </div>
-      <textarea id="noText" rows="2" placeholder="Текст сообщения…" style="margin-top:10px"></textarea>
+      <textarea id="noText" rows="4" placeholder="Текст сообщения сотруднику…" style="margin-top:10px;width:100%;min-height:96px;resize:vertical;box-sizing:border-box"></textarea>
       <div style="margin-top:10px"><button class="btn primary" onclick="supSendNote()">Отправить</button></div>
     </div></div>
     <div class="panel"><h3><span class="h3-ic">🗂</span> Отправленные сообщения</h3><div class="body">${notesHtml}</div></div>`;
@@ -1244,6 +1251,18 @@ function supNudge(uid,btn){
   const t=el('noText');if(t){t.value=(name?name.split(' ')[0]+', ':'')+'напоминаю: отправь недельные отчёты по всем своим клиентам.';el('noKind').value='warn';t.focus();t.scrollIntoView({behavior:'smooth',block:'center'});}
 }
 async function supDelNote(id){ if(!confirm('Удалить сообщение?'))return; try{await api('note_delete',id);renderSupervision();}catch(e){} }
+async function supExcuse(loginEnc,btn){
+  const login=decodeURIComponent(loginEnc);
+  const name=btn?btn.getAttribute('data-name'):login;
+  const ch=prompt('Закрыть долг по «'+name+'».\nПричина, почему отчёт не отправлен:\n  1 — проект отвалился (закрыть бессрочно)\n  2 — нет открута / деньги не крутятся (на эту неделю)\n  3 — другое\n\nВведите 1, 2 или 3:','2');
+  if(ch===null)return;
+  const c=(ch||'').trim();
+  const kind = c==='1'?'churned':c==='3'?'other':'nospend';
+  let reason=null;
+  if(kind==='other'){ reason=prompt('Укажите причину:',''); if(reason===null)return; if(!reason.trim()){toast('Пустая причина','err');return;} }
+  try{ await api('excuse_add', login, kind, reason); toast('Долг закрыт: '+name); renderSupervision(); }catch(e){}
+}
+async function supUnexcuse(id){ if(!confirm('Вернуть долг — снять уважительную причину?'))return; try{ await api('excuse_remove', id); renderSupervision(); }catch(e){} }
 
 /* ---------- баннер сообщений сотруднику ---------- */
 async function checkNotes(){

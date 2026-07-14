@@ -406,6 +406,11 @@ def run_weekly(token, tg, db, intro, note, default_attr="LSC", on_progress=None,
             results["dry"] += 1
         elif res["status"] == "skipped":
             results["skipped"] += 1
+            if not dry_run:   # логируем «пропущено» (нет открута) — для контроля обязательств
+                try:
+                    db.log_send(login, None, per["date_from"], per["date_to"], "skipped", res.get("reason"))
+                except Exception:  # noqa: BLE001
+                    pass
         elif res["status"] == "no_chat":
             results["no_chat"] += 1
         results["details"].append(detail)
