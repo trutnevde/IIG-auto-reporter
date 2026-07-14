@@ -72,9 +72,23 @@ class Storage:
                 email      TEXT NOT NULL UNIQUE,
                 pass_hash  TEXT NOT NULL,
                 name       TEXT,
-                role       TEXT NOT NULL DEFAULT 'user',   -- admin | user
+                role       TEXT NOT NULL DEFAULT 'user',   -- admin | observer | user
                 active     INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS notes (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                to_user    INTEGER,          -- NULL = всем специалистам (рассылка-объявление)
+                from_user  INTEGER,
+                text       TEXT NOT NULL,
+                kind       TEXT DEFAULT 'info',   -- info | warn | urgent
+                created_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS note_ack (
+                note_id  INTEGER,
+                user_id  INTEGER,
+                ack_at   TEXT,
+                PRIMARY KEY (note_id, user_id)
             );
             """
         )
@@ -212,6 +226,68 @@ class Storage:
     def set_user_password(self, user_id, pass_hash):
         self.conn.execute("UPDATE users SET pass_hash=? WHERE id=?", (pass_hash, user_id))
         self.conn.commit()
+
+    def set_user_role(self, user_id, role):
+        self.conn.execute("UPDATE users SET role=? WHERE id=?", (role, user_id))
+        self.conn.commit()
+
+    # ---------- сообщения наблюдателя (notes) ----------
+    def create_note(self, to_user, from_user, text, kind="info"):
+        cur = self.conn.execute(
+            "INSERT INTO notes(to_user,from_user,text,kind,created_at) VALUES(?,?,?,?,?)",
+            (to_user, from_user, text, kind, _now()))
+        self.conn.commit()
+        return cur.lastrowid
+
+    def notes_for_user(self, user_id):
+        """Неподтверждённые сообщения пользователю: адресные ему + всем (to_user IS NULL),
+        по которым он ещё не нажал «прочитано»."""
+        return self.conn.execute(
+            """SELECT n.*, u.name AS from_name FROM notes n
+               LEFT JOIN users u ON u.id=n.from_user
+               WHERE (n.to_user=? OR n.to_user IS NULL)
+                 AND NOT EXISTS (SELECT 1 FROM note_ack a WHERE a.note_id=n.id AND a.user_id=?)
+               ORDER BY n.created_at""",
+            (user_id, user_id)).fetchall()
+
+    def ack_note(self, note_id, user_id):
+        self.conn.execute(
+            "INSERT OR IGNORE INTO note_ack(note_id,user_id,ack_at) VALUES(?,?,?)",
+            (note_id, user_id, _now()))
+        self.conn.commit()
+
+    def list_notes(self, limit=100):
+        """Все отправленные сообщения (для наблюдателя/админа) с числом подтверждений."""
+        return self.conn.execute(
+            """SELECT n.*, u.name AS to_name, f.name AS from_name,
+                      (SELECT COUNT(*) FROM note_ack a WHERE a.note_id=n.id) AS acks
+               FROM notes n
+               LEFT JOIN users u ON u.id=n.to_user
+               LEFT JOIN users f ON f.id=n.from_user
+               ORDER BY n.id DESC LIMIT ?""", (limit,)).fetchall()
+
+    def note_acks(self, note_id):
+        return self.conn.execute(
+            """SELECT a.user_id, a.ack_at, u.name FROM note_ack a
+               LEFT JOIN users u ON u.id=a.user_id WHERE a.note_id=? ORDER BY a.ack_at""",
+            (note_id,)).fetchall()
+
+    def delete_note(self, note_id):
+        self.conn.execute("DELETE FROM note_ack WHERE note_id=?", (note_id,))
+        self.conn.execute("DELETE FROM notes WHERE id=?", (note_id,))
+        self.conn.commit()
+
+    def sent_logins_between(self, iso_from, iso_to):
+        """Множество логинов, по которым была УСПЕШНАЯ отправка в окне [from,to)."""
+        rows = self.conn.execute(
+            "SELECT DISTINCT login FROM send_log WHERE status='sent' AND sent_at>=? AND sent_at<?",
+            (iso_from, iso_to)).fetchall()
+        return {r["login"] for r in rows}
+
+    def last_send_at(self, login):
+        r = self.conn.execute(
+            "SELECT MAX(sent_at) m FROM send_log WHERE login=? AND status='sent'", (login,)).fetchone()
+        return r["m"] if r else None
 
     # ---------- bindings ----------
     def set_binding(self, chat_id, login, bound_by=None):

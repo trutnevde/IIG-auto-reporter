@@ -57,18 +57,34 @@ class Api:
         self._mk_counters = None       # кэш списка счётчиков Метрики
 
     def _owner(self):
-        """Скоуп данных: 'all' для десктопа/админа, иначе id пользователя (видит только своих)."""
+        """Скоуп ВИДИМОСТИ: 'all' для десктопа/админа/наблюдателя (видят всё), иначе id (свои)."""
         u = self.user
-        if not u or u.get("role") == "admin":
+        if not u or u.get("role") in ("admin", "observer"):
             return "all"
         return u.get("id")
 
     def _is_admin_scope(self):
         return self._owner() == "all"
 
+    def _is_admin(self):
+        return (not self.user) or self.user.get("role") == "admin"
+
+    def _is_observer(self):
+        return bool(self.user) and self.user.get("role") == "observer"
+
     def _require_admin(self):
-        if not self._is_admin_scope():
+        if not self._is_admin():
             raise RuntimeError("Доступно только администратору")
+
+    def _require_supervisor(self):
+        """Контроль и сообщения — наблюдатель или админ."""
+        if not (self._is_admin() or self._is_observer()):
+            raise RuntimeError("Доступно только наблюдателю или администратору")
+
+    def _require_write(self):
+        """Наблюдатель работает в режиме просмотра — правки/отправки запрещены."""
+        if self._is_observer():
+            raise RuntimeError("Наблюдатель — режим просмотра, изменения недоступны")
 
     def _owned_set(self):
         """Множество логинов клиентов пользователя; None = видит всё (админ/десктоп)."""
@@ -250,6 +266,7 @@ class Api:
 
     @safe
     def save_client(self, login, name=None, goals=None, attribution=None):
+        self._require_write()
         self._require_owned(login)
         self.db.upsert_client(
             login=login, name=name,
@@ -310,6 +327,7 @@ class Api:
     def metrika_goals_bulk(self):
         """Подтягивает цели из Метрики для всех ПРИВЯЗАННЫХ клиентов и СОХРАНЯЕТ их (с пресетом
         ключевых). Если у клиента цель уже была — её флаг active сохраняется (ручные правки не теряются)."""
+        self._require_write()
         logins = sorted({b["login"] for b in self.db.list_bindings(self._owner())})
         res = {"clients": len(logins), "with_goals": 0, "no_counter": 0, "errors": 0, "details": []}
         for login in logins:
@@ -412,6 +430,7 @@ class Api:
 
     @safe
     def bind(self, chat_id, login):
+        self._require_write()
         cid = int(chat_id)
         self._require_chat_visible(cid)
         if not login:
@@ -426,6 +445,7 @@ class Api:
 
     @safe
     def unbind(self, chat_id):
+        self._require_write()
         cid = int(chat_id)
         self._require_chat_visible(cid)
         self.db.remove_binding(cid)
@@ -487,6 +507,7 @@ class Api:
     def bind_bulk(self, min_confidence=75):
         """Массовая привязка: привязывает все непривязанные чаты, где уверенность подсказки
         >= порога. Возвращает {bound, min_confidence, details}. Остальное правишь вручную."""
+        self._require_write()
         thr = int(min_confidence)
         bound, details = 0, []
         for x in self._suggest_matches()["matches"]:
@@ -517,6 +538,7 @@ class Api:
 
     @safe
     def send_test(self, login):
+        self._require_write()
         self._require_owned(login)
         token = load_secrets()["yandex_oauth_token"]
         intro, note, attr = self._report_ctx()
@@ -524,6 +546,7 @@ class Api:
 
     @safe
     def run_weekly(self):
+        self._require_write()
         token = load_secrets()["yandex_oauth_token"]
         intro, note, attr = self._report_ctx()
         return report.run_weekly(token, self._tg_client(), self.db, intro, note, attr,
@@ -554,6 +577,7 @@ class Api:
         """Запускает рассылку в фоне (для окна прогресса). only_failed=True — только тем, кто в
         прошлый прогон не получил (ошибка/не отправлено). dry_run=True — «проба»: строит отчёты
         с прогрессом, но клиентам НЕ отправляет. Прогресс — через run_weekly_progress()."""
+        self._require_write()
         if getattr(self, "_run", None) and self._run.get("running"):
             return {"already_running": True}
         logins = None
@@ -676,6 +700,7 @@ class Api:
     @safe
     def report_send(self, login, level="campaign", date_from=None, date_to=None, attribution="LSC",
                     limit=100, segments=None, date_grain="day", campaign=None, goal_ids=None):
+        self._require_write()
         res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain, campaign, goal_ids)
         chats = self.db.bindings_for_login(login)
         if not chats:
@@ -745,6 +770,7 @@ class Api:
         конверсии total/CPA) продлеваются; внешние столбцы (Callibri/Ticketscloud) не трогаются;
         повтор того же периода пропускается (дедуп).
         """
+        self._require_write()
         self._require_owned(login)
         from . import gsheets as G
         if not G.available():
@@ -768,6 +794,7 @@ class Api:
     def gsheets_breakdowns(self, login, which=None, date_from=None, date_to=None):
         """Создаёт НОВЫЕ листы-снимки разрезов (По РК/группам/ключам/поисковым фразам/регионам)
         за период (по умолчанию — прошлый полный месяц). which=None → все разрезы."""
+        self._require_write()
         self._require_owned(login)
         from . import gsheets as G
         if not G.available():
@@ -868,12 +895,21 @@ class Api:
         email = (email or "").strip().lower()
         if not email or not password:
             raise RuntimeError("Нужны email и пароль")
-        if role not in ("user", "admin"):
+        if role not in ("user", "admin", "observer"):
             role = "user"
         if self.db.get_user_by_email(email):
             raise RuntimeError("Пользователь с таким email уже есть")
         uid = self.db.create_user(email, auth.hash_password(password), name, role)
         return {"id": uid, "email": email, "role": role}
+
+    @safe
+    def user_set_role(self, user_id, role):
+        """Сменить роль пользователя (в т.ч. выдать «Наблюдатель»). Админ."""
+        self._require_admin()
+        if role not in ("user", "admin", "observer"):
+            raise RuntimeError("Неизвестная роль")
+        self.db.set_user_role(int(user_id), role)
+        return {"id": int(user_id), "role": role}
 
     @safe
     def user_set_active(self, user_id, active):
@@ -915,6 +951,112 @@ class Api:
                 raise RuntimeError("Пользователь не найден")
         self.db.set_client_owner(login, owner)
         return {"login": login, "owner": owner}
+
+    # ---------- НАБЛЮДАТЕЛЬ: контроль обязательств + сообщения ----------
+    @safe
+    def supervision(self):
+        """Контроль: по каждому сотруднику — покрытие недельной рассылки (все ли его привязанные
+        клиенты получили отчёт на этой неделе, с понедельника). Наблюдатель/админ."""
+        self._require_supervisor()
+        from datetime import date, timedelta
+        today = date.today()
+        mon = today - timedelta(days=today.weekday())
+        prev_mon = mon - timedelta(days=7)
+        def iso(d):
+            return d.isoformat() + "T00:00:00"
+        sent_this = self.db.sent_logins_between(iso(mon), iso(today + timedelta(days=1)))
+        sent_mon = self.db.sent_logins_between(iso(mon), iso(mon + timedelta(days=1)))  # именно в Пн
+        sent_prev = self.db.sent_logins_between(iso(prev_mon), iso(mon))
+        clients = self.db.list_clients("all")
+        owner_of = {c["login"]: (c["owner"] if "owner" in c.keys() else None) for c in clients}
+        names = {c["login"]: c["name"] for c in clients}
+        bound_by_owner = {}
+        for b in self.db.list_bindings("all"):
+            bound_by_owner.setdefault(owner_of.get(b["login"]), set()).add(b["login"])
+        rows = []
+        for u in self.db.list_users():
+            if u["role"] == "observer":
+                continue
+            bset = bound_by_owner.get(u["id"], set())
+            total = len(bset)
+            done = bset & sent_this
+            miss = sorted(bset - sent_this)
+            last = None
+            for lg in bset:
+                ls = self.db.last_send_at(lg)
+                if ls and (last is None or ls > last):
+                    last = ls
+            status = ("none" if total == 0 else "ok" if len(done) == total
+                      else "partial" if done else "miss")
+            rows.append({
+                "user_id": u["id"], "name": u["name"] or u["email"], "email": u["email"],
+                "role": u["role"], "active": bool(u["active"]),
+                "bound": total, "sent": len(done), "on_monday": len(bset & sent_mon),
+                "missing": [{"login": m, "name": names.get(m, m)} for m in miss],
+                "coverage": (round(100 * len(done) / total) if total else None),
+                "prev_coverage": (round(100 * len(bset & sent_prev) / total) if total else None),
+                "last_activity": last, "status": status,
+            })
+        order = {"miss": 0, "partial": 1, "none": 2, "ok": 3}
+        rows.sort(key=lambda r: (order.get(r["status"], 9), -(r["bound"] or 0)))
+        bt = sum(r["bound"] for r in rows)
+        st = sum(r["sent"] for r in rows)
+        agency = {"week_from": mon.isoformat(), "week_to": today.isoformat(),
+                  "specialists": sum(1 for r in rows if r["bound"] or r["role"] == "admin"),
+                  "bound_total": bt, "sent_total": st,
+                  "coverage": (round(100 * st / bt) if bt else None),
+                  "at_risk": sum(1 for r in rows if r["status"] in ("miss", "partial"))}
+        return {"agency": agency, "rows": rows}
+
+    @safe
+    def note_create(self, to_user, text, kind="info"):
+        """Оставить сообщение сотруднику (to_user=None/'all' → всем специалистам). Наблюдатель/админ.
+        Сотрудник увидит его ярким баннером в кабинете, пока не нажмёт «прочитано»."""
+        self._require_supervisor()
+        text = (text or "").strip()
+        if not text:
+            raise RuntimeError("Пустое сообщение")
+        if kind not in ("info", "warn", "urgent"):
+            kind = "info"
+        tu = None
+        if to_user not in (None, "", 0, "0", "all"):
+            tu = int(to_user)
+            if not self.db.get_user(tu):
+                raise RuntimeError("Получатель не найден")
+        nid = self.db.create_note(tu, (self.user or {}).get("id"), text, kind)
+        return {"id": nid, "to_user": tu, "kind": kind}
+
+    @safe
+    def notes_list(self):
+        """Отправленные сообщения с числом прочтений (для наблюдателя/админа)."""
+        self._require_supervisor()
+        return [{"id": n["id"], "to_user": n["to_user"],
+                 "to_name": (n["to_name"] if n["to_user"] is not None else "всем специалистам") or "?",
+                 "from_name": n["from_name"], "text": n["text"], "kind": n["kind"],
+                 "created_at": n["created_at"], "acks": n["acks"]}
+                for n in self.db.list_notes()]
+
+    @safe
+    def note_delete(self, note_id):
+        self._require_supervisor()
+        self.db.delete_note(int(note_id))
+        return {"deleted": int(note_id)}
+
+    @safe
+    def my_notes(self):
+        """Неподтверждённые сообщения текущему пользователю (яркий баннер). Любой вошедший."""
+        if not self.user:
+            return []
+        return [{"id": n["id"], "text": n["text"], "kind": n["kind"],
+                 "from_name": n["from_name"], "created_at": n["created_at"]}
+                for n in self.db.notes_for_user(self.user["id"])]
+
+    @safe
+    def note_ack(self, note_id):
+        """«Прочитано» — убрать баннер у текущего пользователя."""
+        if self.user:
+            self.db.ack_note(int(note_id), self.user["id"])
+        return {"acked": int(note_id)}
 
     # ---------- settings ----------
     @safe

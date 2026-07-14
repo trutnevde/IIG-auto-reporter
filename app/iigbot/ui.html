@@ -272,6 +272,7 @@
       <a data-go="reports"><span class="ic">📨</span><span>Отчёты</span></a>
       <a data-go="gsheets"><span class="ic">📗</span><span>Таблицы</span></a>
       <a data-go="settings"><span class="ic">⚙️</span><span>Настройки</span></a>
+      <a data-go="supervision" id="navSup" style="display:none"><span class="ic">👁</span><span>Контроль</span></a>
       <a data-go="users" id="navUsers" style="display:none"><span class="ic">🔑</span><span>Пользователи</span></a>
       <a data-go="guide"><span class="ic">📖</span><span>Гайд</span></a>
     </nav>
@@ -301,6 +302,7 @@
       <section data-view="reports"><div id="v_reports"></div></section>
       <section data-view="gsheets"><div id="v_gsheets"></div></section>
       <section data-view="settings"><div id="v_settings"></div></section>
+      <section data-view="supervision"><div id="v_supervision"></div></section>
       <section data-view="users"><div id="v_users"></div></section>
       <section data-view="guide"><div id="v_guide"></div></section>
     </div>
@@ -388,7 +390,7 @@ function applyTheme(t){document.documentElement.setAttribute('data-theme',t);try
 function toggleTheme(){const cur=document.documentElement.getAttribute('data-theme')||'light';applyTheme(cur==='dark'?'light':'dark');}
 
 /* ---------- роутинг ---------- */
-const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',gsheets:'Google-таблицы',settings:'Настройки',users:'Пользователи',guide:'Гайд'};
+const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',gsheets:'Google-таблицы',settings:'Настройки',supervision:'Контроль',users:'Пользователи',guide:'Гайд'};
 function go(v){
   document.querySelectorAll('section[data-view]').forEach(s=>s.classList.toggle('on',s.dataset.view===v));
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active',a.dataset.go===v));
@@ -397,7 +399,7 @@ function go(v){
 }
 document.getElementById('nav').addEventListener('click',e=>{const a=e.target.closest('a');if(a)go(a.dataset.go);});
 let CURRENT='dashboard';
-function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,gsheets:renderGSheets,settings:renderSettings,users:renderUsers,guide:renderGuide}[v]||(()=>{}))();}
+function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,guide:renderGuide}[v]||(()=>{}))();}
 function refresh(){render(CURRENT);loadBadges();}
 
 /* ---------- бейджи/статус ---------- */
@@ -425,12 +427,13 @@ async function renderDashboard(){
     <div class="grid2">
       <div class="panel"><h3><span class="h3-ic">🛎️</span> Требует внимания</h3><div class="body" id="dashAlerts"></div></div>
       <div class="panel hero"><h3><span class="h3-ic">📨</span> Рассылка</h3><div class="body">
-        <p class="muted">Сформировать и отправить отчёты в чаты ваших клиентов за прошлую неделю.</p>
+        ${(ME&&ME.role==='observer')?`<p class="muted">Режим наблюдателя — отправка недоступна. Контроль обязательств сотрудников — в разделе <b>👁 Контроль</b>.</p>
+        <div class="row-actions"><button class="btn primary" onclick="go('supervision')">👁 Открыть Контроль</button></div>`:`<p class="muted">Сформировать и отправить отчёты в чаты ваших клиентов за прошлую неделю.</p>
         <div class="row-actions">
           <button class="btn primary" onclick="runWeekly()">📨 Запустить рассылку сейчас</button>
           <button class="btn" onclick="runDry()" title="Собрать отчёты с прогрессом, но клиентам НЕ отправлять — проверка перед боевым запуском">🧪 Проба (без отправки)</button>
           <button class="btn" onclick="go('reports')">История</button>
-        </div>
+        </div>`}
       </div></div>
     </div>`;
   const a=el('dashAlerts');let h='';
@@ -1169,15 +1172,98 @@ function showLogin(setup){
   setTimeout(()=>{try{el('lgEmail').focus();}catch(e){}},60);
 }
 function hideLogin(){el('loginBg').classList.remove('on');el('lgErr').textContent='';}
+const ROLE_RU={admin:'Администратор',observer:'Наблюдатель',user:'Специалист'};
 function applyUser(){
   const box=el('userBox');
-  if(!ME){box.style.display='none';el('navUsers').style.display='none';return;}
+  const setNav=(id,on)=>{const e=el(id);if(e)e.style.display=on?'':'none';};
+  if(!ME){box.style.display='none';setNav('navUsers',false);setNav('navSup',false);return;}
   box.style.display='inline-flex';
   el('userName').textContent=ME.name||ME.email;
-  el('userRole').textContent=(ME.role==='admin'?'Администратор':'Специалист');
+  el('userRole').textContent=ROLE_RU[ME.role]||'Специалист';
   el('userAva').textContent=((ME.name||ME.email||'?').trim().charAt(0)||'?');
-  el('navUsers').style.display=(ME.role==='admin')?'':'none';
+  setNav('navUsers',ME.role==='admin');
+  setNav('navSup',ME.role==='admin'||ME.role==='observer');   // Контроль — админ и наблюдатель
 }
+/* ---------- КОНТРОЛЬ: наблюдатель/админ ---------- */
+const SUP_ST={ok:{t:'✅ всё сдал',c:'var(--green)',bg:'var(--green-bg)'},partial:{t:'⚠️ частично',c:'var(--amber)',bg:'var(--amber-bg)'},miss:{t:'❌ не сдал',c:'var(--red)',c2:1,bg:'var(--red-bg)'},none:{t:'— нет клиентов',c:'var(--muted)',bg:'var(--surface-3)'}};
+function covBar(p){if(p==null)return '<span class="muted">—</span>';const col=p>=100?'var(--green)':p>=50?'var(--amber)':'var(--red)';return '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:8px;border-radius:99px;background:var(--surface-3);overflow:hidden;min-width:70px"><div style="height:100%;width:'+p+'%;background:'+col+'"></div></div><b style="font-size:12.5px">'+p+'%</b></div>';}
+function fmtWhen(iso){if(!iso)return 'нет отправок';try{const d=new Date(iso);return d.toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){return iso;}}
+async function renderSupervision(){
+  const box=el('v_supervision');
+  if(!ME||(ME.role!=='admin'&&ME.role!=='observer')){box.innerHTML='<div class="empty">Раздел доступен наблюдателю и администратору.</div>';return;}
+  box.innerHTML='<div class="empty">Загрузка…</div>';
+  let sup,notes;
+  try{sup=await api('supervision');notes=await api('notes_list');}
+  catch(e){box.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const a=sup.agency;
+  const recip=sup.rows.filter(r=>r.role!=='observer').map(r=>'<option value="'+r.user_id+'">'+esc(r.name)+'</option>').join('');
+  const rows=sup.rows.map(r=>{
+    const st=SUP_ST[r.status]||SUP_ST.none;
+    const miss=r.missing.length?('<details style="margin-top:6px"><summary class="muted" style="cursor:pointer;font-size:12.5px">не сдано: '+r.missing.length+'</summary><div class="mini-2" style="margin-top:4px">'+r.missing.map(m=>esc(m.name||m.login)).join(', ')+'</div></details>'):'';
+    return '<tr>'+
+      '<td><b>'+esc(r.name)+'</b>'+(r.role==='admin'?' <span class="badge b-grey">админ</span>':'')+(!r.active?' <span class="badge b-grey">заблокирован</span>':'')+'<div class="mini-2">'+esc(r.email)+'</div></td>'+
+      '<td class="right">'+r.bound+'</td>'+
+      '<td style="min-width:150px">'+covBar(r.coverage)+'<div class="mini-2">на пн: '+r.on_monday+'/'+r.bound+' · прошлая нед.: '+(r.prev_coverage==null?'—':r.prev_coverage+'%')+'</div>'+miss+'</td>'+
+      '<td class="nowrap mini-2">'+fmtWhen(r.last_activity)+'</td>'+
+      '<td><span class="badge" style="color:'+st.c+';background:'+st.bg+'">'+st.t+'</span></td>'+
+      '<td class="right"><button class="btn sm" onclick="supNudge('+r.user_id+',this)" data-name="'+esc(r.name)+'" title="Написать сотруднику">✉️ Напомнить</button></td>'+
+    '</tr>';}).join('');
+  const notesHtml=notes.length?notes.map(n=>{
+    const kc=n.kind==='urgent'?'var(--red)':n.kind==='warn'?'var(--amber)':'var(--brand)';
+    return '<div style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)"><span style="width:4px;border-radius:4px;background:'+kc+'"></span><div style="flex:1;min-width:0"><div>'+esc(n.text)+'</div><div class="mini-2">→ '+esc(n.to_name)+' · '+fmtWhen(n.created_at)+' · прочитали: '+n.acks+'</div></div><button class="btn sm" onclick="supDelNote('+n.id+')">✕</button></div>';}).join(''):'<div class="muted" style="padding:10px 0">Сообщений пока нет.</div>';
+  box.innerHTML=`
+    <h2 class="title">👁 Контроль</h2><p class="sub">Обязательства сотрудников (недельная рассылка с понедельника) и сообщения. Неделя ${esc(a.week_from)} — ${esc(a.week_to)}.</p>
+    <div class="cards" style="margin-bottom:16px">
+      <div class="card"><div class="card-k">Покрытие агентства</div><div class="card-v" style="color:${a.coverage>=100?'var(--green)':a.coverage>=50?'var(--amber)':'var(--red)'}">${a.coverage==null?'—':a.coverage+'%'}</div><div class="card-s">${a.sent_total} из ${a.bound_total} клиентов</div></div>
+      <div class="card"><div class="card-k">Под риском</div><div class="card-v" style="color:${a.at_risk?'var(--red)':'var(--green)'}">${a.at_risk}</div><div class="card-s">сотрудников не сдали/частично</div></div>
+      <div class="card"><div class="card-k">Сотрудников</div><div class="card-v">${a.specialists}</div><div class="card-s">с обязательствами</div></div>
+    </div>
+    <div class="panel" style="margin-bottom:16px"><h3><span class="h3-ic">📋</span> Обязательства по сотрудникам</h3>
+      <table><thead><tr><th>Сотрудник</th><th class="right">Клиентов</th><th>Покрытие (эта неделя)</th><th>Последняя отправка</th><th>Статус</th><th></th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="6" class="muted">Нет сотрудников с клиентами</td></tr>'}</tbody></table>
+    </div>
+    <div class="panel" style="margin-bottom:16px"><h3><span class="h3-ic">✉️</span> Сообщение сотруднику</h3><div class="body">
+      <p class="muted" style="margin-top:0">Появится у сотрудника ярким баннером в кабинете, пока он не нажмёт «прочитано».</p>
+      <div style="display:grid;grid-template-columns:1fr 160px;gap:10px">
+        <select id="noTo"><option value="all">📢 Всем специалистам</option>${recip}</select>
+        <select id="noKind"><option value="info">Обычное</option><option value="warn">Важное</option><option value="urgent">Срочное 🔴</option></select>
+      </div>
+      <textarea id="noText" rows="2" placeholder="Текст сообщения…" style="margin-top:10px"></textarea>
+      <div style="margin-top:10px"><button class="btn primary" onclick="supSendNote()">Отправить</button></div>
+    </div></div>
+    <div class="panel"><h3><span class="h3-ic">🗂</span> Отправленные сообщения</h3><div class="body">${notesHtml}</div></div>`;
+}
+async function supSendNote(){
+  const to=el('noTo').value, kind=el('noKind').value, text=el('noText').value.trim();
+  if(!text){toast('Пустое сообщение','err');return;}
+  try{await api('note_create',to,text,kind);toast('Отправлено');el('noText').value='';renderSupervision();}catch(e){}
+}
+function supNudge(uid,btn){
+  const name=btn?btn.getAttribute('data-name'):'';
+  const sel=el('noTo');if(sel)sel.value=String(uid);
+  const t=el('noText');if(t){t.value=(name?name.split(' ')[0]+', ':'')+'напоминаю: отправь недельные отчёты по всем своим клиентам.';el('noKind').value='warn';t.focus();t.scrollIntoView({behavior:'smooth',block:'center'});}
+}
+async function supDelNote(id){ if(!confirm('Удалить сообщение?'))return; try{await api('note_delete',id);renderSupervision();}catch(e){} }
+
+/* ---------- баннер сообщений сотруднику ---------- */
+async function checkNotes(){
+  if(!ME)return;
+  let ns;try{ns=await api('my_notes');}catch(e){return;}
+  let b=el('noteBanner');
+  if(!ns||!ns.length){if(b)b.remove();return;}
+  if(!document.getElementById('noteKf')){const st=document.createElement('style');st.id='noteKf';st.textContent='@keyframes notePulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.2)}}';document.head.appendChild(st);}
+  if(!b){b=document.createElement('div');b.id='noteBanner';b.style.cssText='position:fixed;left:0;right:0;top:0;z-index:9000;display:flex;flex-direction:column;gap:2px';document.body.appendChild(b);}
+  b.innerHTML=ns.map(n=>{
+    const c=n.kind==='urgent'?['#e5484d','#fff']:n.kind==='warn'?['#FFB739','#3a2600']:['#0171B0','#fff'];
+    const ic=n.kind==='urgent'?'🔴':n.kind==='warn'?'⚠️':'📢';
+    return '<div style="background:'+c[0]+';color:'+c[1]+';padding:11px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 6px 20px rgba(0,0,0,.25)'+(n.kind==='urgent'?';animation:notePulse 1.6s ease-in-out infinite':'')+'">'+
+      '<span style="font-size:18px">'+ic+'</span>'+
+      '<div style="flex:1;min-width:0"><b>'+esc(n.text)+'</b><span style="opacity:.85;font-size:12px;margin-left:8px">— '+esc(n.from_name||'руководитель')+'</span></div>'+
+      '<button onclick="ackNote('+n.id+')" style="background:rgba(255,255,255,.22);color:inherit;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 12px;font:inherit;font-weight:700;cursor:pointer;white-space:nowrap">✓ Прочитано</button></div>';
+  }).join('');
+}
+async function ackNote(id){ try{await api('note_ack',id);}catch(e){} checkNotes(); }
+
 async function doLogin(ev){
   ev.preventDefault();
   const email=el('lgEmail').value.trim(), pass=el('lgPass').value;
@@ -1215,7 +1301,10 @@ async function renderUsers(){
   const opts=users.map(u=>'<option value="'+u.id+'">'+esc(u.name||u.email)+'</option>').join('');
   const rows=users.map(u=>`<tr>
       <td><b>${esc(u.name||'—')}</b><div class="mini-2">${esc(u.email)}</div></td>
-      <td>${u.role==='admin'?'<span class="badge b-grey">админ</span>':'специалист'}</td>
+      <td><select class="btn sm" style="font-weight:600" onchange="userSetRole(${u.id},this.value)">
+        <option value="user"${u.role==='user'?' selected':''}>Специалист</option>
+        <option value="observer"${u.role==='observer'?' selected':''}>👁 Наблюдатель</option>
+        <option value="admin"${u.role==='admin'?' selected':''}>Администратор</option></select></td>
       <td>${u.active?'<span class="badge b-green">активен</span>':'<span class="badge b-grey">заблокирован</span>'}</td>
       <td class="right">${u.clients}</td>
       <td class="right nowrap">
@@ -1230,7 +1319,7 @@ async function renderUsers(){
         <div><label class="mini-2">Email</label><input id="nuEmail" type="email" placeholder="ivan@iig.ru"></div>
         <div><label class="mini-2">Имя</label><input id="nuName" placeholder="Иван"></div>
         <div><label class="mini-2">Пароль</label><input id="nuPass" placeholder="временный пароль"></div>
-        <div><label class="mini-2">Роль</label><select id="nuRole"><option value="user">Специалист</option><option value="admin">Администратор</option></select></div>
+        <div><label class="mini-2">Роль</label><select id="nuRole"><option value="user">Специалист</option><option value="observer">Наблюдатель (работодатель)</option><option value="admin">Администратор</option></select></div>
         <button class="btn primary" onclick="userCreate()">Создать</button>
       </div>
     </div>
@@ -1268,6 +1357,7 @@ async function userCreate(){
   catch(e){}
 }
 async function userToggle(id,active){ try{ await api('user_set_active',id,!!active); renderUsers(); }catch(e){} }
+async function userSetRole(id,role){ try{ await api('user_set_role',id,role); toast(role==='observer'?'Выдана роль «Наблюдатель»':'Роль изменена'); renderUsers(); }catch(e){ renderUsers(); } }
 async function userPass(id){
   const p=prompt('Новый пароль для пользователя:');
   if(!p)return;
@@ -1287,6 +1377,7 @@ function init(){
   el('botInfo').textContent='Готово';
   applyUser();
   go('dashboard');loadBadges();
+  if(ME){checkNotes();if(!window._noteTimer)window._noteTimer=setInterval(checkNotes,45000);}  // яркие сообщения руководителя
   const modeTx = ME ? ('Веб · '+esc(ME.email)) : 'Десктоп · ПК-режим';
   api('settings').then(s=>{el('botInfo').innerHTML='Бот: @'+esc((s.telegram&&s.telegram.username)||'?')+'<br><span class="mini-2">'+modeTx+'</span>';
     el('botPill').innerHTML='<span class="dot"></span> '+(s.telegram.status==='ок'?'Подключён':'Нет связи');
