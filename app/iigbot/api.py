@@ -539,6 +539,36 @@ class Api:
         return {"text": text, "campaigns": len(camps), "period": per}
 
     @safe
+    def copy_reports(self, logins=None):
+        """Собирает недельные отчёты пачкой для КОПИПАСТА в сторонние мессенджеры (WhatsApp/VK/MAX/
+        Яндекс и т.п.), куда бот не достаёт: ничего не отправляет — специалист сам копирует текст и
+        вставляет в чат. logins — список клиентов (скоупится по владельцу); None = все свои.
+        Возвращает блоки {login, name, text, status[ok|skipped|error], reason, campaigns}."""
+        token = load_secrets()["yandex_oauth_token"]
+        intro, note, attr = self._report_ctx()
+        # скоуп как у списка клиентов (видимость): админ — все, специалист — свои. Не путать с
+        # рассылкой (_scope_logins = только владелец): тут строим для любого ВИДИМОГО клиента.
+        visible = {c["login"] for c in self.db.list_clients(self._owner())}
+        targets = [l for l in (logins or sorted(visible)) if l in visible]
+        out = []
+        for login in targets:
+            c = self.db.get_client(login)
+            name = (c["name"] if c and c["name"] else login)
+            try:
+                text, camps, per = report.build_for_login(token, self.db, login, intro, note, attr)
+                if text is None:
+                    out.append({"login": login, "name": name, "text": None,
+                                "status": "skipped", "reason": "нет активных кампаний за 4 недели"})
+                else:
+                    out.append({"login": login, "name": name, "text": text,
+                                "status": "ok", "campaigns": len(camps)})
+            except Exception as e:  # noqa: BLE001
+                log_error("copy_reports." + login, e)
+                out.append({"login": login, "name": name, "text": None,
+                            "status": "error", "reason": str(e)})
+        return out
+
+    @safe
     def send_test(self, login):
         self._require_write()
         self._require_owned(login)
