@@ -181,7 +181,6 @@
   .b-amber{background:var(--amber-bg);color:var(--amber)}
   .b-red{background:var(--red-bg);color:var(--red)}
   .b-grey{background:var(--slate-bg);color:var(--muted)}
-  .b-blue{background:rgba(1,113,176,.12);color:var(--brand)}
 
   .muted{color:var(--muted)}.right{text-align:right}.nowrap{white-space:nowrap}
   .chip{display:inline-flex;align-items:center;background:var(--surface-3);border:1px solid var(--line);border-radius:8px;
@@ -491,49 +490,24 @@ async function doBulkGoals(){
 }
 
 /* ---------- CHATS ---------- */
-function chanBadge(ch){return ch==='ymessenger'
-  ?'<span class="badge b-amber" title="Яндекс Мессенджер">🟡 Яндекс</span>'
-  :'<span class="badge b-blue" title="Telegram">✈️ Telegram</span>';}
 async function renderChats(){
   const host=el('v_chats');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
   let chats,cls;try{chats=await api('chats');cls=await api('clients');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
   CHATS=chats;
   const opts=cls.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
-  const yaN=chats.filter(c=>c.channel==='ymessenger').length;
   host.innerHTML=`
-    <h2 class="title">Чаты</h2><p class="sub">Telegram-чаты появляются сами, когда бота туда добавляют. Чаты Яндекс Мессенджера добавляются вручную (ниже) — у Яндекса нет авто-обнаружения.</p>
-    <div class="panel" style="margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span class="badge b-amber">🟡 Яндекс Мессенджер</span>
-        <span class="muted" style="font-size:13px">Добавить групповой чат вручную: вставь его chat_id (вид <code>0/0/xxxx</code> из мессенджера) и, по желанию, сразу привяжи клиента.</span>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center">
-        <input id="yaExt" placeholder="chat_id, напр. 0/0/1a2b3c…" style="flex:1;min-width:220px">
-        <input id="yaTitle" placeholder="Название (необязательно)" style="flex:1;min-width:160px">
-        <select id="yaLogin"><option value="">— клиента привязать позже —</option>${opts}</select>
-        <button class="btn primary" onclick="doAddYaChat()">＋ Добавить Яндекс-чат</button>
-      </div>
-      <div class="muted" style="font-size:12px;margin-top:8px">Чтобы бот получил chat_id, добавь его в групповой чат Яндекс Мессенджера и напиши там любое сообщение — chat_id виден в кабинете бот-платформы Яндекса. Отправка включается, когда в secrets.json задан <code>yandex_messenger_token</code>.</div>
-    </div>
+    <h2 class="title">Чаты</h2><p class="sub">Чаты появляются автоматически, когда бота туда добавляют. Сопоставь чат с клиентом.</p>
     <div class="panel"><div class="scrollx"><table>
-      <thead><tr><th>Чат</th><th>Канал</th><th>ID</th><th>Тип</th><th>Статус</th><th>Привязка</th><th></th></tr></thead>
+      <thead><tr><th>Чат</th><th>ID</th><th>Тип</th><th>Статус</th><th>Привязка</th><th></th></tr></thead>
       <tbody>${chats.length?chats.map(c=>`
         <tr>
-          <td>${esc(c.title)}</td><td>${chanBadge(c.channel)}</td>
-          <td class="muted">${c.channel==='ymessenger'?esc(c.ext_id||''):c.chat_id}</td><td>${esc(c.type||'')}</td>
+          <td>${esc(c.title)}</td><td class="muted">${c.chat_id}</td><td>${esc(c.type||'')}</td>
           <td>${c.status==='active'?'<span class="badge b-green">активен</span>':'<span class="badge b-grey">удалён</span>'}</td>
           <td><select id="bind_${c.chat_id}"><option value="">— не привязан —</option>${opts}</select></td>
           <td class="right"><button class="btn sm primary" onclick="doBind(${c.chat_id})">Сохранить</button> <button class="btn sm" onclick="doDeleteChat(${c.chat_id})" title="Удалить чат из базы">🗑</button></td>
-        </tr>`).join(''):'<tr><td colspan="7" class="empty">Пока нет чатов. Запусти бота и добавь его в чат.</td></tr>'}
+        </tr>`).join(''):'<tr><td colspan="6" class="empty">Пока нет чатов. Запусти бота и добавь его в чат.</td></tr>'}
       </tbody></table></div></div>`;
   chats.forEach(c=>{if(c.login){const s=el('bind_'+c.chat_id);if(s)s.value=c.login;}});
-}
-async function doAddYaChat(){
-  const ext=(el('yaExt').value||'').trim();
-  if(!ext){toast('Вставь chat_id Яндекс Мессенджера','err');return;}
-  const title=(el('yaTitle').value||'').trim();
-  const login=el('yaLogin').value||'';
-  try{await api('add_yandex_chat',ext,title,login);toast('Яндекс-чат добавлен'+(login?' и привязан':''),'ok');refresh();}catch(e){toast(e.message||'Ошибка','err');}
 }
 async function doBind(chatId){const sel=el('bind_'+chatId);try{await api('bind',chatId,sel.value);toast(sel.value?'Привязано':'Привязка снята','ok');refresh();}catch(e){}}
 async function doDeleteChat(chatId){
@@ -1130,7 +1104,7 @@ async function openClient(login){
   el('drTitle').innerHTML=esc(c.name)+' <span class="muted" style="font-weight:400">· '+esc(c.login)+'</span>';
   el('drBody').innerHTML=`
     <div class="field"><label>Название</label><input id="dName" value="${esc(c.name)}"></div>
-    <div class="field"><label>Привязанные чаты</label><div>${c.chats.length?c.chats.map(ch=>'<span class="chip">'+(ch.channel==='ymessenger'?'🟡':'✈️')+' '+esc(ch.title)+'</span>').join(''):'<span class="muted">— нет. Привяжи во вкладке «Чаты»/«Привязки».</span>'}</div></div>
+    <div class="field"><label>Привязанные чаты</label><div>${c.chats.length?c.chats.map(ch=>'<span class="chip">💬 '+esc(ch.title)+'</span>').join(''):'<span class="muted">— нет. Привяжи во вкладке «Чаты»/«Привязки».</span>'}</div></div>
     <div class="field"><label>Модель атрибуции</label><select id="dAttr">${['LSC','LC','FC','LYDC'].map(a=>`<option ${a===c.attribution?'selected':''}>${a}</option>`).join('')}</select></div>
     <div class="field"><label>Цели Метрики (конверсии)</label>
       <div class="goalrow head"><div>в отчёт</div><div>ID</div><div>Название</div><div></div></div>

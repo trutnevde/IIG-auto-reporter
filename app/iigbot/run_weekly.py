@@ -9,7 +9,6 @@ import sys
 from .settings import load_secrets, load_app_config, load_report_config
 from .storage import Storage
 from .telegram_api import Telegram
-from .messengers import Messengers
 from . import report
 
 
@@ -28,19 +27,13 @@ def main():
         return
     dry = ("--dry" in sys.argv) or ("--dry-run" in sys.argv)
     tg = Telegram(bot_token, timeout=20)
-    ym = None
-    ym_token = (secrets.get("yandex_messenger_token") or "").strip()
-    if ym_token and "ВСТАВ" not in ym_token:
-        from .yandex_messenger import YMessenger
-        ym = YMessenger(ym_token, timeout=20)
-    mm = Messengers(tg, ym)   # роутер: Telegram + Яндекс Мессенджер (по chat.channel)
     db = Storage(cfg["db_path"])
     intro = rep.get("intro") or "Отчёт за прошлую неделю."
     note = rep.get("specialist_note") or ""   # приписка опциональна (пусто = не добавлять)
     attr = rep.get("attribution_model") or "LSC"
     if dry:
         print("=== DRY-RUN: строю отчёты, клиентам НЕ отправляю ===")
-    res = report.run_weekly(token, mm, db, intro, note, attr, dry_run=dry)
+    res = report.run_weekly(token, tg, db, intro, note, attr, dry_run=dry)
     print("Готово: {label} {n}, пропущено {skipped}, без чата {no_chat}, ошибок {errors}".format(
         label=("построено (dry)" if dry else "отправлено"),
         n=(res.get("dry", 0) if dry else res.get("sent", 0)),
