@@ -112,6 +112,7 @@ def load_secrets():
 SECRETS_TEMPLATE = {
     "telegram_bot_token": "ВСТАВЬ_ТОКЕН_БОТА_от_BotFather",
     "yandex_oauth_token": "ВСТАВЬ_OAUTH_ТОКЕН_ЯНДЕКС_ДИРЕКТА",
+    "yandex_messenger_token": "ВСТАВЬ_ТОКЕН_БОТА_ЯНДЕКС_МЕССЕНДЖЕРА_или_оставь_пустым",
 }
 
 

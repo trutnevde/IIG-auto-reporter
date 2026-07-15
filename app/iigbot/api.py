@@ -176,6 +176,24 @@ class Api:
             self._tg = Telegram(token, timeout=20)
         return self._tg
 
+    def _ym_client(self):
+        """Клиент Яндекс Мессенджера или None, если токен не задан (канал просто недоступен)."""
+        token = (load_secrets().get("yandex_messenger_token") or "").strip()
+        if not token or "ВСТАВ" in token:
+            return None
+        from .yandex_messenger import YMessenger
+        return YMessenger(token, timeout=20)
+
+    def _messengers(self):
+        """Роутер доставки: Telegram + Яндекс Мессенджер. Рассылка шлёт в оба канала по chat.channel."""
+        from .messengers import Messengers
+        tg = None
+        try:
+            tg = self._tg_client()
+        except Exception:  # noqa: BLE001 — нет токена Telegram: этот канал недоступен
+            tg = None
+        return Messengers(tg, self._ym_client())
+
     def _bot_name(self):
         if self._bot_username is None:
             self._bot_username = self._tg_client().get_me().get("username")
@@ -191,6 +209,12 @@ class Api:
     def _chat_title(self, chat_id):
         c = self.db.get_chat(chat_id)
         return c["title"] if c else str(chat_id)
+
+    def _chat_channel(self, chat_id):
+        c = self.db.get_chat(chat_id)
+        if not c:
+            return "telegram"
+        return (c["channel"] if "channel" in c.keys() else None) or "telegram"
 
     # ---------- dashboard ----------
     @safe
@@ -261,7 +285,8 @@ class Api:
         return {
             "login": c["login"], "name": c["name"], "source": c["source"],
             "attribution": c["attribution"] or "LSC", "goals": goals,
-            "chats": [{"chat_id": b["chat_id"], "title": self._chat_title(b["chat_id"])} for b in binds],
+            "chats": [{"chat_id": b["chat_id"], "title": self._chat_title(b["chat_id"]),
+                       "channel": self._chat_channel(b["chat_id"])} for b in binds],
         }
 
     @safe
@@ -420,9 +445,11 @@ class Api:
         out = []
         for c in self._visible_chats():
             b = binds.get(c["chat_id"])
+            ch = (c["channel"] if "channel" in c.keys() else None) or "telegram"
             out.append({
                 "chat_id": c["chat_id"], "title": c["title"], "type": c["type"],
                 "status": c["status"], "added_at": c["added_at"],
+                "channel": ch, "ext_id": (c["ext_id"] if "ext_id" in c.keys() else None),
                 "login": b["login"] if b else None,
                 "client_name": names.get(b["login"]) if b else None,
             })
@@ -442,6 +469,24 @@ class Api:
         self._claim_if_pool(login)          # привязал свободного → закрепил за собой
         self._cloud_push_safe()
         return {"bound": True}
+
+    @safe
+    def add_yandex_chat(self, ext_id, title=None, login=None):
+        """Завести чат Яндекс Мессенджера вручную (у Яндекса нет пассивного обнаружения как в
+        Telegram — chat_id берём из мессенджера, вид «0/0/uuid»). Опционально сразу привязать клиента.
+        Возвращает суррогатный chat_id (для UI/привязок)."""
+        self._require_write()
+        ext_id = (str(ext_id or "")).strip()
+        if not ext_id:
+            raise RuntimeError("Пустой chat_id Яндекс Мессенджера")
+        cid = self.db.add_ya_chat(ext_id, (title or "").strip() or None)
+        if login:
+            self._require_bindable(login)
+            self.db.set_binding(cid, login)
+            self._claim_if_pool(login)
+        self._cloud_push_safe()
+        return {"chat_id": cid, "ext_id": ext_id, "channel": "ymessenger",
+                "bound": bool(login)}
 
     @safe
     def unbind(self, chat_id):
@@ -542,21 +587,21 @@ class Api:
         self._require_owned(login)
         token = load_secrets()["yandex_oauth_token"]
         intro, note, attr = self._report_ctx()
-        return report.send_for_login(token, self._tg_client(), self.db, login, intro, note, attr)
+        return report.send_for_login(token, self._messengers(), self.db, login, intro, note, attr)
 
     @safe
     def run_weekly(self):
         self._require_write()
         token = load_secrets()["yandex_oauth_token"]
         intro, note, attr = self._report_ctx()
-        return report.run_weekly(token, self._tg_client(), self.db, intro, note, attr,
+        return report.run_weekly(token, self._messengers(), self.db, intro, note, attr,
                                  logins=self._scope_logins(None))
 
     # ---------- рассылка с окном прогресса ----------
     def _run_weekly_worker(self, logins=None, dry_run=False):
         try:
             token = load_secrets()["yandex_oauth_token"]
-            tg = self._tg_client()
+            mm = self._messengers()
             intro, note, attr = self._report_ctx()
 
             def prog(done, total, detail):
@@ -564,7 +609,7 @@ class Api:
                 self._run["total"] = total
                 self._run["details"].append(detail)
 
-            res = report.run_weekly(token, tg, self.db, intro, note, attr,
+            res = report.run_weekly(token, mm, self.db, intro, note, attr,
                                     on_progress=prog, logins=logins, dry_run=dry_run)
             self._run["summary"] = res
         except Exception as e:  # noqa: BLE001
@@ -705,10 +750,11 @@ class Api:
         chats = self.db.bindings_for_login(login)
         if not chats:
             raise RuntimeError("Клиент не привязан ни к одному чату")
-        tg = self._tg_client()
+        mm = self._messengers()
         sent = 0
         for b in chats:
-            tg.send_message(b["chat_id"], res["text"])
+            chat = self.db.get_chat(b["chat_id"]) or {"chat_id": b["chat_id"], "channel": "telegram"}
+            mm.send(chat, res["text"])
             self.db.log_send(login, b["chat_id"], res["date_from"], res["date_to"], "sent")
             sent += 1
         return {"sent": sent}

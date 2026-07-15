@@ -346,8 +346,9 @@ def build_for_login(token, db, login, intro, note, default_attr="LSC", _post=Non
     return text, camps, per
 
 
-def send_for_login(token, tg, db, login, intro, note, default_attr="LSC", dry_run=False):
-    """Строит отчёт и отправляет во все привязанные к клиенту чаты. Пишет в send_log.
+def send_for_login(token, mm, db, login, intro, note, default_attr="LSC", dry_run=False):
+    """Строит отчёт и отправляет во все привязанные к клиенту чаты через роутер mm (Messengers) —
+    в Telegram или Яндекс Мессенджер по каналу чата. Пишет в send_log.
     dry_run=True — только строит отчёт, НЕ отправляет клиентам и НЕ пишет в лог (безопасный тест)."""
     text, camps, per = build_for_login(token, db, login, intro, note, default_attr)
     if text is None:
@@ -359,8 +360,9 @@ def send_for_login(token, tg, db, login, intro, note, default_attr="LSC", dry_ru
         return {"status": "dry", "chats": len(chats), "campaigns": len(camps)}
     sent = 0
     for b in chats:
+        chat = db.get_chat(b["chat_id"]) or {"chat_id": b["chat_id"], "channel": "telegram"}
         try:
-            tg.send_message(b["chat_id"], text)
+            mm.send(chat, text)
             db.log_send(login, b["chat_id"], per["date_from"], per["date_to"], "sent")
             sent += 1
         except Exception as e:  # noqa: BLE001
@@ -368,7 +370,7 @@ def send_for_login(token, tg, db, login, intro, note, default_attr="LSC", dry_ru
     return {"status": "sent", "chats": sent, "campaigns": len(camps)}
 
 
-def run_weekly(token, tg, db, intro, note, default_attr="LSC", on_progress=None, logins=None, dry_run=False):
+def run_weekly(token, mm, db, intro, note, default_attr="LSC", on_progress=None, logins=None, dry_run=False):
     """Прогон по всем привязанным клиентам (для планировщика/кнопки «Запустить рассылку»).
 
     on_progress(done, total, detail) — колбэк после каждого клиента (для окна прогресса).
@@ -387,7 +389,7 @@ def run_weekly(token, tg, db, intro, note, default_attr="LSC", on_progress=None,
     for i, login in enumerate(logins, 1):
         detail = {"login": login, "name": _name(login)}
         try:
-            res = send_for_login(token, tg, db, login, intro, note, default_attr, dry_run=dry_run)
+            res = send_for_login(token, mm, db, login, intro, note, default_attr, dry_run=dry_run)
             detail.update(res)
         except Exception as e:  # noqa: BLE001
             results["errors"] += 1

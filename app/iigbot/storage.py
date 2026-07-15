@@ -110,6 +110,36 @@ class Storage:
         if "owner" not in cols:   # владелец клиента (кому назначен); NULL = общий пул
             self.conn.execute("ALTER TABLE clients ADD COLUMN owner INTEGER")
             self.conn.commit()
+        chcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(chats)")}
+        if "channel" not in chcols:   # мессенджер чата: telegram | ymessenger
+            self.conn.execute("ALTER TABLE chats ADD COLUMN channel TEXT DEFAULT 'telegram'")
+        if "ext_id" not in chcols:    # нативный id мессенджера (Telegram=число, Яндекс='0/0/uuid')
+            self.conn.execute("ALTER TABLE chats ADD COLUMN ext_id TEXT")
+        self.conn.commit()
+
+    @staticmethod
+    def ya_surrogate(ext_id):
+        """Суррогатный числовой chat_id для Яндекс-чата (PK числовой). Стабилен по ext_id,
+        в высоком диапазоне — не пересекается с id Telegram."""
+        import zlib
+        return 9000000000000 + (zlib.crc32(str(ext_id).encode("utf-8")) & 0xffffffff)
+
+    def add_ya_chat(self, ext_id, title=None):
+        """Создать/обновить чат Яндекс Мессенджера по его нативному id ('0/0/uuid').
+        Возвращает суррогатный chat_id, которым он живёт в базе (как обычный чат)."""
+        cid = self.ya_surrogate(ext_id)
+        if self.get_chat(cid):
+            self.conn.execute("UPDATE chats SET title=COALESCE(?,title), status='active', "
+                              "channel='ymessenger', ext_id=?, updated_at=? WHERE chat_id=?",
+                              (title, str(ext_id), _now(), cid))
+        else:
+            self.conn.execute(
+                "INSERT INTO chats(chat_id,type,title,username,status,my_status,channel,ext_id,added_at,updated_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (cid, "group", title or str(ext_id), None, "active", "member",
+                 "ymessenger", str(ext_id), _now(), _now()))
+        self.conn.commit()
+        return cid
 
     # ---------- kv ----------
     def get_kv(self, key, default=None):
