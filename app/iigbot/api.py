@@ -16,6 +16,7 @@ from .telegram_api import Telegram, TelegramError
 from .settings import (
     load_secrets, load_app_config, load_report_config,
     save_app_config, save_report_config, save_secrets as _save_secrets,
+    log_error,
 )
 from .import_config import normalize_goals
 
@@ -26,6 +27,7 @@ def safe(fn):
         try:
             return {"ok": True, "data": fn(self, *args, **kwargs)}
         except Exception as e:  # noqa: BLE001
+            log_error("api." + fn.__name__, e)   # в iig_errors.log рядом с базой (виден по SFTP)
             try:                       # в exe stdout перенаправлен в iig.log — ошибки будут видны
                 print("[api] {}: {}".format(fn.__name__, e))
             except Exception:          # noqa: BLE001

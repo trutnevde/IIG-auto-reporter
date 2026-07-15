@@ -182,3 +182,20 @@ def save_secrets(patch):
             cur[k] = v
     _save(path, cur)
     return path
+
+
+ERROR_LOG_PATH = os.path.join(BASE_DIR, "iig_errors.log")
+
+
+def log_error(where, message):
+    """Дописывает ошибку в iig_errors.log рядом с базой (BASE_DIR). Нужно, чтобы сбои —
+    особенно в авто-рассылке на сервере, где консоли не видно, — можно было потом разобрать
+    по SFTP. Файл под _app/ (Require all denied), по вебу недоступен. Сбои самой записи глотаем."""
+    try:
+        import datetime
+        stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        line = "{}\t{}\t{}\n".format(stamp, where, str(message).replace("\n", " ").replace("\t", " "))
+        with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:  # noqa: BLE001
+        pass

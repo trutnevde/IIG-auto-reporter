@@ -395,6 +395,11 @@ def run_weekly(token, tg, db, intro, note, default_attr="LSC", on_progress=None,
                 db.log_send(login, None, per["date_from"], per["date_to"], "error", str(e))
             except Exception:          # noqa: BLE001
                 pass
+            try:                       # и в файловый лог — для авто-рассылки на сервере без консоли
+                from .settings import log_error
+                log_error("weekly." + login, e)
+            except Exception:          # noqa: BLE001
+                pass
             detail.update({"status": "error", "reason": str(e)})
             results["details"].append(detail)
             if on_progress:

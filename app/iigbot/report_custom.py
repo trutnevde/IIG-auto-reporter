@@ -141,10 +141,36 @@ def build(token, login, level, date_from, date_to, attribution="LSC", goal_defs=
     if campaign and level != "account":
         fltrs = [{"Field": "CampaignId", "Operator": "IN", "Values": [str(campaign)]}]
 
+    # Reports API: массив Goals не может быть длиннее 10. При >10 выбранных целей (частый случай —
+    # у клиента много автоцелей) запрашиваем БАТЧАМИ по 10 и склеиваем столбцы целей по строкам
+    # (базовые метрики от целей не зависят). Иначе Директ отвечает 400 и одиночная выгрузка падает —
+    # ровно как было у «сити реформа» с 12 целями.
+    def _dimkey(row):
+        return tuple(str(row.get(d) or "") for d in dim_fields)
+
     try:
-        raw = R.fetch_report(token, login, date_from, date_to, fields,
-                             goal_ids=goal_ids, attribution=attribution, report_type=rtype,
-                             filters=fltrs, _post=_post, _sleep=_sleep)
+        if use_goals and len(goal_ids) > 10:
+            batches = [goal_ids[i:i + 10] for i in range(0, len(goal_ids), 10)]
+            merged, order = {}, []
+            for batch in batches:
+                rows = R.fetch_report(token, login, date_from, date_to, fields,
+                                      goal_ids=batch, attribution=attribution, report_type=rtype,
+                                      filters=fltrs, _post=_post, _sleep=_sleep)
+                for row in rows:
+                    k = _dimkey(row)
+                    base = merged.get(k)
+                    if base is None:
+                        merged[k] = dict(row)
+                        order.append(k)
+                    else:   # добираем только столбцы целей этого батча (Conversions_<gid>_<модель>)
+                        for col, val in row.items():
+                            if col.startswith("Conversions_"):
+                                base[col] = val
+            raw = [merged[k] for k in order]
+        else:
+            raw = R.fetch_report(token, login, date_from, date_to, fields,
+                                 goal_ids=goal_ids, attribution=attribution, report_type=rtype,
+                                 filters=fltrs, _post=_post, _sleep=_sleep)
     except RuntimeError as e:
         # частая причина — несовместимое сочетание разреза и срезов: даём понятную подсказку
         if segs:
