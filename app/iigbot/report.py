@@ -361,11 +361,18 @@ def send_for_login(token, tg, db, login, intro, note, default_attr="LSC", dry_ru
     """Строит отчёт и отправляет во все привязанные к клиенту чаты. Пишет в send_log.
     dry_run=True — только строит отчёт, НЕ отправляет клиентам и НЕ пишет в лог (безопасный тест)."""
     text, camps, per = build_for_login(token, db, login, intro, note, default_attr)
-    if text is None:
-        return {"status": "skipped", "reason": "нет активных кампаний за 4 недели"}
     chats = db.bindings_for_login(login)
+    # собираем ВСЕ проблемы разом (раньше возвращалась только первая): напр. и «нет открута»,
+    # и «нет чата» одновременно — чтобы в пробе/рассылке было видно всё.
+    reasons = []
+    if text is None:
+        reasons.append("нет открута за 4 недели")
     if not chats:
-        return {"status": "no_chat", "reason": "клиент не привязан ни к одному чату"}
+        reasons.append("нет привязанного чата")
+    if reasons:
+        # приоритет статуса для счётчиков: нет открута → skipped, иначе → no_chat
+        status = "skipped" if text is None else "no_chat"
+        return {"status": status, "reason": " · ".join(reasons), "reasons": reasons}
     if dry_run:
         return {"status": "dry", "chats": len(chats), "campaigns": len(camps)}
     sent = 0
@@ -387,6 +394,13 @@ def run_weekly(token, tg, db, intro, note, default_attr="LSC", on_progress=None,
     dry_run=True — прогнать построение отчётов без отправки клиентам (безопасная проверка)."""
     if logins is None:
         logins = sorted({b["login"] for b in db.list_bindings()})
+    # сторонние (копипаст) в бот-рассылку не попадают — их доставляют вручную
+    try:
+        ext = db.external_logins()
+        if ext:
+            logins = [l for l in logins if l not in ext]
+    except Exception:  # noqa: BLE001 — старая база без колонки delivery
+        pass
     total = len(logins)
     results = {"sent": 0, "skipped": 0, "no_chat": 0, "errors": 0, "dry": 0, "total": total, "details": []}
     per = period()

@@ -127,6 +127,9 @@ class Storage:
         if "owner" not in cols:   # владелец клиента (кому назначен); NULL = общий пул
             self.conn.execute("ALTER TABLE clients ADD COLUMN owner INTEGER")
             self.conn.commit()
+        if "delivery" not in cols:   # способ доставки: NULL/'telegram'=бот, 'external'=копипаст (сторонний)
+            self.conn.execute("ALTER TABLE clients ADD COLUMN delivery TEXT")
+            self.conn.commit()
         ucols = {r["name"] for r in self.conn.execute("PRAGMA table_info(users)")}
         if "note" not in ucols:   # своя приписка к отчётам: NULL=общая (из Настроек), ''=без, текст=своя
             self.conn.execute("ALTER TABLE users ADD COLUMN note TEXT")
@@ -227,6 +230,19 @@ class Storage:
         """Логины клиентов пользователя (для скоупа привязок/рассылки)."""
         return [r["login"] for r in
                 self.conn.execute("SELECT login FROM clients WHERE owner=?", (owner,))]
+
+    def set_client_delivery(self, login, mode):
+        """Способ доставки клиента: 'external' (копипаст, сторонний мессенджер) или
+        'telegram'/None (обычная бот-рассылка)."""
+        mode = "external" if mode == "external" else None
+        self.conn.execute("UPDATE clients SET delivery=?, updated_at=? WHERE login=?",
+                          (mode, _now(), login))
+        self.conn.commit()
+
+    def external_logins(self):
+        """Множество логинов, помеченных как «Сторонний» (копипаст) — их не шлём ботом."""
+        return {r["login"] for r in
+                self.conn.execute("SELECT login FROM clients WHERE delivery='external'")}
 
     # ---------- users (веб-аккаунты) ----------
     def create_user(self, email, pass_hash, name=None, role="user"):

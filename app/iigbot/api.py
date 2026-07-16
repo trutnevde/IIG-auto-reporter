@@ -109,10 +109,12 @@ class Api:
     def _scope_logins(self, logins):
         """Рассылка (кнопка) — по СВОИМ клиентам текущего пользователя: и специалист, и админ
         ведут свой стек и шлют только своих. «Отправить всем разом» делает недельный cron
-        (agency-wide), а не кнопка. Десктоп/легаси без пользователя — все."""
+        (agency-wide), а не кнопка. Десктоп/легаси без пользователя — все. Сторонние (копипаст)
+        из Telegram-рассылки/пробы исключаются — они доставляются вручную."""
+        external = self.db.external_logins()
         if not self.user:
-            return logins
-        own = set(self.db.owned_logins(self.user["id"]))
+            return [l for l in logins if l not in external] if logins else logins
+        own = set(self.db.owned_logins(self.user["id"])) - external
         if logins is None:
             return sorted(own)
         return [l for l in logins if l in own]
@@ -251,6 +253,7 @@ class Api:
                 "login": c["login"], "name": c["name"], "source": c["source"],
                 "attribution": c["attribution"] or "",
                 "goals": goals,
+                "delivery": (c["delivery"] if "delivery" in c.keys() else None) or "telegram",
                 "chat_id": b["chat_id"] if b else None,
                 "chat_title": self._chat_title(b["chat_id"]) if b else None,
             })
@@ -270,11 +273,12 @@ class Api:
         return {
             "login": c["login"], "name": c["name"], "source": c["source"],
             "attribution": c["attribution"] or "LSC", "goals": goals,
+            "delivery": (c["delivery"] if "delivery" in c.keys() else None) or "telegram",
             "chats": [{"chat_id": b["chat_id"], "title": self._chat_title(b["chat_id"])} for b in binds],
         }
 
     @safe
-    def save_client(self, login, name=None, goals=None, attribution=None):
+    def save_client(self, login, name=None, goals=None, attribution=None, delivery=None):
         self._require_write()
         self._require_owned(login)
         self.db.upsert_client(
@@ -282,9 +286,20 @@ class Api:
             goals=normalize_goals(goals) if goals is not None else None,
             attribution=attribution,
         )
+        if delivery is not None:
+            self.db.set_client_delivery(login, delivery)
         if goals is not None:
             self._cloud_push_safe()
         return True
+
+    @safe
+    def set_delivery(self, login, mode):
+        """Быстрый тумблер способа доставки клиента (из вкладки «Сторонние»):
+        'external' — копипаст (сторонний мессенджер, вне бот-рассылки) или 'telegram'."""
+        self._require_write()
+        self._require_owned(login)
+        self.db.set_client_delivery(login, "external" if mode == "external" else "telegram")
+        return {"login": login, "delivery": "external" if mode == "external" else "telegram"}
 
     def _metrika_goals_for(self, login):
         """Ядро: находит доступные счётчики клиента (кампании ∪ домен) и собирает все их цели
@@ -557,18 +572,28 @@ class Api:
         # рассылкой (_scope_logins = только владелец): тут строим для любого ВИДИМОГО клиента.
         visible = {c["login"] for c in self.db.list_clients(self._owner())}
         targets = [l for l in (logins or sorted(visible)) if l in visible]
+        external = self.db.external_logins()
+        can_credit = not self._is_observer()   # наблюдатель не «сдаёт» — только смотрит
         out = []
         for login in targets:
             c = self.db.get_client(login)
             name = (c["name"] if c and c["name"] else login)
             try:
                 text, camps, per = report.build_for_login(token, self.db, login, intro, note, attr)
+                is_ext = can_credit and login in external
                 if text is None:
+                    # сторонний без открута — авто-скип в Контроле (не висит вечным долгом)
+                    if is_ext:
+                        self.db.log_send(login, None, per["date_from"], per["date_to"], "skipped", "нет открута")
                     out.append({"login": login, "name": name, "text": None,
                                 "status": "skipped", "reason": "нет активных кампаний за 4 недели"})
                 else:
+                    credited = False
+                    if is_ext:   # сбор отчёта стороннего = зачёт в Контроле
+                        self.db.log_send(login, None, per["date_from"], per["date_to"], "sent")
+                        credited = True
                     out.append({"login": login, "name": name, "text": text,
-                                "status": "ok", "campaigns": len(camps)})
+                                "status": "ok", "campaigns": len(camps), "credited": credited})
             except Exception as e:  # noqa: BLE001
                 log_error("copy_reports." + login, e)
                 out.append({"login": login, "name": name, "text": None,
@@ -1114,6 +1139,11 @@ class Api:
         bound_by_owner = {}
         for b in self.db.list_bindings("all"):
             bound_by_owner.setdefault(owner_of.get(b["login"]), set()).add(b["login"])
+        # сторонние (копипаст) — тоже недельное обязательство: их доставляют вручную, зачёт
+        # ставится при сборе отчёта во вкладке «Сторонние» (log_send 'sent').
+        for c in clients:
+            if ("delivery" in c.keys()) and c["delivery"] == "external":
+                bound_by_owner.setdefault(owner_of.get(c["login"]), set()).add(c["login"])
         rows = []
         for u in self.db.list_users():
             if u["role"] == "observer":

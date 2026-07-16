@@ -519,8 +519,8 @@ function drawClients(){
   if(!rows.length){b.innerHTML='<tr><td colspan="6" class="empty">Нет клиентов. Нажми «Подтянуть из Директа» или «Импорт config.json».</td></tr>';return;}
   b.innerHTML=rows.map(c=>`
     <tr class="click" onclick="openClient('${esc(c.login)}')">
-      <td><b>${esc(c.name)}</b></td><td class="muted">${esc(c.login)}</td>
-      <td>${c.chat_title?('💬 '+esc(c.chat_title)):'<span class="muted">— не привязан</span>'}</td>
+      <td><b>${esc(c.name)}</b>${c.delivery==='external'?' <span class="badge b-amber" style="font-size:10.5px;vertical-align:middle">📤 сторонний</span>':''}</td><td class="muted">${esc(c.login)}</td>
+      <td>${c.delivery==='external'?'<span class="muted">📤 копипаст</span>':(c.chat_title?('💬 '+esc(c.chat_title)):'<span class="muted">— не привязан</span>')}</td>
       <td>${(c.goals&&c.goals.length)?c.goals.map(g=>'<span class="chip">'+esc(g.name||g.id)+'</span>').join(''):'<span class="muted">— нет</span>'}</td>
       <td>${esc(c.attribution||'LSC')}</td><td class="muted">${esc(c.source||'')}</td>
     </tr>`).join('');
@@ -1150,41 +1150,49 @@ async function copyToClip(text,okmsg){
   catch(e){const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();
     try{document.execCommand('copy');toast(okmsg||'Скопировано','ok');}catch(_){toast('Не удалось скопировать','err');}ta.remove();}
 }
+let EXT_SHOWALL=false;
 async function renderExternal(){
   const host=el('v_external');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
-  let cls,chats;
-  try{cls=await api('clients');chats=await api('chats');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
-  EXT_BOUND=new Set(chats.filter(c=>c.login).map(c=>c.login));   // у кого есть привязанный чат (Telegram)
-  const rows=cls.map(c=>{
-    const tg=EXT_BOUND.has(c.login);
-    return `<label class="ext-pick"><input type="checkbox" class="extchk" value="${esc(c.login)}">
+  let cls;
+  try{cls=await api('clients');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const ext=cls.filter(c=>c.delivery==='external');
+  const shownCls=EXT_SHOWALL?cls:ext;
+  const canEdit=ME&&ME.role!=='observer';
+  const rows=shownCls.map(c=>{
+    const isExt=c.delivery==='external';
+    const badge=isExt?'<span class="badge b-amber" style="font-size:11px">📤 Сторонний</span>'
+                     :'<span class="badge b-grey" style="font-size:11px">✈️ Telegram</span>';
+    const toggle=canEdit?`<button class="btn sm" onclick="event.preventDefault();extToggle('${esc(c.login)}','${isExt?'telegram':'external'}')" title="Переключить способ доставки">${isExt?'↩ в Telegram':'→ сделать сторонним'}</button>`:'';
+    return `<label class="ext-pick"><input type="checkbox" class="extchk" value="${esc(c.login)}" ${isExt?'checked':''}>
       <span class="ext-nm">${esc(c.name||c.login)}</span>
       <span class="muted" style="font-size:12px">${esc(c.login)}</span>
-      ${tg?'<span class="badge b-grey" style="font-size:11px">✈️ Telegram</span>':'<span class="badge b-amber" style="font-size:11px">без чата</span>'}</label>`;
+      ${badge}<span class="grow"></span>${toggle}</label>`;
   }).join('');
   host.innerHTML=`
     <h2 class="title">Сторонний мессенджер</h2>
-    <p class="sub">Для клиентов в мессенджерах, куда бот не достаёт (WhatsApp, VK, MAX, Яндекс и др.):
-      собери готовые недельные отчёты и просто скопируй-вставь каждый в нужный чат вручную.
-      Текст — тот же, что уходит в Telegram.</p>
+    <p class="sub">Клиенты, помеченные как <b>📤 Сторонний</b> (WhatsApp, VK, MAX, Яндекс и т.п.), не участвуют
+      в бот-рассылке — их отчёты собираешь тут и вставляешь в чат вручную. <b>Сбор отчёта = зачёт в «Контроле»</b>
+      (работодатель видит клиента сданным). Пометить клиента — тумблером ниже или в его карточке.</p>
     <div class="panel" style="padding:14px;margin-bottom:14px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
-        <b>Кому собрать:</b>
-        <button class="btn sm" onclick="extPick('all')">Все</button>
-        <button class="btn sm" onclick="extPick('notg')">Без Telegram-чата</button>
+        <b>${EXT_SHOWALL?'Все клиенты':'Сторонние'} (${shownCls.length}):</b>
+        <button class="btn sm" onclick="extPick('all')">Отметить всех</button>
         <button class="btn sm" onclick="extPick('none')">Снять всё</button>
+        <button class="btn sm" onclick="EXT_SHOWALL=${!EXT_SHOWALL};renderExternal()">${EXT_SHOWALL?'← только сторонние':'показать всех (чтобы пометить новых)'}</button>
         <div class="grow"></div>
         <button class="btn primary" onclick="doCollectExternal()">📥 Собрать отчёты</button>
       </div>
-      <div class="ext-list">${rows||'<span class="muted">У вас пока нет клиентов.</span>'}</div>
+      <div class="ext-list">${rows||`<span class="muted">${EXT_SHOWALL?'У вас нет клиентов.':'Пока нет сторонних клиентов. Нажми «показать всех» и сделай нужных сторонними, либо переключи доставку в карточке клиента.'}</span>`}</div>
     </div>
     <div id="extResults"></div>`;
+}
+async function extToggle(login,mode){
+  try{await api('set_delivery',login,mode);toast(mode==='external'?'Клиент помечен сторонним':'Клиент вернулся в Telegram-рассылку','ok');renderExternal();}catch(e){}
 }
 function extPick(mode){
   document.querySelectorAll('.extchk').forEach(ch=>{
     if(mode==='all')ch.checked=true;
     else if(mode==='none')ch.checked=false;
-    else if(mode==='notg')ch.checked=!EXT_BOUND.has(ch.value);
   });
 }
 async function doCollectExternal(){
@@ -1197,8 +1205,10 @@ async function doCollectExternal(){
   EXT_LAST=res;
   const ok=res.filter(r=>r.status==='ok');
   let html='';
+  const credited=res.filter(r=>r.credited).length;
   html+=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
     <span class="badge b-green">Готово: ${ok.length}</span>
+    ${credited?`<span class="badge b-green" title="Зачтено в Контроле как сданные">✓ в зачёт: ${credited}</span>`:''}
     ${res.length-ok.length?`<span class="badge b-amber">пропущено/ошибок: ${res.length-ok.length}</span>`:''}
     ${ok.length>1?`<button class="btn sm primary" onclick="extCopyAll()">📋 Скопировать всё (${ok.length})</button>
       <span class="muted" style="font-size:12px">каждый — с шапкой клиента, отчёты разделены чертой</span>`:''}</div>`;
@@ -1208,6 +1218,7 @@ async function doCollectExternal(){
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <b>${esc(r.name)}</b><span class="muted" style="font-size:12px">${esc(r.login)}</span>
           <span class="badge b-green" style="font-size:11px">${r.campaigns} камп.</span>
+          ${r.credited?'<span class="badge b-green" style="font-size:11px" title="Отмечено сданным в Контроле">✓ зачтено</span>':''}
           <div class="grow"></div>
           <button class="btn sm primary" onclick="extCopyOne(${i})">📋 Копировать</button>
         </div>
@@ -1385,7 +1396,13 @@ async function openClient(login){
   el('drBody').innerHTML=`
     <div class="field"><label>Название</label><input id="dName" value="${esc(c.name)}"></div>
     <div class="field"><label>Привязанные чаты</label><div>${c.chats.length?c.chats.map(ch=>'<span class="chip">💬 '+esc(ch.title)+'</span>').join(''):'<span class="muted">— нет. Привяжи во вкладке «Чаты»/«Привязки».</span>'}</div></div>
-    <div class="field"><label>Модель атрибуции</label><select id="dAttr">${['LSC','LC','FC','LYDC'].map(a=>`<option ${a===c.attribution?'selected':''}>${a}</option>`).join('')}</select></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="field"><label>Модель атрибуции</label><select id="dAttr">${['LSC','LC','FC','LYDC'].map(a=>`<option ${a===c.attribution?'selected':''}>${a}</option>`).join('')}</select></div>
+      <div class="field"><label>Доставка отчёта</label><select id="dDelivery">
+        <option value="telegram" ${c.delivery!=='external'?'selected':''}>✈️ Telegram (бот)</option>
+        <option value="external" ${c.delivery==='external'?'selected':''}>📤 Сторонний (копипаст)</option>
+      </select><div class="hint">«Сторонний» — клиент в WhatsApp/VK/MAX и т.п.: не участвует в рассылке/пробе, отчёт собираешь и вставляешь вручную во вкладке «Сторонние».</div></div>
+    </div>
     <div class="field"><label>Цели Метрики (конверсии)</label>
       <div class="goalrow head"><div>в отчёт</div><div>ID</div><div>Название</div><div></div></div>
       <div id="dGoals"></div>
@@ -1415,7 +1432,8 @@ function addGoal(id,name,active){
 }
 function collectGoals(){return [...document.querySelectorAll('#dGoals .goalrow:not(.head)')].map(r=>{const t=r.querySelectorAll('input[placeholder]');const chk=r.querySelector('.ga');return {id:(t[0]?t[0].value.trim():''),name:(t[1]?t[1].value.trim():''),active:chk?chk.checked:true};}).filter(g=>g.id);}
 async function drawerSave(){
-  try{await api('save_client',DR_LOGIN,el('dName').value,collectGoals(),el('dAttr').value);toast('Сохранено','ok');closeDrawer();if(CURRENT==='clients')renderClients();}catch(e){}
+  const dv=el('dDelivery');
+  try{await api('save_client',DR_LOGIN,el('dName').value,collectGoals(),el('dAttr').value,dv?dv.value:null);toast('Сохранено','ok');closeDrawer();if(CURRENT==='clients')renderClients();}catch(e){}
 }
 async function drawerTest(){
   if(!confirm('Отправить тестовый отчёт в чат клиента?'))return;
