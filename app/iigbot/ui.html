@@ -194,6 +194,14 @@
   .conf{font-size:12px;font-weight:800;margin-top:2px}
   .conf.hi{color:var(--green)}.conf.mid{color:var(--amber)}.conf.lo{color:var(--muted)}
   .src{font-weight:650}.src small{display:block;color:var(--muted);font-weight:400;margin-top:2px}
+  /* сортируемые заголовки + компактная колонка целей */
+  th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+  th.sortable:hover{color:var(--ink)}
+  .si{color:var(--brand);font-size:10px;font-weight:800}
+  .goals-cell{display:flex;flex-wrap:wrap;gap:4px;align-items:center;max-width:360px}
+  .goals-cell .chip{margin:0}
+  .gcnt{font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap;margin-right:2px}
+  .gmore{font-size:11.5px;color:var(--muted);font-weight:650}
 
   /* ---------- сторонний мессенджер (копипаст) ---------- */
   .ext-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:7px;max-height:340px;overflow:auto;padding:2px}
@@ -505,23 +513,62 @@ async function renderClients(){
       <button class="btn" onclick="doImport()">⬇ Импорт config.json</button>
     </div>
     <div class="panel"><div class="scrollx"><table>
-      <thead><tr><th>Клиент</th><th>Логин</th><th>Чат</th><th>Цели</th><th>Атрибуция</th><th>Источник</th></tr></thead>
+      <thead><tr>
+        <th class="sortable" onclick="clSort('name')">Клиент<span class="si" id="si_name"></span></th>
+        <th class="sortable" onclick="clSort('login')">Логин<span class="si" id="si_login"></span></th>
+        <th class="sortable" onclick="clSort('chat')">Чат<span class="si" id="si_chat"></span></th>
+        <th class="sortable" onclick="clSort('goals')">Цели<span class="si" id="si_goals"></span></th>
+        <th class="sortable" onclick="clSort('attr')">Атриб.<span class="si" id="si_attr"></span></th>
+        <th class="sortable" onclick="clSort('source')">Источник<span class="si" id="si_source"></span></th>
+      </tr></thead>
       <tbody id="clBody"></tbody></table></div></div>`;
   drawClients();
 }
+let CL_SORT={key:'name',dir:1};
+function clSort(key){
+  if(CL_SORT.key===key)CL_SORT.dir*=-1;
+  else CL_SORT={key,dir:key==='goals'?-1:1};   // цели по умолчанию по убыванию (сначала «богатые»)
+  drawClients();
+}
+function clGoalsActive(c){return (c.goals||[]).filter(g=>g.active!==false).length;}
+function clSortVal(c,key){
+  switch(key){
+    case 'login':return (c.login||'').toLowerCase();
+    case 'chat':return c.delivery==='external'?'1':(c.chat_title?('0'+c.chat_title.toLowerCase()):'2');  // привязанные, сторонние, без чата
+    case 'goals':return clGoalsActive(c);
+    case 'attr':return (c.attribution||'LSC').toLowerCase();
+    case 'source':return (c.source||'').toLowerCase();
+    default:return (c.name||'').toLowerCase();
+  }
+}
+function clGoalsCell(c){
+  const gs=c.goals||[];
+  if(!gs.length)return '<span class="muted">— нет</span>';
+  const active=gs.filter(g=>g.active!==false);
+  const shown=active.length?active:gs;
+  const cap=shown.slice(0,3).map(g=>'<span class="chip">'+esc(g.name||g.id)+'</span>').join('');
+  const more=shown.length>3?('<span class="gmore">+'+(shown.length-3)+'</span>'):'';
+  const cnt='<span class="gcnt" title="целей в отчёт / всего">🎯 '+active.length+'/'+gs.length+'</span>';
+  return '<div class="goals-cell">'+cnt+cap+more+'</div>';
+}
 function drawClients(){
   const q=(el('clSearch').value||'').toLowerCase(),f=el('clFilter').value;
-  const rows=CLIENTS.filter(c=>{
+  let rows=CLIENTS.filter(c=>{
     if(q&&!(String(c.name).toLowerCase().includes(q)||String(c.login).toLowerCase().includes(q)))return false;
     if(f==='bound'&&!c.chat_id)return false;
     if(f==='unbound'&&c.chat_id)return false;return true;});
+  const k=CL_SORT.key,dir=CL_SORT.dir;
+  rows.sort((a,b)=>{const va=clSortVal(a,k),vb=clSortVal(b,k);
+    const r=(typeof va==='number')?(va-vb):String(va).localeCompare(String(vb),'ru');
+    return r*dir||String(a.name||'').localeCompare(String(b.name||''),'ru');});
+  ['name','login','chat','goals','attr','source'].forEach(key=>{const e=el('si_'+key);if(e)e.textContent=(key===k)?(dir>0?' ▲':' ▼'):'';});
   const b=el('clBody');
   if(!rows.length){b.innerHTML='<tr><td colspan="6" class="empty">Нет клиентов. Нажми «Подтянуть из Директа» или «Импорт config.json».</td></tr>';return;}
   b.innerHTML=rows.map(c=>`
     <tr class="click" onclick="openClient('${esc(c.login)}')">
       <td><b>${esc(c.name)}</b>${c.delivery==='external'?' <span class="badge b-amber" style="font-size:10.5px;vertical-align:middle">📤 сторонний</span>':''}</td><td class="muted">${esc(c.login)}</td>
       <td>${c.delivery==='external'?'<span class="muted">📤 копипаст</span>':(c.chat_title?('💬 '+esc(c.chat_title)):'<span class="muted">— не привязан</span>')}</td>
-      <td>${(c.goals&&c.goals.length)?c.goals.map(g=>'<span class="chip">'+esc(g.name||g.id)+'</span>').join(''):'<span class="muted">— нет</span>'}</td>
+      <td>${clGoalsCell(c)}</td>
       <td>${esc(c.attribution||'LSC')}</td><td class="muted">${esc(c.source||'')}</td>
     </tr>`).join('');
 }
