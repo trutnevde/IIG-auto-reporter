@@ -16,6 +16,7 @@ audit.jsonl
 # --- Локальные данные/выгрузки ---
 outputs/
 uploads/
+app/reports/
 
 # --- Служебное ---
 .claude/
