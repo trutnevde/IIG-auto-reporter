@@ -37,6 +37,71 @@ def _api_for(user):
         return a
 
 
+# ---------- ленивый планировщик (shared-хостинг: демонов нет, тикаем на живом трафике) ----------
+_periodic = {"checked": 0.0}
+
+
+def _periodic_tick(base):
+    """Раз в ~10 минут смотрит kv-метки и запускает просроченные фоновые задачи:
+    суточный автосинк клиентов+целей и 12-часовой сбор бюджетов (+алерты)."""
+    import time as _t
+    now = _t.time()
+    if now - _periodic["checked"] < 600:
+        return
+    _periodic["checked"] = now
+
+    def _due(key, hours):
+        try:
+            last = float(base.db.get_kv(key) or 0)
+        except (TypeError, ValueError):
+            last = 0.0
+        return (now - last) >= hours * 3600
+
+    if _due("autosync_last", 20):        # ~раз в сутки (20ч — гистерезис от времени захода)
+        base.db.set_kv("autosync_last", now)   # метку ставим сразу — от двойного запуска
+        threading.Thread(target=_autosync_job, args=(base,), daemon=True).start()
+    if _due("budgets_last", 12):
+        base.db.set_kv("budgets_last", now)
+        threading.Thread(target=_budgets_job, args=(base,), daemon=True).start()
+
+
+def _autosync_job(base):
+    """Суточное авто-обновление: список клиентов Директа + цели привязанных (пресет ключевых,
+    ручные галочки не трогаются — та же логика, что у кнопок). Итог — в Журнал."""
+    from .settings import log_error
+    try:
+        r1 = base.sync_clients()
+        r2 = base.metrika_goals_bulk()
+        d1, d2 = (r1.get("data") or {}), (r2.get("data") or {})
+        if not r1.get("ok"):
+            raise RuntimeError("sync_clients: {}".format(r1.get("error")))
+        if not r2.get("ok"):
+            raise RuntimeError("metrika_goals_bulk: {}".format(r2.get("error")))
+        log_error("autosync", "ок: клиентов в Директе {}, цели обновлены у {} из {} привязанных".format(
+            d1.get("synced", "?"), d2.get("with_goals", "?"), d2.get("clients", "?")))
+    except Exception as e:  # noqa: BLE001
+        log_error("autosync", "сбой: {}".format(e))
+
+
+def _budgets_job(base):
+    """12-часовой сбор бюджетов + алерты в личку (см. budgets.py). Итог — в Журнал."""
+    from .settings import log_error, load_secrets
+    from . import budgets as B
+    try:
+        token = load_secrets()["yandex_oauth_token"]
+        tg = None
+        try:
+            tg = base._tg_client()
+        except Exception:  # noqa: BLE001
+            tg = None
+        res = B.collect_and_alert(base.db, token, tg=tg)
+        log_error("budgets", "ок: пул {}, активных {}, критичных {}, предупреждений {}, ошибок {}".format(
+            res.get("clients"), res.get("active"), res.get("critical"),
+            res.get("warning"), res.get("errors")))
+    except Exception as e:  # noqa: BLE001
+        log_error("budgets", "сбой: {}".format(e))
+
+
 def _secret_key(db):
     """Постоянный ключ сессий: генерируем один раз и храним в kv (переживает рестарт)."""
     val = db.get_kv("web_secret")
@@ -77,6 +142,10 @@ def create_app(api=None):
             row = base.db.get_user(uid)
             if row and row["active"]:
                 g.user = dict(row)
+        try:
+            _periodic_tick(base)   # ленивые фоновые задачи (автосинк/бюджеты)
+        except Exception:  # noqa: BLE001 — планировщик не должен ронять запросы
+            pass
 
     @app.route("/")
     def index():

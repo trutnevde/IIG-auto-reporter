@@ -49,6 +49,10 @@ def _is_key_goal(name, gtype):
     return any(w in n for w in KEY_GOAL_WORDS)
 
 
+# Фоновый сбор бюджетов — глобальный лок/прогресс (сбор агентский, Api — на пользователя).
+_BUDGET_RUN = {"running": False, "done": 0, "total": 0, "error": None, "summary": None}
+
+
 class Api:
     def __init__(self, user=None):
         self.cfg = load_app_config()
@@ -59,9 +63,12 @@ class Api:
         self._mk_counters = None       # кэш списка счётчиков Метрики
 
     def _owner(self):
-        """Скоуп ВИДИМОСТИ: 'all' для десктопа/админа/наблюдателя (видят всё), иначе id (свои)."""
+        """Скоуп ВИДИМОСТИ данных (клиенты/чаты/отчёты): 'all' — только десктоп/легаси и
+        НАБЛЮДАТЕЛЬ (работодатель видит всё). Админ — тоже специалист со своим стеком и чужих
+        клиентов НЕ видит; админские функции (пользователи, раздача пула, журнал, синк,
+        контроль) от этого скоупа не зависят."""
         u = self.user
-        if not u or u.get("role") in ("admin", "observer"):
+        if not u or u.get("role") == "observer":
             return "all"
         return u.get("id")
 
@@ -1039,6 +1046,50 @@ class Api:
             note = str(note).strip() or ""
         self.db.set_user_note(self.user["id"], note)
         return {"saved": True, "note": note}
+
+    # ---------- бюджеты ----------
+    @safe
+    def budgets(self):
+        """Вкладка «Бюджеты»: строки по видимости (наблюдатель — все, специалист/админ — свои),
+        когда собирали последний раз и статус фонового обновления."""
+        visible = {c["login"] for c in self.db.list_clients(self._owner())}
+        rows = [dict(r) for r in self.db.list_budgets() if r["login"] in visible]
+        return {"rows": rows, "updated": self.db.get_kv("budgets_updated"),
+                "run": {k: _BUDGET_RUN[k] for k in ("running", "done", "total", "error")}}
+
+    @safe
+    def budgets_refresh(self):
+        """Принудительный сбор бюджетов в фоне (само обновляется раз в 12 часов).
+        Сбор агентский — по всему рабочему пулу; вкладка всё равно скоупит по ролям."""
+        self._require_write()
+        if _BUDGET_RUN["running"]:
+            return {"already_running": True}
+        _BUDGET_RUN.update({"running": True, "done": 0, "total": 0, "error": None, "summary": None})
+        import threading
+        threading.Thread(target=self._budgets_worker, daemon=True).start()
+        return {"started": True}
+
+    def _budgets_worker(self):
+        from . import budgets as B
+        try:
+            token = load_secrets()["yandex_oauth_token"]
+            tg = None
+            try:
+                tg = self._tg_client()
+            except Exception:  # noqa: BLE001 — нет бота: собираем без алертов
+                tg = None
+
+            def prog(done, total, detail):
+                _BUDGET_RUN["done"], _BUDGET_RUN["total"] = done, total
+
+            res = B.collect_and_alert(self.db, token, tg=tg, on_progress=prog)
+            _BUDGET_RUN["summary"] = res
+            self.db.set_kv("budgets_last", str(__import__("time").time()))
+        except Exception as e:  # noqa: BLE001
+            _BUDGET_RUN["error"] = str(e)
+            log_error("budgets", e)
+        finally:
+            _BUDGET_RUN["running"] = False
 
     # ---------- НАБЛЮДАТЕЛЬ: контроль обязательств + сообщения ----------
     @safe

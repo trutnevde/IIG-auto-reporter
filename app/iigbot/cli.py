@@ -39,6 +39,7 @@ HELP = (
     "  (без аргумента)  десктоп-окно\n"
     "  web              веб-версия (открывается в браузере)\n"
     "  weekly           рассылка отчётов (для Планировщика задач)\n"
+    "  autosync         суточное обслуживание: клиенты + цели + бюджеты (для cron)\n"
     "  sync             подтянуть клиентов из Директа\n"
     "  gsheets-sync     выгрузить Директ в Google-таблицы всех клиентов (cron/headless)\n"
     "  import           импорт config.json\n"
@@ -74,6 +75,26 @@ def main(argv=None):
     elif cmd in ("sync", "sync_clients"):
         from . import sync_clients
         sync_clients.main()
+    elif cmd in ("autosync", "auto-sync", "daily"):
+        # суточное обслуживание для cron: клиенты + цели + бюджеты (веб делает то же лениво)
+        from .api import Api
+        from .settings import load_secrets
+        from . import budgets as B
+        a = Api()
+        r1 = a.sync_clients()
+        print("клиенты:", (r1.get("data") or {}).get("synced", r1.get("error")))
+        r2 = a.metrika_goals_bulk()
+        d2 = r2.get("data") or {}
+        print("цели: обновлены у {} из {} привязанных".format(
+            d2.get("with_goals", "?"), d2.get("clients", "?")) if r2.get("ok") else "цели: " + str(r2.get("error")))
+        tg = None
+        try:
+            tg = a._tg_client()
+        except Exception:  # noqa: BLE001
+            pass
+        res = B.collect_and_alert(a.db, load_secrets()["yandex_oauth_token"], tg=tg)
+        print("бюджеты: пул {}, активных {}, критичных {}".format(
+            res.get("clients"), res.get("active"), res.get("critical")))
     elif cmd in ("gsheets-sync", "gsheets_sync", "gsheets", "gs-sync"):
         from . import gsheets_sync
         raise SystemExit(gsheets_sync.main())

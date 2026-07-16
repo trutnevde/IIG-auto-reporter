@@ -99,6 +99,23 @@ class Storage:
                 by_user    INTEGER,
                 created_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS budgets (
+                login             TEXT PRIMARY KEY,   -- клиент из рабочего пула
+                name              TEXT,
+                balance           REAL,               -- остаток общего счёта; NULL = недоступен
+                currency          TEXT,
+                cost7             REAL,               -- расход за 7 дней
+                cost21            REAL,               -- расход за 21 день (фильтр активности)
+                rate              REAL,               -- темп, руб/день (cost7/7)
+                days_left         REAL,               -- balance/rate; NULL = не посчитать
+                camps_total       INTEGER,
+                camps_on          INTEGER,
+                camps_pay_stopped INTEGER,            -- остановлены по оплате
+                daily_budget      REAL,               -- суммарный дневной бюджет включённых
+                status            TEXT,               -- ok|warning|critical|inactive|error
+                note              TEXT,
+                updated_at        TEXT
+            );
             """
         )
         self.conn.commit()
@@ -243,6 +260,39 @@ class Storage:
     def set_user_note(self, user_id, note):
         """Своя приписка пользователя к отчётам (NULL=общая, ''=без приписки, текст=своя)."""
         self.conn.execute("UPDATE users SET note=? WHERE id=?", (note, user_id))
+        self.conn.commit()
+
+    # ---------- бюджеты ----------
+    def save_budget(self, row):
+        self.conn.execute(
+            """
+            INSERT INTO budgets(login,name,balance,currency,cost7,cost21,rate,days_left,
+                                camps_total,camps_on,camps_pay_stopped,daily_budget,status,note,updated_at)
+            VALUES(:login,:name,:balance,:currency,:cost7,:cost21,:rate,:days_left,
+                   :camps_total,:camps_on,:camps_pay_stopped,:daily_budget,:status,:note,:updated_at)
+            ON CONFLICT(login) DO UPDATE SET
+                name=excluded.name, balance=excluded.balance, currency=excluded.currency,
+                cost7=excluded.cost7, cost21=excluded.cost21, rate=excluded.rate,
+                days_left=excluded.days_left, camps_total=excluded.camps_total,
+                camps_on=excluded.camps_on, camps_pay_stopped=excluded.camps_pay_stopped,
+                daily_budget=excluded.daily_budget, status=excluded.status,
+                note=excluded.note, updated_at=excluded.updated_at
+            """,
+            {**row, "updated_at": _now()},
+        )
+        self.conn.commit()
+
+    def list_budgets(self):
+        """Все строки бюджетов: критичные сверху, потом по «дней осталось»."""
+        return self.conn.execute(
+            "SELECT * FROM budgets ORDER BY "
+            "CASE status WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 WHEN 'ok' THEN 2 "
+            "WHEN 'error' THEN 3 ELSE 4 END, "
+            "COALESCE(days_left, 1e9), login"
+        ).fetchall()
+
+    def delete_budget(self, login):
+        self.conn.execute("DELETE FROM budgets WHERE login=?", (login,))
         self.conn.commit()
 
     def set_user_role(self, user_id, role):

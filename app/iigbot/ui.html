@@ -307,6 +307,7 @@
       <a data-go="chats"><span class="ic">💬</span><span>Чаты</span></a>
       <a data-go="match"><span class="ic">🔗</span><span>Привязки</span><span class="badge b-amber nav-badge" id="navMatch" style="display:none">0</span></a>
       <a data-go="reports"><span class="ic">📨</span><span>Отчёты</span></a>
+      <a data-go="budgets"><span class="ic">💰</span><span>Бюджеты</span><span class="badge b-red nav-badge" id="navBudgets" style="display:none">0</span></a>
       <a data-go="external"><span class="ic">📤</span><span>Сторонние</span></a>
       <a data-go="gsheets"><span class="ic">📗</span><span>Таблицы</span></a>
       <a data-go="settings"><span class="ic">⚙️</span><span>Настройки</span></a>
@@ -341,6 +342,7 @@
       <section data-view="chats"><div id="v_chats"></div></section>
       <section data-view="match"><div id="v_match"></div></section>
       <section data-view="reports"><div id="v_reports"></div></section>
+      <section data-view="budgets"><div id="v_budgets"></div></section>
       <section data-view="external"><div id="v_external"></div></section>
       <section data-view="gsheets"><div id="v_gsheets"></div></section>
       <section data-view="settings"><div id="v_settings"></div></section>
@@ -433,7 +435,7 @@ function applyTheme(t){document.documentElement.setAttribute('data-theme',t);try
 function toggleTheme(){const cur=document.documentElement.getAttribute('data-theme')||'light';applyTheme(cur==='dark'?'light':'dark');}
 
 /* ---------- роутинг ---------- */
-const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',external:'Сторонний мессенджер',gsheets:'Google-таблицы',settings:'Настройки',supervision:'Контроль',users:'Пользователи',errlog:'Журнал ошибок',guide:'Гайд'};
+const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',budgets:'Бюджеты',external:'Сторонний мессенджер',gsheets:'Google-таблицы',settings:'Настройки',supervision:'Контроль',users:'Пользователи',errlog:'Журнал',guide:'Гайд'};
 function go(v){
   document.querySelectorAll('section[data-view]').forEach(s=>s.classList.toggle('on',s.dataset.view===v));
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active',a.dataset.go===v));
@@ -444,7 +446,7 @@ document.getElementById('nav').addEventListener('click',e=>{const a=e.target.clo
 function toggleNav(){document.body.classList.toggle('nav-open');}   // мобильный бургер
 function closeNav(){document.body.classList.remove('nav-open');}
 let CURRENT='dashboard';
-function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,guide:renderGuide}[v]||(()=>{}))();}
+function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,budgets:renderBudgets,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,guide:renderGuide}[v]||(()=>{}))();}
 function refresh(){render(CURRENT);loadBadges();}
 
 /* ---------- бейджи/статус ---------- */
@@ -1061,6 +1063,86 @@ async function doReportSend(){
   try{const r=await api('report_send',...p);toast('Отправлено в чатов: '+r.sent,'ok');}catch(e){}
 }
 
+/* ---------- БЮДЖЕТЫ ---------- */
+let BUD_FILTER='all', BUD_POLL=null;
+function budMoney(v,cur){return v==null?'<span class="muted">—</span>':(Math.round(v).toLocaleString('ru-RU')+' '+(cur==='RUB'?'₽':esc(cur||'')));}
+function budDays(d){
+  if(d==null)return '<span class="muted">—</span>';
+  const col=d<3?'var(--red)':(d<7?'var(--amber)':'var(--green)');
+  const w=Math.max(4,Math.min(100,d/14*100));
+  return `<div style="display:flex;align-items:center;gap:8px;min-width:110px">
+    <div style="flex:1;height:8px;border-radius:99px;background:var(--surface-3);overflow:hidden"><div style="height:100%;width:${w}%;background:${col}"></div></div>
+    <b style="font-size:12.5px;color:${col};white-space:nowrap">${d<10?d.toFixed(1):Math.round(d)} дн.</b></div>`;
+}
+const BUD_ST={critical:['🔴 критично','b-red'],warning:['🟡 внимание','b-amber'],ok:['🟢 ок','b-green'],inactive:['💤 не тратил','b-grey'],error:['⚠ ошибка','b-red']};
+async function renderBudgets(){
+  const host=el('v_budgets');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
+  let d;try{d=await api('budgets');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const rows=d.rows||[], run=d.run||{};
+  const crit=rows.filter(r=>r.status==='critical').length;
+  const warn=rows.filter(r=>r.status==='warning').length;
+  const inact=rows.filter(r=>r.status==='inactive').length;
+  const b=el('navBudgets');if(b){b.textContent=crit;b.style.display=crit?'':'none';}
+  const F=BUD_FILTER;
+  const shown=rows.filter(r=>
+    F==='crit'?r.status==='critical':
+    F==='warn'?(r.status==='critical'||r.status==='warning'):
+    F==='inactive'?r.status==='inactive':r.status!=='inactive');
+  const tab=(key,label)=>`<span class="t ${F===key?'on':''}" onclick="BUD_FILTER='${key}';renderBudgets()">${label}</span>`;
+  const trs=shown.map(r=>{
+    const st=BUD_ST[r.status]||BUD_ST.ok;
+    const camps=r.camps_total?`✅ ${r.camps_on}/${r.camps_total}${r.camps_pay_stopped?` · <b style="color:var(--red)">💳 ${r.camps_pay_stopped} стоп</b>`:''}`:'<span class="muted">—</span>';
+    return `<tr${r.status==='critical'?' style="background:var(--red-bg)"':''}>
+      <td><b>${esc(r.name||r.login)}</b><div class="muted" style="font-size:11.5px">${esc(r.login)}</div></td>
+      <td class="nowrap">${budMoney(r.balance,r.currency)}</td>
+      <td class="nowrap">${r.rate?budMoney(r.rate,r.currency)+'/д':'<span class="muted">—</span>'}</td>
+      <td>${budDays(r.days_left)}</td>
+      <td class="nowrap">${camps}</td>
+      <td class="nowrap">${r.daily_budget?budMoney(r.daily_budget,r.currency):'<span class="muted">—</span>'}</td>
+      <td><span class="badge ${st[1]}" style="font-size:11px">${st[0]}</span>${r.note?`<div class="muted" style="font-size:11.5px;margin-top:3px">${esc(r.note)}</div>`:''}</td>
+    </tr>`;
+  }).join('');
+  host.innerHTML=`
+    <h2 class="title">Бюджеты</h2>
+    <p class="sub">Остатки общих счетов, темп трат и «на сколько дней хватит» по рабочему пулу
+      (клиенты с владельцем или привязкой, тратившие последние 3 недели). Обновляется само каждые
+      12 часов; критичные (&lt;3 дней) уходят алертом в личку Telegram.</p>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      ${crit?`<span class="badge b-red">🔴 критичных: ${crit}</span>`:''}
+      ${warn?`<span class="badge b-amber">🟡 внимание: ${warn}</span>`:''}
+      <span class="muted" style="font-size:12.5px">обновлено: ${d.updated?fmtWhen(d.updated):'ещё не собирали'}</span>
+      <div class="grow"></div>
+      ${run.running?`<span class="badge b-amber" id="budProg"><span class="spin"></span> собираю: ${run.done}/${run.total||'…'}</span>`
+        :(ME&&ME.role==='observer'?'':'<button class="btn sm primary" onclick="doBudgetsRefresh()">⟳ Обновить сейчас</button>')}
+    </div>
+    <div class="tabs">${tab('all','Активные')}${tab('crit','🔴 Критичные')}${tab('warn','🟡+🔴 Внимание')}${tab('inactive','💤 Неактивные ('+inact+')')}</div>
+    ${shown.length?`<div class="panel"><div class="scrollx"><table>
+      <thead><tr><th>Клиент</th><th>Остаток</th><th>Темп (7д)</th><th>Дней осталось</th><th>Кампании</th><th>Днев. бюджет</th><th>Статус</th></tr></thead>
+      <tbody>${trs}</tbody></table></div></div>`
+    :`<div class="empty">${rows.length?'В этом фильтре пусто.':'Пока пусто: либо ещё не собирали (нажми «Обновить сейчас» — сбор идёт по всему агентству), либо у тебя нет клиентов в рабочем пуле (владелец или привязка).'}</div>`}`;
+  if(run.running)budPoll();
+}
+function budPoll(){
+  clearTimeout(BUD_POLL);
+  BUD_POLL=setTimeout(async()=>{
+    if(CURRENT!=='budgets')return;
+    try{
+      const s=await api('budgets');const run=s.run||{};
+      const pe=el('budProg');
+      if(run.running){if(pe)pe.innerHTML='<span class="spin"></span> собираю: '+run.done+'/'+(run.total||'…');budPoll();}
+      else renderBudgets();
+    }catch(e){}
+  },2500);
+}
+async function doBudgetsRefresh(){
+  try{
+    const r=await api('budgets_refresh');
+    if(r.already_running){toast('Сбор уже идёт','err');return;}
+    toast('Собираю бюджеты — это может занять пару минут','ok');
+    renderBudgets();
+  }catch(e){}
+}
+
 /* ---------- СТОРОННИЙ МЕССЕНДЖЕР (копипаст) ---------- */
 let EXT_BOUND=new Set(), EXT_LAST=[];
 async function copyToClip(text,okmsg){
@@ -1160,9 +1242,9 @@ async function renderErrlog(){
     <td class="nowrap" style="font-size:12.5px"><code>${esc(r.where)}</code></td>
     <td style="font-size:13px">${esc(r.msg)}</td></tr>`).join('');
   host.innerHTML=`
-    <h2 class="title">Журнал ошибок</h2>
-    <p class="sub">Технические сбои сервера (API, рассылка, сбор отчётов) — свежие сверху.
-      Сюда попадает всё, что раньше мелькало красным тостом и терялось.</p>
+    <h2 class="title">Журнал</h2>
+    <p class="sub">Технические события сервера — свежие сверху: ошибки (API, рассылка, сбор отчётов)
+      и итоги фоновых задач (автосинк клиентов/целей, сбор бюджетов).</p>
     <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
       <button class="btn sm" onclick="renderErrlog()">⟳ Обновить</button>
       ${entries.length?'<button class="btn sm" onclick="doClearErrlog()">🗑 Очистить журнал</button>':''}
