@@ -267,8 +267,34 @@
   ::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--muted) 70%,transparent);background-clip:padding-box}
 
   @media (max-width:920px){.grid2{grid-template-columns:1fr}}
-  @media (max-width:760px){.app{grid-template-columns:72px 1fr}.brand-tx,.nav a span:not(.ic):not(.nav-badge),.btn-connect span:last-child,.mini{display:none}
+  /* планшет: узкая рейка иконок */
+  @media (max-width:900px) and (min-width:641px){.app{grid-template-columns:72px 1fr}.brand-tx,.nav a span:not(.ic):not(.nav-badge),.btn-connect span:last-child,.mini{display:none}
     .nav a{justify-content:center}.btn-connect{padding:11px 0}}
+  /* телефон: сайдбар прячется за бургер (оверлей) */
+  .burger{display:none}
+  .side-bg{position:fixed;inset:0;background:rgba(11,17,32,.55);backdrop-filter:blur(2px);z-index:59;display:none}
+  @media (max-width:640px){
+    .app{grid-template-columns:1fr;height:100dvh}
+    /* скрытие через left (не transform): transform-транзиции могут «зависать» в фоновых
+       вкладках и оставлять меню на экране; left ведёт себя предсказуемо */
+    .side{position:fixed;top:0;bottom:0;left:-105vw;width:266px;max-width:84vw;z-index:60;
+      transition:left .25s ease;box-shadow:var(--shadow-lg)}
+    body.nav-open .side{left:0}
+    body.nav-open .side-bg{display:block}
+    .burger{display:grid}
+    .top{padding:0 12px;gap:8px}
+    .top h1{font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+    #botPill{display:none}
+    .user-meta{display:none}
+    .content{padding:14px 12px}
+    .matchrow{grid-template-columns:1fr;gap:8px}
+    .matchrow .arrow{display:none}
+    .drawer{width:100vw;max-width:100vw}
+    .kvs{grid-template-columns:1fr;gap:4px 0}
+    .tabs{display:flex;flex-wrap:wrap}
+    .goalrow{grid-template-columns:38px 90px 1fr 30px}
+    .cards{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+  }
 </style>
 </head>
 <body>
@@ -286,15 +312,18 @@
       <a data-go="settings"><span class="ic">⚙️</span><span>Настройки</span></a>
       <a data-go="supervision" id="navSup" style="display:none"><span class="ic">👁</span><span>Контроль</span></a>
       <a data-go="users" id="navUsers" style="display:none"><span class="ic">🔑</span><span>Пользователи</span></a>
+      <a data-go="errlog" id="navErrlog" style="display:none"><span class="ic">🩺</span><span>Журнал</span></a>
       <a data-go="guide"><span class="ic">📖</span><span>Гайд</span></a>
     </nav>
-    <div class="btn-connect" onclick="openOnboard()"><span>＋</span><span>Подключить клиента</span></div>
+    <div class="btn-connect" onclick="closeNav();openOnboard()"><span>＋</span><span>Подключить клиента</span></div>
     <div class="spacer"></div>
     <div class="mini" id="botInfo">Загрузка…</div>
   </aside>
+  <div class="side-bg" onclick="closeNav()"></div>
 
   <div class="main">
     <header class="top">
+      <button class="icon-btn burger" onclick="toggleNav()" title="Меню">☰</button>
       <h1 id="crumb">Обзор</h1>
       <div class="grow"></div>
       <span class="pill" id="botPill"><span class="dot"></span> Слушатель</span>
@@ -317,6 +346,7 @@
       <section data-view="settings"><div id="v_settings"></div></section>
       <section data-view="supervision"><div id="v_supervision"></div></section>
       <section data-view="users"><div id="v_users"></div></section>
+      <section data-view="errlog"><div id="v_errlog"></div></section>
       <section data-view="guide"><div id="v_guide"></div></section>
     </div>
   </div>
@@ -403,16 +433,18 @@ function applyTheme(t){document.documentElement.setAttribute('data-theme',t);try
 function toggleTheme(){const cur=document.documentElement.getAttribute('data-theme')||'light';applyTheme(cur==='dark'?'light':'dark');}
 
 /* ---------- роутинг ---------- */
-const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',external:'Сторонний мессенджер',gsheets:'Google-таблицы',settings:'Настройки',supervision:'Контроль',users:'Пользователи',guide:'Гайд'};
+const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',external:'Сторонний мессенджер',gsheets:'Google-таблицы',settings:'Настройки',supervision:'Контроль',users:'Пользователи',errlog:'Журнал ошибок',guide:'Гайд'};
 function go(v){
   document.querySelectorAll('section[data-view]').forEach(s=>s.classList.toggle('on',s.dataset.view===v));
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active',a.dataset.go===v));
   el('crumb').textContent=NAMES[v]||'';
   render(v);
 }
-document.getElementById('nav').addEventListener('click',e=>{const a=e.target.closest('a');if(a)go(a.dataset.go);});
+document.getElementById('nav').addEventListener('click',e=>{const a=e.target.closest('a');if(a){go(a.dataset.go);closeNav();}});
+function toggleNav(){document.body.classList.toggle('nav-open');}   // мобильный бургер
+function closeNav(){document.body.classList.remove('nav-open');}
 let CURRENT='dashboard';
-function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,guide:renderGuide}[v]||(()=>{}))();}
+function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,guide:renderGuide}[v]||(()=>{}))();}
 function refresh(){render(CURRENT);loadBadges();}
 
 /* ---------- бейджи/статус ---------- */
@@ -1012,7 +1044,15 @@ async function doReportCopy(){
 async function doReportXlsx(){
   const p=rbParams();if(!p[0])return;
   toast('Готовлю xlsx…');
-  try{const r=await api('report_export_xlsx',...p);toast('Сохранено: reports\\'+r.filename+' ('+r.n_rows+' строк)','ok');}catch(e){}
+  try{
+    const r=await api('report_export_xlsx',...p);
+    if(window.pywebview&&window.pywebview.api){          // десктоп: файл лёг рядом с программой
+      toast('Сохранено: reports\\'+r.filename+' ('+r.n_rows+' строк)','ok');
+    }else{                                                // веб: отдаём файл браузеру на скачивание
+      toast('Скачиваю: '+r.filename+' ('+r.n_rows+' строк)','ok');
+      window.location.href='/download/xlsx/'+encodeURIComponent(r.filename);
+    }
+  }catch(e){}
 }
 async function doReportSend(){
   const p=rbParams();if(!p[0])return;
@@ -1108,6 +1148,36 @@ function extCopyAll(){
   copyToClip(parts.join('\n\n\n'),'Скопированы все: '+parts.length);
 }
 
+/* ---------- ЖУРНАЛ ОШИБОК (админ) ---------- */
+async function renderErrlog(){
+  const host=el('v_errlog');
+  if(!ME||ME.role!=='admin'){host.innerHTML='<div class="empty">Раздел доступен только администратору.</div>';return;}
+  host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
+  let d;try{d=await api('error_log',300);}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const entries=d.entries||[];
+  const rows=entries.map(r=>`<tr>
+    <td class="nowrap muted" style="font-size:12.5px">${esc(r.ts)}</td>
+    <td class="nowrap" style="font-size:12.5px"><code>${esc(r.where)}</code></td>
+    <td style="font-size:13px">${esc(r.msg)}</td></tr>`).join('');
+  host.innerHTML=`
+    <h2 class="title">Журнал ошибок</h2>
+    <p class="sub">Технические сбои сервера (API, рассылка, сбор отчётов) — свежие сверху.
+      Сюда попадает всё, что раньше мелькало красным тостом и терялось.</p>
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+      <button class="btn sm" onclick="renderErrlog()">⟳ Обновить</button>
+      ${entries.length?'<button class="btn sm" onclick="doClearErrlog()">🗑 Очистить журнал</button>':''}
+      <span class="muted" style="font-size:12px">записей: ${entries.length}${entries.length>=300?' (показаны последние 300)':''}</span>
+    </div>
+    ${entries.length?`<div class="panel"><div class="scrollx"><table>
+      <thead><tr><th style="width:150px">Когда</th><th style="width:200px">Где</th><th>Что случилось</th></tr></thead>
+      <tbody>${rows}</tbody></table></div></div>`
+    :'<div class="empty">Ошибок нет — красота ✨</div>'}`;
+}
+async function doClearErrlog(){
+  if(!confirm('Очистить журнал ошибок? Записи удалятся безвозвратно.'))return;
+  try{await api('error_log_clear');toast('Журнал очищен','ok');renderErrlog();}catch(e){}
+}
+
 /* ---------- GOOGLE-ТАБЛИЦЫ ---------- */
 async function renderGSheets(){
   const host=el('v_gsheets');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
@@ -1182,7 +1252,35 @@ async function renderSettings(){
       </div>
       <div class="note" style="margin-bottom:14px">Время рассылки — справочно. Запуск по расписанию настраивается в «Планировщике задач» Windows (запуск этой программы/скрипта). Кнопка «Запустить рассылку сейчас» работает в любой момент.</div>
       <button class="btn primary" onclick="saveSettings()">Сохранить</button>
-    </div></div>`;
+    </div></div>
+    ${ME&&ME.role!=='observer'?`
+    <div class="panel" style="margin-top:16px"><h3><span class="h3-ic">🖋</span> Моя приписка к отчётам</h3><div class="body">
+      <p class="muted" style="margin:0 0 10px;font-size:13px">Личная подпись в конце отчётов по <b>твоим</b> клиентам — везде, где строится отчёт (превью, рассылка, авто-рассылка, «Сторонние»). У каждого специалиста своя; «Приписка специалиста» из блока выше — общая, работает как запасная.</p>
+      <div class="field"><label>Режим</label><select id="mnMode" onchange="mnModeUi()">
+        <option value="global">Общая приписка (из блока выше)</option>
+        <option value="own">Своя приписка</option>
+        <option value="off">Без приписки вообще</option>
+      </select></div>
+      <div class="field" id="mnTextWrap" style="display:none"><label>Текст своей приписки</label><textarea id="mnText" rows="2" placeholder="Например: «По вопросам — Денис, +7 ...»"></textarea></div>
+      <button class="btn primary" onclick="saveMyNote()">Сохранить приписку</button>
+    </div></div>`:''}`;
+  if(ME&&ME.role!=='observer'){
+    try{const mn=await api('my_note');
+      const mode=(mn.note==null?'global':(mn.note===''?'off':'own'));
+      el('mnMode').value=mode;
+      if(mode==='own')el('mnText').value=mn.note;
+      mnModeUi();
+    }catch(e){}
+  }
+}
+function mnModeUi(){const w=el('mnTextWrap');if(w)w.style.display=(el('mnMode').value==='own'?'':'none');}
+async function saveMyNote(){
+  const mode=el('mnMode').value;
+  let note=null;                                   // общая (из Настроек)
+  if(mode==='off')note='';                          // совсем без приписки
+  if(mode==='own'){note=(el('mnText').value||'').trim();
+    if(!note){toast('Впиши текст своей приписки (или выбери другой режим)','err');return;}}
+  try{await api('set_my_note',note);toast('Приписка сохранена','ok');}catch(e){}
 }
 async function saveSettings(){
   const admins=(el('stAdmins').value||'').split(/[,\s]+/).filter(Boolean);
@@ -1276,13 +1374,14 @@ const ROLE_RU={admin:'Администратор',observer:'Наблюдател
 function applyUser(){
   const box=el('userBox');
   const setNav=(id,on)=>{const e=el(id);if(e)e.style.display=on?'':'none';};
-  if(!ME){box.style.display='none';setNav('navUsers',false);setNav('navSup',false);return;}
+  if(!ME){box.style.display='none';setNav('navUsers',false);setNav('navSup',false);setNav('navErrlog',false);return;}
   box.style.display='inline-flex';
   el('userName').textContent=ME.name||ME.email;
   el('userRole').textContent=ROLE_RU[ME.role]||'Специалист';
   el('userAva').textContent=((ME.name||ME.email||'?').trim().charAt(0)||'?');
   setNav('navUsers',ME.role==='admin');
   setNav('navSup',ME.role==='admin'||ME.role==='observer');   // Контроль — админ и наблюдатель
+  setNav('navErrlog',ME.role==='admin');                      // Журнал ошибок — только админ
 }
 /* ---------- КОНТРОЛЬ: наблюдатель/админ ---------- */
 const SUP_ST={ok:{t:'✅ всё сдал',c:'var(--green)',bg:'var(--green-bg)'},partial:{t:'⚠️ частично',c:'var(--amber)',bg:'var(--amber-bg)'},miss:{t:'❌ не сдал',c:'var(--red)',c2:1,bg:'var(--red-bg)'},none:{t:'— нет клиентов',c:'var(--muted)',bg:'var(--surface-3)'}};

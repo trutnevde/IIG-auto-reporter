@@ -339,6 +339,17 @@ def build_for_login(token, db, login, intro, note, default_attr="LSC", _post=Non
     if not c:
         raise RuntimeError("Клиент {} не найден в базе".format(login))
     goal_defs = goal_defs_from_client(c)
+    # Приписка ведущего специалиста: у владельца клиента может быть своя (users.note).
+    # NULL = общая (аргумент note из Настроек), '' = совсем без приписки, текст = своя.
+    # Работает везде, где строится отчёт: превью, рассылка кнопкой, cron, «Сторонние».
+    owner = c["owner"] if "owner" in c.keys() else None
+    if owner:
+        try:
+            u = db.get_user(owner)
+            if u is not None and "note" in u.keys() and u["note"] is not None:
+                note = u["note"]
+        except Exception:  # noqa: BLE001 — нет таблицы users (старая база) — остаётся общая
+            pass
     attr = (c["attribution"] if c["attribution"] else None) or default_attr or "LSC"
     per = period()
     camps = build_campaign_data(token, login, goal_defs, attr, per, _post=_post, _sleep=_sleep)

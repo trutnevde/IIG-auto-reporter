@@ -984,6 +984,62 @@ class Api:
         self.db.set_client_owner(login, owner)
         return {"login": login, "owner": owner}
 
+    # ---------- журнал ошибок (админ) ----------
+    @safe
+    def error_log(self, lines=300):
+        """Хвост файлового журнала iig_errors.log для раздела «Журнал»: новые сверху,
+        каждая запись {ts, where, msg}. Только админ."""
+        self._require_admin()
+        import os
+        from .settings import ERROR_LOG_PATH
+        if not os.path.isfile(ERROR_LOG_PATH):
+            return {"entries": []}
+        with open(ERROR_LOG_PATH, encoding="utf-8", errors="replace") as f:
+            raw = f.readlines()
+        out = []
+        for ln in raw[-int(lines or 300):]:
+            parts = ln.rstrip("\n").split("\t", 2)
+            if len(parts) == 3:
+                out.append({"ts": parts[0], "where": parts[1], "msg": parts[2]})
+            elif ln.strip():
+                out.append({"ts": "", "where": "", "msg": ln.strip()})
+        out.reverse()   # свежие сверху
+        return {"entries": out}
+
+    @safe
+    def error_log_clear(self):
+        """Очищает журнал ошибок (админ)."""
+        self._require_admin()
+        import os
+        from .settings import ERROR_LOG_PATH
+        if os.path.isfile(ERROR_LOG_PATH):
+            open(ERROR_LOG_PATH, "w", encoding="utf-8").close()
+        return {"cleared": True}
+
+    # ---------- своя приписка к отчётам ----------
+    @safe
+    def my_note(self):
+        """Своя приписка пользователя: note=null — общая (из Настроек), '' — без приписки,
+        текст — своя. global_note — что сейчас в общих Настройках (для подсказки в UI)."""
+        g_note = load_report_config().get("specialist_note") or ""
+        if not self.user:
+            return {"note": None, "global_note": g_note}
+        u = self.db.get_user(self.user["id"])
+        n = (u["note"] if (u is not None and "note" in u.keys()) else None)
+        return {"note": n, "global_note": g_note}
+
+    @safe
+    def set_my_note(self, note):
+        """Сохранить свою приписку (null=общая, ''=без, текст=своя). Подставляется во все отчёты
+        по клиентам, которыми владеет пользователь — включая недельный cron."""
+        if not self.user:
+            raise RuntimeError("Доступно только в веб-кабинете")
+        self._require_write()
+        if note is not None:
+            note = str(note).strip() or ""
+        self.db.set_user_note(self.user["id"], note)
+        return {"saved": True, "note": note}
+
     # ---------- НАБЛЮДАТЕЛЬ: контроль обязательств + сообщения ----------
     @safe
     def supervision(self):

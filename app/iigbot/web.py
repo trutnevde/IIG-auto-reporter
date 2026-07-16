@@ -82,6 +82,23 @@ def create_app(api=None):
     def index():
         return Response(ui_html, mimetype="text/html; charset=utf-8")
 
+    @app.route("/download/xlsx/<path:name>")
+    def download_xlsx(name):
+        """Отдаёт готовый .xlsx из reports/ браузеру (сохранение на сервере бесполезно вебу).
+        Только залогиненным; имя — строго basename и только .xlsx (без обходов пути)."""
+        if not g.user:
+            return jsonify({"ok": False, "error": "not_authenticated"}), 401
+        from .settings import BASE_DIR
+        fn = os.path.basename(name)
+        if not fn.lower().endswith(".xlsx") or fn != name:
+            return jsonify({"ok": False, "error": "bad filename"}), 400
+        path = os.path.join(BASE_DIR, "reports", fn)
+        if not os.path.isfile(path):
+            return jsonify({"ok": False, "error": "файл не найден (сгенерируй отчёт заново)"}), 404
+        from flask import send_file
+        return send_file(path, as_attachment=True, download_name=fn,
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
     def _login():
         data = request.get_json(force=True, silent=True) or {}
         if isinstance(data, list):   # контракт api() шлёт позиционные аргументы массивом

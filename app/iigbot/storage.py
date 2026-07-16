@@ -110,6 +110,10 @@ class Storage:
         if "owner" not in cols:   # владелец клиента (кому назначен); NULL = общий пул
             self.conn.execute("ALTER TABLE clients ADD COLUMN owner INTEGER")
             self.conn.commit()
+        ucols = {r["name"] for r in self.conn.execute("PRAGMA table_info(users)")}
+        if "note" not in ucols:   # своя приписка к отчётам: NULL=общая (из Настроек), ''=без, текст=своя
+            self.conn.execute("ALTER TABLE users ADD COLUMN note TEXT")
+            self.conn.commit()
 
     # ---------- kv ----------
     def get_kv(self, key, default=None):
@@ -234,6 +238,11 @@ class Storage:
 
     def set_user_password(self, user_id, pass_hash):
         self.conn.execute("UPDATE users SET pass_hash=? WHERE id=?", (pass_hash, user_id))
+        self.conn.commit()
+
+    def set_user_note(self, user_id, note):
+        """Своя приписка пользователя к отчётам (NULL=общая, ''=без приписки, текст=своя)."""
+        self.conn.execute("UPDATE users SET note=? WHERE id=?", (note, user_id))
         self.conn.commit()
 
     def set_user_role(self, user_id, role):
