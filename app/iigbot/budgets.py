@@ -187,43 +187,67 @@ def collect(db, token, on_progress=None, _post=None, _sleep=None):
 
 
 # ---------- алерты в личку ----------
+def _alert_line(r):
+    nm = r["name"] or r["login"]
+    if r["days_left"] is not None:
+        return "• {} ({}): осталось ~{} дн. — баланс {:,.0f} {}, темп {:,.0f}/день".format(
+            nm, r["login"], r["days_left"], r["balance"] or 0, r["currency"], r["rate"] or 0).replace(",", " ")
+    return "• {} ({}): {} кампаний остановлено по оплате".format(nm, r["login"], r["camps_pay_stopped"])
+
+
 def send_alerts(db, tg):
-    """Критичные (< 3 дней) и остановленные по оплате — одним сообщением в личку
-    (kv budget_alert_username, по умолчанию iig_dtrutnev). Не чаще раза в сутки на клиента."""
-    username = (db.get_kv("budget_alert_username") or "iig_dtrutnev").lstrip("@").lower()
-    chat = None
-    for c in db.list_chats():
-        if (c["type"] or "") == "private" and (c["username"] or "").lower() == username:
-            chat = c
-            break
+    """Критичные (<3 дней) и остановленные по оплате — в личку ВЛАДЕЛЬЦУ клиента (его
+    users.alert_username), чтобы каждый спец получал алерты по СВОИМ клиентам в свой чат.
+    Клиенты без владельца/без своего чата → общий получатель (kv budget_alert_username).
+    Не чаще раза в сутки на клиента. Каждому получателю — одно сообщение с его клиентами."""
+    from .settings import log_error
     rows = [r for r in db.list_budgets()
             if r["status"] == "critical"
             or (r["status"] in ("warning",) and (r["camps_pay_stopped"] or 0) > 0)]
     if not rows:
         return {"sent": 0, "reason": "нет критичных"}
-    if not chat:
-        from .settings import log_error
-        log_error("budgets.alert", "личка @{} не найдена — пусть напишет боту /start".format(username))
-        return {"sent": 0, "reason": "нет лички @" + username}
+
+    users = {u["id"]: u for u in db.list_users()}
+    owner_of = {c["login"]: (c["owner"] if "owner" in c.keys() else None)
+                for c in db.list_clients("all")}
+    global_un = (db.get_kv("budget_alert_username") or "iig_dtrutnev").lstrip("@").lower()
+
+    # группируем строки по получателю-username (владелец → его alert_username, иначе общий)
+    by_recipient = {}
+    for r in rows:
+        owner = owner_of.get(r["login"])
+        un = None
+        if owner and owner in users:
+            au = users[owner]["alert_username"] if "alert_username" in users[owner].keys() else None
+            un = (au or "").strip().lstrip("@").lower() or None
+        un = un or global_un
+        by_recipient.setdefault(un, []).append(r)
+
+    # приватные чаты по username
+    priv = {}
+    for c in db.list_chats():
+        if (c["type"] or "") == "private" and (c["username"] or ""):
+            priv[str(c["username"]).lower()] = c
+
     today = dt.date.today().isoformat()
-    fresh = [r for r in rows if db.get_kv("budget_alerted_" + r["login"]) != today]
-    if not fresh:
-        return {"sent": 0, "reason": "уже слали сегодня"}
-    lines = ["⚠️ БЮДЖЕТ НА ИСХОДЕ"]
-    for r in fresh:
-        nm = r["name"] or r["login"]
-        if r["days_left"] is not None:
-            lines.append("• {} ({}): осталось ~{} дн. — баланс {:,.0f} {}, темп {:,.0f}/день".format(
-                nm, r["login"], r["days_left"], r["balance"], r["currency"], r["rate"]).replace(",", " "))
-        else:
-            lines.append("• {} ({}): {} кампаний остановлено по оплате".format(
-                nm, r["login"], r["camps_pay_stopped"]))
-    lines.append("")
-    lines.append("Проверь и пополни: вкладка «Бюджеты» в кабинете.")
-    tg.send_message(chat["chat_id"], "\n".join(lines))
-    for r in fresh:
-        db.set_kv("budget_alerted_" + r["login"], today)
-    return {"sent": len(fresh)}
+    total_sent = 0
+    missing = []
+    for un, rs in by_recipient.items():
+        fresh = [r for r in rs if db.get_kv("budget_alerted_" + r["login"]) != today]
+        if not fresh:
+            continue
+        chat = priv.get(un)
+        if not chat:
+            missing.append(un)
+            log_error("budgets.alert", "личка @{} не найдена — пусть напишет боту /start".format(un))
+            continue
+        lines = ["⚠️ БЮДЖЕТ НА ИСХОДЕ"] + [_alert_line(r) for r in fresh]
+        lines += ["", "Проверь и пополни: вкладка «Бюджеты» в кабинете."]
+        tg.send_message(chat["chat_id"], "\n".join(lines))
+        for r in fresh:
+            db.set_kv("budget_alerted_" + r["login"], today)
+        total_sent += len(fresh)
+    return {"sent": total_sent, "recipients": len(by_recipient), "missing": missing}
 
 
 def collect_and_alert(db, token, tg=None, on_progress=None):

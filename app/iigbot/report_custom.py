@@ -39,7 +39,7 @@ SEGMENTS = {
     "network": ("AdNetworkType", "Сеть"),
 }
 SEGMENT_ORDER = ["date", "device", "gender", "age", "geo", "network"]
-DATE_GRAINS = {"day": "По дням", "week": "По неделям", "month": "По месяцам"}
+DATE_GRAINS = {"day": "По дням", "week": "По неделям", "month": "По месяцам", "period": "За весь период"}
 
 # модели атрибуции Директа (максимум): обычные + кросс-девайс (…D) + авто
 ATTRIBUTION_MODELS = ["LSC", "LC", "FC", "LYDC", "LSCD", "LCD", "FCD", "LYDCD", "AUTO"]
@@ -82,7 +82,7 @@ def options():
         "attributions": ATTRIBUTION_MODELS,
         "conv_levels": sorted(CONV_LEVELS),
         "segments": [{"key": k, "label": SEGMENTS[k][1]} for k in SEGMENT_ORDER],
-        "date_grains": [{"key": k, "label": DATE_GRAINS[k]} for k in ("day", "week", "month")],
+        "date_grains": [{"key": k, "label": DATE_GRAINS[k]} for k in ("day", "week", "month", "period")],
         "metrics": METRICS,
     }
 
@@ -90,6 +90,8 @@ def options():
 def _date_bucket(v, grain):
     """Свернуть дату YYYY-MM-DD к дню/неделе/месяцу для группировки на нашей стороне."""
     v = (v or "").strip()
+    if grain == "period":
+        return "весь период"   # все даты в одну строку (просто выбранный период целиком)
     if grain == "day" or len(v) < 10:
         return v
     try:

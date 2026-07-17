@@ -305,6 +305,7 @@ class Api:
                 "attribution": c["attribution"] or "",
                 "goals": goals,
                 "delivery": (c["delivery"] if "delivery" in c.keys() else None) or "telegram",
+                "added_at": (c["added_at"] if "added_at" in c.keys() else None) or c["updated_at"],
                 "chat_id": b["chat_id"] if b else None,
                 "chat_title": self._chat_title(b["chat_id"]) if b else None,
             })
@@ -397,6 +398,34 @@ class Api:
         """Для карточки клиента: цели из Метрики с пресетом active (ключевые отмечены). Не сохраняет."""
         self._require_owned(login)
         return self._metrika_goals_for(login)
+
+    @safe
+    def client_goals_pull(self, login):
+        """Подтянуть цели из Метрики для ОДНОГО клиента и СОХРАНИТЬ (кнопка в конструкторе, когда
+        у клиента нет целей). Ключевые помечаются active, ручные галки сохраняются. Возвращает цели
+        для конструктора: [{'id','name','active'}]."""
+        self._require_write()
+        self._require_owned(login)
+        found = self._metrika_goals_for(login)
+        goals = found["goals"]
+        if not goals:
+            return {"goals": [], "note": found.get("note") or "Цели не найдены"}
+        cur = self.db.get_client(login)
+        prev = {}
+        try:
+            for g in json.loads((cur and cur["goals"]) or "[]"):
+                if isinstance(g, dict):
+                    prev[str(g.get("id"))] = (g.get("active") is not False)
+        except Exception:  # noqa: BLE001
+            pass
+        merged = [{"id": g["id"], "name": g["name"], "type": g.get("type", ""),
+                   "active": prev.get(g["id"], g["active"])} for g in goals]
+        self.db.upsert_client(login=login, goals=normalize_goals(merged))
+        self._cloud_push_safe()
+        out = [{"id": str(g["id"]), "name": g["name"], "active": (g["active"] is not False)} for g in merged]
+        return {"goals": out, "counters": found.get("counters", []),
+                "note": "Подтянуто целей: {} (ключевых вкл.: {})".format(
+                    len(out), sum(1 for g in out if g["active"]))}
 
     @safe
     def metrika_goals_bulk(self):
@@ -868,6 +897,24 @@ class Api:
         return {"available": True,
                 "sheets": [{"domain": k, "title": v["title"]} for k, v in sorted(sheets.items())]}
 
+    @safe
+    def gsheets_clients(self):
+        """Клиенты (в моём скоупе), у которых есть обнаруженная Google-таблица по домену —
+        чтобы в выпадашке не мелькали все подряд, а только реально выгружаемые."""
+        from . import gsheets as G
+        if not G.available():
+            return []
+        sheets = G.discover()
+        out = []
+        for c in self.db.list_clients(self._owner()):
+            for d in self._client_domains(c["name"]):
+                key = str(d).strip().lower().replace("www.", "")
+                if key in sheets:
+                    out.append({"login": c["login"], "name": c["name"] or c["login"],
+                                "sheet": sheets[key]["title"]})
+                    break
+        return out
+
     @staticmethod
     def _last_full_month():
         """(date_from, date_to) прошлого ПОЛНОГО месяца относительно сегодня."""
@@ -1043,20 +1090,32 @@ class Api:
 
     @safe
     def pool_clients(self):
-        """Все клиенты агентства с владельцем — для раздачи (админ)."""
-        self._require_admin()
+        """Все клиенты агентства с владельцем и способом доставки — для раздачи (админ/наблюдатель)."""
+        self._require_supervisor()
         emails = {u["id"]: u["email"] for u in self.db.list_users()}
+        names = {u["id"]: (u["name"] or u["email"]) for u in self.db.list_users()}
         out = []
         for c in self.db.list_clients("all"):
             owner = c["owner"] if "owner" in c.keys() else None
             out.append({"login": c["login"], "name": c["name"],
-                        "owner": owner, "owner_email": emails.get(owner)})
+                        "owner": owner, "owner_email": emails.get(owner),
+                        "owner_name": names.get(owner),
+                        "delivery": (c["delivery"] if "delivery" in c.keys() else None) or "telegram"})
         return out
 
     @safe
-    def assign_client(self, login, user_id=None):
-        """Назначить клиента пользователю (user_id=None/'' → вернуть в общий пул). Админ."""
-        self._require_admin()
+    def assignable_users(self):
+        """Список специалистов/админов для раздачи проектов (наблюдателю и админу)."""
+        self._require_supervisor()
+        return [{"id": u["id"], "name": u["name"] or u["email"], "email": u["email"], "role": u["role"]}
+                for u in self.db.list_users() if u["active"] and u["role"] in ("user", "admin")]
+
+    @safe
+    def assign_client(self, login, user_id=None, delivery=None):
+        """Назначить клиента специалисту (user_id=None/'' → общий пул) и сразу задать способ
+        доставки (delivery='external'|'telegram'). Доступно админу и наблюдателю (работодатель
+        выставляет проекты)."""
+        self._require_supervisor()
         if not self.db.get_client(login):
             raise RuntimeError("Клиент не найден")
         owner = None
@@ -1065,7 +1124,19 @@ class Api:
             if not self.db.get_user(owner):
                 raise RuntimeError("Пользователь не найден")
         self.db.set_client_owner(login, owner)
-        return {"login": login, "owner": owner}
+        if delivery is not None:
+            self.db.set_client_delivery(login, "external" if delivery == "external" else "telegram")
+        return {"login": login, "owner": owner,
+                "delivery": ("external" if delivery == "external" else "telegram") if delivery is not None else None}
+
+    @safe
+    def set_delivery_super(self, login, mode):
+        """Сменить доставку клиента при раздаче (админ/наблюдатель), НЕ трогая владельца."""
+        self._require_supervisor()
+        if not self.db.get_client(login):
+            raise RuntimeError("Клиент не найден")
+        self.db.set_client_delivery(login, "external" if mode == "external" else "telegram")
+        return {"login": login, "delivery": "external" if mode == "external" else "telegram"}
 
     # ---------- журнал ошибок (админ) ----------
     @safe
@@ -1122,6 +1193,25 @@ class Api:
             note = str(note).strip() or ""
         self.db.set_user_note(self.user["id"], note)
         return {"saved": True, "note": note}
+
+    @safe
+    def my_alert(self):
+        """Свой @username/чат для бюджет-алертов по СВОИМ клиентам. NULL = не получаю персонально
+        (алерты по моим клиентам не шлются мне отдельно; общий получатель — в отдельной настройке)."""
+        if not self.user:
+            return {"alert_username": None}
+        u = self.db.get_user(self.user["id"])
+        return {"alert_username": (u["alert_username"] if (u is not None and "alert_username" in u.keys()) else None)}
+
+    @safe
+    def set_my_alert(self, username):
+        """Задать свой @username для алертов по своим клиентам (пусто = не получать персонально)."""
+        if not self.user:
+            raise RuntimeError("Доступно только в кабинете")
+        self._require_write()
+        username = (username or "").strip().lstrip("@").lower() or None
+        self.db.set_user_alert(self.user["id"], username)
+        return {"saved": True, "alert_username": username}
 
     # ---------- бюджеты ----------
     @safe
@@ -1308,12 +1398,14 @@ class Api:
 
     @safe
     def notes_list(self):
-        """Отправленные сообщения с числом прочтений (для наблюдателя/админа)."""
+        """Отправленные сообщения с числом прочтений и ответами специалистов (наблюдатель/админ)."""
         self._require_supervisor()
+        replies = self.db.all_note_replies()
         return [{"id": n["id"], "to_user": n["to_user"],
                  "to_name": (n["to_name"] if n["to_user"] is not None else "всем специалистам") or "?",
                  "from_name": n["from_name"], "text": n["text"], "kind": n["kind"],
-                 "created_at": n["created_at"], "acks": n["acks"]}
+                 "created_at": n["created_at"], "acks": n["acks"],
+                 "replies": replies.get(n["id"], [])}
                 for n in self.db.list_notes()]
 
     @safe
@@ -1337,6 +1429,19 @@ class Api:
         if self.user:
             self.db.ack_note(int(note_id), self.user["id"])
         return {"acked": int(note_id)}
+
+    @safe
+    def note_reply(self, note_id, text):
+        """Специалист отвечает на сообщение работодателя. Ответ виден наблюдателю в Контроле.
+        Отправка ответа = «прочитано» (баннер уходит)."""
+        if not self.user:
+            raise RuntimeError("Доступно только в кабинете")
+        text = (text or "").strip()
+        if not text:
+            raise RuntimeError("Пустой ответ")
+        self.db.add_note_reply(int(note_id), self.user["id"], text)
+        self.db.ack_note(int(note_id), self.user["id"])   # ответил → баннер убираем
+        return {"replied": int(note_id)}
 
     # ---------- settings ----------
     @safe

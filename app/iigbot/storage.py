@@ -130,10 +130,28 @@ class Storage:
         if "delivery" not in cols:   # способ доставки: NULL/'telegram'=бот, 'external'=копипаст (сторонний)
             self.conn.execute("ALTER TABLE clients ADD COLUMN delivery TEXT")
             self.conn.commit()
+        if "added_at" not in cols:   # когда клиент впервые появился (для сортировки «по дате»)
+            self.conn.execute("ALTER TABLE clients ADD COLUMN added_at TEXT")
+            # бэкфилл существующих: лучшая доступная оценка — updated_at
+            self.conn.execute("UPDATE clients SET added_at=updated_at WHERE added_at IS NULL")
+            self.conn.commit()
         ucols = {r["name"] for r in self.conn.execute("PRAGMA table_info(users)")}
         if "note" not in ucols:   # своя приписка к отчётам: NULL=общая (из Настроек), ''=без, текст=своя
             self.conn.execute("ALTER TABLE users ADD COLUMN note TEXT")
             self.conn.commit()
+        if "alert_username" not in ucols:   # свой чат/username для бюджет-алертов (NULL=общий по умолчанию)
+            self.conn.execute("ALTER TABLE users ADD COLUMN alert_username TEXT")
+            self.conn.commit()
+        # ответы специалистов на сообщения наблюдателя
+        self.conn.execute(
+            """CREATE TABLE IF NOT EXISTS note_reply (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                note_id    INTEGER,
+                user_id    INTEGER,
+                text       TEXT NOT NULL,
+                created_at TEXT
+            )""")
+        self.conn.commit()
 
     # ---------- kv ----------
     def get_kv(self, key, default=None):
@@ -199,9 +217,9 @@ class Storage:
             )
         else:
             self.conn.execute(
-                "INSERT INTO clients(login,name,goals,attribution,source,updated_at) "
-                "VALUES(?,?,?,?,?,?)",
-                (login, name or login, goals_json or "[]", attribution, source or "manual", _now()),
+                "INSERT INTO clients(login,name,goals,attribution,source,updated_at,added_at) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (login, name or login, goals_json or "[]", attribution, source or "manual", _now(), _now()),
             )
         self.conn.commit()
 
@@ -277,6 +295,35 @@ class Storage:
         """Своя приписка пользователя к отчётам (NULL=общая, ''=без приписки, текст=своя)."""
         self.conn.execute("UPDATE users SET note=? WHERE id=?", (note, user_id))
         self.conn.commit()
+
+    def set_user_alert(self, user_id, username):
+        """Свой @username/чат для бюджет-алертов (NULL/'' = общий по умолчанию)."""
+        self.conn.execute("UPDATE users SET alert_username=? WHERE id=?",
+                          ((username or None), user_id))
+        self.conn.commit()
+
+    def add_note_reply(self, note_id, user_id, text):
+        self.conn.execute(
+            "INSERT INTO note_reply(note_id,user_id,text,created_at) VALUES(?,?,?,?)",
+            (int(note_id), user_id, text, _now()))
+        self.conn.commit()
+
+    def note_replies(self, note_id):
+        return self.conn.execute(
+            """SELECT r.*, u.name AS user_name FROM note_reply r
+               LEFT JOIN users u ON u.id=r.user_id WHERE r.note_id=? ORDER BY r.id""",
+            (int(note_id),)).fetchall()
+
+    def all_note_replies(self):
+        """Все ответы разом (для списка сообщений наблюдателя) → {note_id: [ {text,user_name,created_at} ]}."""
+        rows = self.conn.execute(
+            """SELECT r.note_id, r.text, r.created_at, u.name AS user_name FROM note_reply r
+               LEFT JOIN users u ON u.id=r.user_id ORDER BY r.id""").fetchall()
+        out = {}
+        for r in rows:
+            out.setdefault(r["note_id"], []).append(
+                {"text": r["text"], "user_name": r["user_name"], "created_at": r["created_at"]})
+        return out
 
     # ---------- бюджеты ----------
     def save_budget(self, row):

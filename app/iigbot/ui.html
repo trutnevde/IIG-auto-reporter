@@ -540,14 +540,15 @@ async function renderClients(){
         <th class="sortable" onclick="clSort('goals')">Цели<span class="si" id="si_goals"></span></th>
         <th class="sortable" onclick="clSort('attr')">Атриб.<span class="si" id="si_attr"></span></th>
         <th class="sortable" onclick="clSort('source')">Источник<span class="si" id="si_source"></span></th>
+        <th class="sortable" onclick="clSort('added')">Добавлен<span class="si" id="si_added"></span></th>
       </tr></thead>
       <tbody id="clBody"></tbody></table></div></div>`;
   drawClients();
 }
-let CL_SORT={key:'name',dir:1};
+let CL_SORT={key:'added',dir:-1};   // по умолчанию — по дате добавления, новые сверху
 function clSort(key){
   if(CL_SORT.key===key)CL_SORT.dir*=-1;
-  else CL_SORT={key,dir:key==='goals'?-1:1};   // цели по умолчанию по убыванию (сначала «богатые»)
+  else CL_SORT={key,dir:(key==='goals'||key==='added')?-1:1};   // цели/дата — по убыванию
   drawClients();
 }
 function clGoalsActive(c){return (c.goals||[]).filter(g=>g.active!==false).length;}
@@ -558,9 +559,11 @@ function clSortVal(c,key){
     case 'goals':return clGoalsActive(c);
     case 'attr':return (c.attribution||'LSC').toLowerCase();
     case 'source':return (c.source||'').toLowerCase();
+    case 'added':return (c.added_at||'');
     default:return (c.name||'').toLowerCase();
   }
 }
+function clDate(iso){if(!iso)return '<span class="muted">—</span>';try{const d=new Date(iso);return '<span class="muted" style="font-size:12px">'+d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit'})+'</span>';}catch(e){return '<span class="muted">—</span>';}}
 function clGoalsCell(c){
   const gs=c.goals||[];
   if(!gs.length)return '<span class="muted">— нет</span>';
@@ -581,15 +584,16 @@ function drawClients(){
   rows.sort((a,b)=>{const va=clSortVal(a,k),vb=clSortVal(b,k);
     const r=(typeof va==='number')?(va-vb):String(va).localeCompare(String(vb),'ru');
     return r*dir||String(a.name||'').localeCompare(String(b.name||''),'ru');});
-  ['name','login','chat','goals','attr','source'].forEach(key=>{const e=el('si_'+key);if(e)e.textContent=(key===k)?(dir>0?' ▲':' ▼'):'';});
+  ['name','login','chat','goals','attr','source','added'].forEach(key=>{const e=el('si_'+key);if(e)e.textContent=(key===k)?(dir>0?' ▲':' ▼'):'';});
   const b=el('clBody');
-  if(!rows.length){b.innerHTML='<tr><td colspan="6" class="empty">Нет клиентов. Нажми «Подтянуть из Директа» или «Импорт config.json».</td></tr>';return;}
+  if(!rows.length){b.innerHTML='<tr><td colspan="7" class="empty">Нет клиентов. Нажми «Подтянуть из Директа» или «Импорт config.json».</td></tr>';return;}
   b.innerHTML=rows.map(c=>`
     <tr class="click" onclick="openClient('${esc(c.login)}')">
       <td><b>${esc(c.name)}</b>${c.delivery==='external'?' <span class="badge b-amber" style="font-size:10.5px;vertical-align:middle">📤 сторонний</span>':''}</td><td class="muted">${esc(c.login)}</td>
       <td>${c.delivery==='external'?'<span class="muted">📤 копипаст</span>':(c.chat_title?('💬 '+esc(c.chat_title)):'<span class="muted">— не привязан</span>')}</td>
       <td>${clGoalsCell(c)}</td>
       <td>${esc(c.attribution||'LSC')}</td><td class="muted">${esc(c.source||'')}</td>
+      <td>${clDate(c.added_at)}</td>
     </tr>`).join('');
 }
 async function doSync(){try{toast('Запрашиваю клиентов из Директа…');const r=await api('sync_clients');toast('Синхронизировано: '+r.synced,'ok');refresh();}catch(e){}}
@@ -1090,13 +1094,44 @@ async function renderBuilder(clientOpts){
         <button class="btn primary" onclick="doReportQuery()">📊 Сформировать</button>
         <button class="btn" onclick="doReportCopy()">📋 Скопировать текст</button>
         <button class="btn" onclick="doReportXlsx()">⬇ Скачать xlsx</button>
+        <button class="btn" onclick="rbClearDraft()" title="Сбросить сохранённый черновик и начать с чистого листа">↩ Сброс</button>
         <span id="rbSendNote" class="muted" style="margin-left:auto;font-size:12px;display:none">🔒 не привязано к чату — отправка недоступна</span>
         <button class="btn" id="rbSendBtn" onclick="doReportSend()" title="Уйдёт реальным людям в чате клиента" style="border-color:var(--red);color:var(--red)">📨 Отправить в чат</button>
       </div>
-      <div class="note" style="margin-top:12px">Конверсии/CR/CPA — для любого клиента (поле Conversions Директа; если есть цели — по ним под атрибуцией). «Кампания (фильтр)» ограничивает отчёт одной кампанией — удобно разбить её по группам/объявлениям/фразам. В таблице результата: заголовки кликабельны (сортировка ▲▼), есть поиск по строкам. xlsx сохраняется в папку <b>reports</b> рядом с программой.</div>
+      <div class="note" style="margin-top:12px">💾 Настройки конструктора <b>сохраняются автоматически</b> (черновик) — выйдешь и вернёшься, всё на месте; «↩ Сброс» очищает. Конверсии/CR/CPA — для любого клиента (поле Conversions Директа; если есть цели — по ним под атрибуцией). «Группировка даты → За весь период» сворачивает выбранный период в одну строку. В таблице результата: заголовки кликабельны (сортировка ▲▼), есть поиск.</div>
     </div></div>
     <div class="panel" style="margin-top:14px"><div class="body" id="rbResult"><div class="empty">Задай параметры и нажми «Сформировать».</div></div></div>`;
-  rbLoadCampaigns();rbLoadGoals();rbUpdateSend();
+  const pane=el('rpane');if(pane&&!pane._draftHooked){pane._draftHooked=true;pane.addEventListener('change',rbSaveDraft);}
+  if(rbLoadDraft()){rbApplyDraft();}else{rbLoadCampaigns();rbLoadGoals();rbUpdateSend();}
+}
+const RB_DRAFT_KEY='iig_rb_draft_v1';
+function rbSaveDraft(){
+  try{
+    if(!RBOPT||!el('rbClient'))return;
+    const d={client:el('rbClient').value,level:el('rbLevel').value,from:el('rbFrom').value,to:el('rbTo').value,
+      attr:el('rbAttr').value,limit:el('rbLimit').value,campaign:(el('rbCampaign')||{}).value,grain:(el('rbGrain')||{}).value,
+      segs:(RBOPT.segments||[]).filter(s=>el('rbSeg_'+s.key)&&el('rbSeg_'+s.key).checked).map(s=>s.key),
+      metsOff:(RBOPT.metrics||[]).filter(m=>el('rbMet_'+m.key)&&!el('rbMet_'+m.key).checked).map(m=>m.key),
+      goals:[...document.querySelectorAll('#rbGoals .rbg')].map(c=>({id:c.value,on:c.checked})),saved:Date.now()};
+    localStorage.setItem(RB_DRAFT_KEY,JSON.stringify(d));
+  }catch(e){}
+}
+function rbLoadDraft(){try{return JSON.parse(localStorage.getItem(RB_DRAFT_KEY)||'null');}catch(e){return null;}}
+function rbClearDraft(){try{localStorage.removeItem(RB_DRAFT_KEY);}catch(e){}renderReports();toast('Черновик сброшен','ok');}
+async function rbApplyDraft(){
+  const d=rbLoadDraft();if(!d){rbLoadCampaigns();rbLoadGoals();rbUpdateSend();return;}
+  const set=(id,v)=>{const e=el(id);if(e&&v!=null&&v!=='')e.value=v;};
+  set('rbLevel',d.level);set('rbFrom',d.from);set('rbTo',d.to);set('rbAttr',d.attr);set('rbLimit',d.limit);
+  (RBOPT.segments||[]).forEach(s=>{const c=el('rbSeg_'+s.key);if(c)c.checked=(d.segs||[]).includes(s.key);});
+  (RBOPT.metrics||[]).forEach(m=>{const c=el('rbMet_'+m.key);if(c)c.checked=!(d.metsOff||[]).includes(m.key);});
+  rbSegChanged();if(d.grain){const g=el('rbGrain');if(g)g.value=d.grain;}
+  const cl=el('rbClient');
+  if(d.client&&cl&&[...cl.options].some(o=>o.value===d.client))cl.value=d.client;
+  await rbLoadCampaigns();
+  if(d.campaign){const cc=el('rbCampaign');if(cc&&[...cc.options].some(o=>o.value===d.campaign))cc.value=d.campaign;}
+  await rbLoadGoals();
+  if(d.goals&&d.goals.length)document.querySelectorAll('#rbGoals .rbg').forEach(c=>{const g=d.goals.find(x=>x.id===c.value);if(g)c.checked=g.on;});
+  rbUpdateSend();
 }
 function rbUpdateSend(){
   const login=el('rbClient')?el('rbClient').value:'';
@@ -1117,9 +1152,23 @@ async function rbLoadGoals(){
   const login=el('rbClient')?el('rbClient').value:'';const host=el('rbGoals');if(!login||!host)return;
   host.innerHTML='<span class="muted" style="font-size:12.5px">загрузка целей…</span>';
   try{const gs=await api('client_goals',login);
-    if(!gs||!gs.length){host.innerHTML='<span class="muted" style="font-size:12.5px">у клиента нет целей → будут общие конверсии</span>';return;}
+    if(!gs||!gs.length){
+      const canPull=!(ME&&ME.role==='observer');
+      host.innerHTML='<span class="muted" style="font-size:12.5px">у клиента нет целей → будут общие конверсии.</span>'+
+        (canPull?' <button class="btn sm primary" style="margin-left:8px" onclick="rbPullGoals()">🎯 Подтянуть цели</button>':'');
+      return;
+    }
     host.innerHTML=gs.map(g=>`<label style="${RB_CHK}"><input type="checkbox" class="rbg" value="${esc(g.id)}" ${g.active!==false?'checked':''}> ${esc(g.name)}</label>`).join('');
   }catch(e){host.innerHTML='<span class="muted" style="font-size:12.5px">не удалось загрузить цели</span>';}
+}
+async function rbPullGoals(){
+  const login=el('rbClient')?el('rbClient').value:'';if(!login)return;
+  const host=el('rbGoals');host.innerHTML='<span class="muted" style="font-size:12.5px"><span class="spin"></span> ищу счётчик и цели в Метрике…</span>';
+  try{const r=await api('client_goals_pull',login);
+    if(!r.goals||!r.goals.length){host.innerHTML='<span class="muted" style="font-size:12.5px">'+esc(r.note||'Цели не найдены')+'</span>';toast(r.note||'Цели не найдены','err');return;}
+    host.innerHTML=r.goals.map(g=>`<label style="${RB_CHK}"><input type="checkbox" class="rbg" value="${esc(g.id)}" ${g.active!==false?'checked':''}> ${esc(g.name)}</label>`).join('');
+    toast(r.note||'Цели подтянуты','ok');
+  }catch(e){host.innerHTML='<span class="muted" style="font-size:12.5px">не удалось подтянуть цели</span>';}
 }
 function rbGoalIds(){return [...document.querySelectorAll('#rbGoals .rbg:checked')].map(c=>c.value);}
 function rbSegChanged(){const dt=el('rbSeg_date');const w=el('rbGrainWrap');if(w)w.style.display=(dt&&dt.checked)?'block':'none';}
@@ -1402,12 +1451,13 @@ async function doClearErrlog(){
 async function renderGSheets(){
   const host=el('v_gsheets');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
   let st,clients;
-  try{st=await api('gsheets_status');clients=await api('clients');}
+  try{st=await api('gsheets_status');}
   catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
   if(!st.available){
     host.innerHTML='<h2 class="title">Google-таблицы</h2><div class="note" style="margin-top:12px">⚠️ '+esc(st.note||'Ключ сервисного аккаунта не найден.')+'</div>';return;
   }
-  const opts=clients.map(c=>'<option value="'+esc(c.login)+'">'+esc(c.name||c.login)+'</option>').join('')||'<option value="">нет клиентов</option>';
+  try{clients=await api('gsheets_clients');}catch(e){clients=[];}   // только те, у кого реально есть таблица
+  const opts=clients.map(c=>'<option value="'+esc(c.login)+'">'+esc(c.name||c.login)+'</option>').join('')||'<option value="">— нет клиентов с таблицами —</option>';
   const sheetList=(st.sheets||[]).map(s=>'<li>'+esc(s.title)+'</li>').join('')||'<li class="muted">нет расшаренных таблиц</li>';
   host.innerHTML=`
     <h2 class="title">Google-таблицы</h2>
@@ -1483,6 +1533,11 @@ async function renderSettings(){
       </select></div>
       <div class="field" id="mnTextWrap" style="display:none"><label>Текст своей приписки</label><textarea id="mnText" rows="2" placeholder="Например: «По вопросам — Денис, +7 ...»"></textarea></div>
       <button class="btn primary" onclick="saveMyNote()">Сохранить приписку</button>
+    </div></div>
+    <div class="panel" style="margin-top:16px"><h3><span class="h3-ic">💰</span> Алерты по бюджету — мой чат</h3><div class="body">
+      <p class="muted" style="margin:0 0 10px;font-size:13px">Когда у <b>твоего</b> клиента кончаются деньги — алерт придёт <b>тебе в личку Telegram</b>, а не общему получателю. Укажи свой Telegram-@username и один раз напиши боту <code>/start</code>, чтобы он мог тебе писать. Пусто — персональные алерты по твоим клиентам не шлём.</p>
+      <div class="field"><label>Мой @username в Telegram</label><input id="alUser" placeholder="например iig_dtrutnev (без @)"></div>
+      <button class="btn primary" onclick="saveMyAlert()">Сохранить чат алертов</button>
     </div></div>`:''}`;
   if(ME&&ME.role!=='observer'){
     try{const mn=await api('my_note');
@@ -1491,7 +1546,11 @@ async function renderSettings(){
       if(mode==='own')el('mnText').value=mn.note;
       mnModeUi();
     }catch(e){}
+    try{const al=await api('my_alert');if(al&&al.alert_username)el('alUser').value=al.alert_username;}catch(e){}
   }
+}
+async function saveMyAlert(){
+  try{const r=await api('set_my_alert',el('alUser').value||'');toast(r.alert_username?('Алерты пойдут в @'+r.alert_username):'Персональные алерты выключены','ok');}catch(e){}
 }
 function mnModeUi(){const w=el('mnTextWrap');if(w)w.style.display=(el('mnMode').value==='own'?'':'none');}
 async function saveMyNote(){
@@ -1621,6 +1680,10 @@ async function renderSupervision(){
   let sup,notes;
   try{sup=await api('supervision');notes=await api('notes_list');}
   catch(e){box.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  // раздача проектов (наблюдатель тоже может выставлять проекты + доставку)
+  try{POOL=await api('pool_clients');SUP_USERS=await api('assignable_users');}catch(e){POOL=[];SUP_USERS=[];}
+  const supAssignOpts=(SUP_USERS||[]).map(u=>`<option value="${u.id}">${esc(u.name)}${u.role==='admin'?' (админ)':''}</option>`).join('');
+  const supUnassigned=(POOL||[]).filter(c=>!c.owner).length;
   const a=sup.agency;
   const recip=sup.rows.filter(r=>r.role!=='observer').map(r=>'<option value="'+r.user_id+'">'+esc(r.name)+'</option>').join('');
   const rows=sup.rows.map(r=>{
@@ -1637,7 +1700,8 @@ async function renderSupervision(){
     '</tr>';}).join('');
   const notesHtml=notes.length?notes.map(n=>{
     const kc=n.kind==='urgent'?'var(--red)':n.kind==='warn'?'var(--amber)':'var(--brand)';
-    return '<div style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)"><span style="width:4px;border-radius:4px;background:'+kc+'"></span><div style="flex:1;min-width:0"><div>'+esc(n.text)+'</div><div class="mini-2">→ '+esc(n.to_name)+' · '+fmtWhen(n.created_at)+' · прочитали: '+n.acks+'</div></div><button class="btn sm" onclick="supDelNote('+n.id+')">✕</button></div>';}).join(''):'<div class="muted" style="padding:10px 0">Сообщений пока нет.</div>';
+    const reps=(n.replies||[]).map(rp=>'<div class="mini-2" style="margin-top:4px;padding:6px 10px;background:var(--surface-2);border-radius:8px;border-left:3px solid var(--green)">↩ <b>'+esc(rp.user_name||'специалист')+'</b>: '+esc(rp.text)+' <span class="muted">· '+fmtWhen(rp.created_at)+'</span></div>').join('');
+    return '<div style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)"><span style="width:4px;border-radius:4px;background:'+kc+'"></span><div style="flex:1;min-width:0"><div>'+esc(n.text)+'</div><div class="mini-2">→ '+esc(n.to_name)+' · '+fmtWhen(n.created_at)+' · прочитали: '+n.acks+((n.replies&&n.replies.length)?(' · <b style="color:var(--green)">ответов: '+n.replies.length+'</b>'):'')+'</div>'+reps+'</div><button class="btn sm" onclick="supDelNote('+n.id+')">✕</button></div>';}).join(''):'<div class="muted" style="padding:10px 0">Сообщений пока нет.</div>';
   box.innerHTML=`
     <style>
       .debtchip{display:inline-flex;align-items:center;gap:7px;background:var(--red-bg);color:var(--red);border:1px solid var(--red);border-radius:9px;padding:2px 4px 2px 10px;font-size:12px;font-weight:600;margin:3px 6px 0 0}
@@ -1664,7 +1728,15 @@ async function renderSupervision(){
       <textarea id="noText" rows="4" placeholder="Текст сообщения сотруднику…" style="margin-top:10px;width:100%;min-height:96px;resize:vertical;box-sizing:border-box"></textarea>
       <div style="margin-top:10px"><button class="btn primary" onclick="supSendNote()">Отправить</button></div>
     </div></div>
-    <div class="panel"><h3><span class="h3-ic">🗂</span> Отправленные сообщения</h3><div class="body">${notesHtml}</div></div>`;
+    <div class="panel" style="margin-bottom:16px"><h3><span class="h3-ic">🗂</span> Отправленные сообщения</h3><div class="body">${notesHtml}</div></div>
+    <div class="panel"><h3><span class="h3-ic">🎛</span> Раздача проектов — не назначено: ${supUnassigned} из ${(POOL||[]).length}</h3>
+      <div class="body">
+        <p class="muted" style="margin-top:0;font-size:13px">Назначь проект специалисту и сразу выбери способ доставки: <b>✈️ Telegram</b> (бот шлёт в чат) или <b>📤 Сторонний</b> (копипаст вручную).</p>
+        <input id="poolFilter" placeholder="Поиск клиента…" oninput="poolFilter()" style="width:100%;margin-bottom:8px">
+        <div class="scrollx"><table>
+          <thead><tr><th>Клиент</th><th style="width:220px">Специалист</th><th style="width:170px">Доставка</th></tr></thead>
+          <tbody id="poolBody">${poolRows(POOL||[],supAssignOpts)}</tbody></table></div>
+      </div></div>`;
 }
 async function supSendNote(){
   const to=el('noTo').value, kind=el('noKind').value, text=el('noText').value.trim();
@@ -1701,13 +1773,25 @@ async function checkNotes(){
   b.innerHTML=ns.map(n=>{
     const c=n.kind==='urgent'?['#e5484d','#fff']:n.kind==='warn'?['#FFB739','#3a2600']:['#0171B0','#fff'];
     const ic=n.kind==='urgent'?'🔴':n.kind==='warn'?'⚠️':'📢';
-    return '<div style="background:'+c[0]+';color:'+c[1]+';padding:11px 18px;display:flex;align-items:center;gap:12px;box-shadow:0 6px 20px rgba(0,0,0,.25)'+(n.kind==='urgent'?';animation:notePulse 1.6s ease-in-out infinite':'')+'">'+
+    const bs='background:rgba(255,255,255,.22);color:inherit;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 12px;font:inherit;font-weight:700;cursor:pointer;white-space:nowrap';
+    return '<div style="background:'+c[0]+';color:'+c[1]+';padding:11px 18px;box-shadow:0 6px 20px rgba(0,0,0,.25)'+(n.kind==='urgent'?';animation:notePulse 1.6s ease-in-out infinite':'')+'">'+
+      '<div style="display:flex;align-items:center;gap:12px">'+
       '<span style="font-size:18px">'+ic+'</span>'+
       '<div style="flex:1;min-width:0"><b>'+esc(n.text)+'</b><span style="opacity:.85;font-size:12px;margin-left:8px">— '+esc(n.from_name||'руководитель')+'</span></div>'+
-      '<button onclick="ackNote('+n.id+')" style="background:rgba(255,255,255,.22);color:inherit;border:1px solid rgba(255,255,255,.4);border-radius:8px;padding:6px 12px;font:inherit;font-weight:700;cursor:pointer;white-space:nowrap">✓ Прочитано</button></div>';
+      '<button onclick="noteReplyToggle('+n.id+')" style="'+bs+'">↩ Ответить</button>'+
+      '<button onclick="ackNote('+n.id+')" style="'+bs+'">✓ Прочитано</button></div>'+
+      '<div id="noteReply_'+n.id+'" style="display:none;gap:8px;margin-top:8px;padding-left:30px">'+
+        '<input id="noteReplyTx_'+n.id+'" placeholder="Ответ работодателю…" style="flex:1;min-width:0;border-radius:8px;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.15);color:inherit;padding:7px 10px;font:inherit" onkeydown="if(event.key===\'Enter\')noteReplySend('+n.id+')">'+
+        '<button onclick="noteReplySend('+n.id+')" style="'+bs+'">Отправить</button></div>';
   }).join('');
 }
 async function ackNote(id){ try{await api('note_ack',id);}catch(e){} checkNotes(); }
+function noteReplyToggle(id){const w=el('noteReply_'+id);if(w){w.style.display=w.style.display==='none'?'flex':'none';const t=el('noteReplyTx_'+id);if(t&&w.style.display!=='none')t.focus();}}
+async function noteReplySend(id){
+  const t=el('noteReplyTx_'+id);const tx=(t&&t.value||'').trim();
+  if(!tx){toast('Пустой ответ','err');return;}
+  try{await api('note_reply',id,tx);toast('Ответ отправлен работодателю','ok');checkNotes();}catch(e){}
+}
 
 async function doLogin(ev){
   ev.preventDefault();
@@ -1735,7 +1819,7 @@ async function bootWeb(){
 }
 
 /* ---------- раздел «Пользователи» (админ) ---------- */
-let POOL=[];
+let POOL=[], SUP_USERS=[];
 async function renderUsers(){
   const box=el('v_users');
   if(!ME||ME.role!=='admin'){box.innerHTML='<div class="empty">Раздел доступен только администратору.</div>';return;}
@@ -1774,9 +1858,9 @@ async function renderUsers(){
       <tbody>${rows||'<tr><td colspan="5" class="muted">Пусто</td></tr>'}</tbody></table>
     </div>
     <div class="panel">
-      <h3>Клиенты и владельцы — не назначено: ${unassigned} из ${POOL.length}</h3>
+      <h3>Раздача проектов — не назначено: ${unassigned} из ${POOL.length}</h3>
       <div style="padding:12px 16px 4px"><input id="poolFilter" placeholder="Поиск клиента…" oninput="poolFilter()" style="width:100%"></div>
-      <table><thead><tr><th>Клиент</th><th style="width:240px">Владелец</th></tr></thead>
+      <table><thead><tr><th>Клиент</th><th style="width:220px">Владелец</th><th style="width:170px">Доставка</th></tr></thead>
       <tbody id="poolBody">${poolRows(POOL,opts)}</tbody></table>
     </div>`;
 }
@@ -1786,6 +1870,10 @@ function poolRows(list,opts){
       <td><select onchange="assignClient('${esc(c.login)}',this.value)">
         <option value="">— общий пул —</option>
         ${opts.replace('value="'+(c.owner||'')+'"','value="'+(c.owner||'')+'" selected')}
+      </select></td>
+      <td><select onchange="assignDelivery('${esc(c.login)}',this.value)">
+        <option value="telegram"${c.delivery!=='external'?' selected':''}>✈️ Telegram</option>
+        <option value="external"${c.delivery==='external'?' selected':''}>📤 Сторонний</option>
       </select></td></tr>`).join('');
 }
 function poolFilter(){
@@ -1811,8 +1899,14 @@ async function userPass(id){
 async function assignClient(login,uid){
   try{ await api('assign_client',login,uid||null);
     const c=POOL.find(x=>x.login===login); if(c)c.owner=uid?parseInt(uid):null;
-    toast('Сохранено'); }
-  catch(e){ renderUsers(); }
+    toast('Владелец сохранён'); }
+  catch(e){ render(CURRENT); }
+}
+async function assignDelivery(login,delivery){
+  try{ await api('set_delivery_super',login,delivery);
+    const c=POOL.find(x=>x.login===login); if(c)c.delivery=delivery;
+    toast(delivery==='external'?'Проект помечен сторонним':'Проект — в Telegram-рассылке'); }
+  catch(e){}
 }
 
 /* ---------- init ---------- */
