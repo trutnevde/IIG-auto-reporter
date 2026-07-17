@@ -194,6 +194,8 @@
   .conf{font-size:12px;font-weight:800;margin-top:2px}
   .conf.hi{color:var(--green)}.conf.mid{color:var(--amber)}.conf.lo{color:var(--muted)}
   .src{font-weight:650}.src small{display:block;color:var(--muted);font-weight:400;margin-top:2px}
+  .card.click{cursor:pointer}
+  .dash-health{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
   /* сортируемые заголовки + компактная колонка целей */
   th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
   th.sortable:hover{color:var(--ink)}
@@ -335,7 +337,7 @@
       <button class="icon-btn burger" onclick="toggleNav()" title="Меню">☰</button>
       <h1 id="crumb">Обзор</h1>
       <div class="grow"></div>
-      <span class="pill" id="botPill"><span class="dot"></span> Слушатель</span>
+      <span class="pill" id="botPill" title="Статус Telegram-бота (webhook)"><span class="dot"></span> Бот</span>
       <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Светлая / тёмная тема">🌙</button>
       <button class="btn sm" onclick="refresh()"><span class="r-ic">⟳</span> Обновить</button>
       <span class="userbox" id="userBox" style="display:none">
@@ -466,34 +468,52 @@ async function loadBadges(){
 function statCard(color,ic,label,val){
   return `<div class="card c-${color}"><div class="card-ic">${ic}</div><div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div></div></div>`;
 }
+function statCardLink(color,ic,label,val,dest){
+  return `<div class="card c-${color} click" onclick="go('${dest}')"><div class="card-ic">${ic}</div><div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div></div></div>`;
+}
+function budMoneyShort(v,cur){return v==null?'':(Math.round(v).toLocaleString('ru-RU')+' '+(cur==='RUB'?'₽':(cur||'')));}
 async function renderDashboard(){
   const host=el('v_dashboard');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
   let d;try{d=await api('dashboard');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const isObs=(d.role==='observer')||(ME&&ME.role==='observer');
+  const bud=d.budgets||{},wk=d.week||{},hl=d.health||{};
+  const cov=wk.coverage;
+  const covCol=cov==null?'slate':(cov>=100?'green':cov>=50?'amber':'red');
+  const cards=[
+    statCardLink((bud.critical?'red':'green'),'🔴','Бюджеты на исходе',(bud.critical||0),'budgets'),
+    statCardLink(covCol,'📋',(isObs?'Покрытие агентства':'Твоя сдача недели'),(cov==null?'—':(wk.sent+'/'+wk.obligations+' · '+cov+'%')),(isObs?'supervision':'reports')),
+    (!isObs)?statCardLink((d.external_pending?'violet':'slate'),'📤','Сторонние к сбору',(d.external_pending||0),'external'):'',
+    statCardLink('blue','👥',(isObs?'Клиентов (все)':'Клиентов'),d.clients,'clients'),
+    statCardLink((d.clients_no_chat?'amber':'slate'),'📇','Без чата',d.clients_no_chat,'clients'),
+    statCardLink((d.errors?'red':'slate'),'🩺','Ошибок в истории',d.errors,'reports'),
+  ].filter(Boolean).join('');
+  const health=`<div class="dash-health">🔄 автосинк: <b>${hl.autosync?fmtWhen(hl.autosync):'ещё не было'}</b> · 💰 бюджеты: <b>${hl.budgets?fmtWhen(hl.budgets):'ещё не собирали'}</b></div>`;
   host.innerHTML=`
-    <h2 class="title">Обзор</h2><p class="sub">Сводка по клиентам, чатам и рассылке.</p>
-    <div class="cards">
-      ${statCard('blue','👥','Клиентов',d.clients)}
-      ${statCard('cyan','💬','Чатов',d.chats)}
-      ${statCard('green','🔗','Привязано',d.bound)}
-      ${statCard(d.unbound_chats?'amber':'slate','📥','Без привязки',d.unbound_chats)}
-      ${statCard(d.clients_no_chat?'violet':'slate','📇','Клиентов без чата',d.clients_no_chat)}
-      ${statCard(d.errors?'red':'green','✓','Ошибок',d.errors)}
-    </div>
+    <h2 class="title">Обзор</h2><p class="sub">${isObs?'Кокпит работодателя — по всему агентству.':'Твоя сводка: деньги клиентов, сдача недели, что требует действий.'}</p>
+    <div class="cards">${cards}</div>
     <div class="grid2">
       <div class="panel"><h3><span class="h3-ic">🛎️</span> Требует внимания</h3><div class="body" id="dashAlerts"></div></div>
-      <div class="panel hero"><h3><span class="h3-ic">📨</span> Рассылка</h3><div class="body">
-        ${(ME&&ME.role==='observer')?`<p class="muted">Режим наблюдателя — отправка недоступна. Контроль обязательств сотрудников — в разделе <b>👁 Контроль</b>.</p>
-        <div class="row-actions"><button class="btn primary" onclick="go('supervision')">👁 Открыть Контроль</button></div>`:`<p class="muted">Сформировать и отправить отчёты в чаты ваших клиентов за прошлую неделю.</p>
+      <div class="panel hero"><h3><span class="h3-ic">${isObs?'👁':'📨'}</span> ${isObs?'Контроль':'Рассылка'}</h3><div class="body">
+        ${isObs?`<p class="muted">Режим наблюдателя — отправка недоступна. Смотри покрытие обязательств и состояния по всему агентству.</p>
+        <div class="row-actions"><button class="btn primary" onclick="go('supervision')">👁 Контроль</button><button class="btn" onclick="go('budgets')">💰 Бюджеты</button></div>`
+        :`<p class="muted">Сформировать и отправить отчёты в чаты ваших клиентов за прошлую неделю.</p>
         <div class="row-actions">
           <button class="btn primary" onclick="runWeekly()">📨 Запустить рассылку сейчас</button>
           <button class="btn" onclick="runDry()" title="Собрать отчёты с прогрессом, но клиентам НЕ отправлять — проверка перед боевым запуском">🧪 Проба (без отправки)</button>
           <button class="btn" onclick="go('reports')">История</button>
         </div>`}
+        ${health}
       </div></div>
     </div>`;
   const a=el('dashAlerts');let h='';
+  if((bud.critical||0)>0){
+    const top=(bud.top||[]).slice(0,3).map(t=>`<div class="mini-2" style="margin-top:2px">🔴 ${esc(t.name)}${t.days_left!=null?(' — ~'+t.days_left+' дн.'):''}${t.balance!=null?(', '+budMoneyShort(t.balance,t.currency)):''}</div>`).join('');
+    h+=`<div class="alert red">💰 <div><b>${bud.critical} клиент(ов): бюджет на исходе</b> <a onclick="go('budgets')">Бюджеты →</a>${top}</div></div>`;
+  }
+  if((wk.debt||0)>0)h+=`<div class="alert amber">📋 <div><b>${wk.debt} ${isObs?'несданных по агентству':'клиент(ов) без отчёта на этой неделе'}</b>${isObs?(' (покрытие '+cov+'%)'):(' из '+wk.obligations)}. <a onclick="go('${isObs?'supervision':'reports'}')">${isObs?'Контроль':'Отчёты'} →</a></div></div>`;
+  if(!isObs&&(d.external_pending||0)>0)h+=`<div class="alert grey">📤 <div><b>${d.external_pending} сторонн. клиент(ов) ждут сбора</b> отчёта. <a onclick="go('external')">Собрать →</a></div></div>`;
   if(d.unbound_chats>0)h+=`<div class="alert amber">⚠️ <div><b>${d.unbound_chats} чат(ов) без привязки</b> — бот добавлен, но не знает клиента. <a onclick="go('match')">Сопоставить →</a></div></div>`;
-  if(d.clients_no_chat>0)h+=`<div class="alert grey">📇 <div><b>${d.clients_no_chat} клиент(ов) без чата</b>. <a onclick="openOnboard()">Подключить →</a></div></div>`;
+  if(!isObs&&d.clients_no_chat>0)h+=`<div class="alert grey">📇 <div><b>${d.clients_no_chat} клиент(ов) без чата</b> (не сторонние). <a onclick="openOnboard()">Подключить →</a> или пометь сторонними.</div></div>`;
   if(d.errors>0)h+=`<div class="alert red">❌ <div><b>${d.errors}</b> ошибок отправки в истории. <a onclick="go('reports')">Открыть →</a></div></div>`;
   a.innerHTML=h||'<div class="ok-empty">Всё в порядке ✅</div>';
 }
@@ -1447,10 +1467,10 @@ async function renderSettings(){
       <div class="field"><label>Приписка специалиста <span class="muted" style="font-weight:400">— необязательно, пусто = без приписки</span></label><textarea id="stNote" rows="2" placeholder="Например: «Специалист свяжется с вами по итогам». Оставьте пустым — приписка не добавляется.">${esc(s.specialist_note)}</textarea></div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
         <div class="field"><label>Атрибуция по умолчанию</label><select id="stAttr">${['LSC','LC','FC','LYDC'].map(a=>`<option ${a===s.attribution_model?'selected':''}>${a}</option>`).join('')}</select></div>
-        <div class="field"><label>День рассылки</label><input id="stDay" value="${esc(s.report_day)}"></div>
-        <div class="field"><label>Время</label><input id="stTime" value="${esc(s.report_time)}"></div>
+        <div class="field"><label>День рассылки <span class="muted" style="font-weight:400">(справочно)</span></label><input id="stDay" value="${esc(s.report_day)}"></div>
+        <div class="field"><label>Время <span class="muted" style="font-weight:400">(справочно)</span></label><input id="stTime" value="${esc(s.report_time)}"></div>
       </div>
-      <div class="note" style="margin-bottom:14px">Время рассылки — справочно. Запуск по расписанию настраивается в «Планировщике задач» Windows (запуск этой программы/скрипта). Кнопка «Запустить рассылку сейчас» работает в любой момент.</div>
+      <div class="note" style="margin-bottom:14px">День и время — <b>справочные</b> (напоминание для команды). Реальный автозапуск недельной рассылки по всему агентству настраивается администратором через <b>cron на сервере</b> (панель хостинга). Кнопка «Запустить рассылку сейчас» и «Проба» работают в любой момент.</div>
       <button class="btn primary" onclick="saveSettings()">Сохранить</button>
     </div></div>
     ${ME&&ME.role!=='observer'?`

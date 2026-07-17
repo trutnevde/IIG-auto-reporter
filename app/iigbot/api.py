@@ -225,13 +225,64 @@ class Api:
         else:
             rows = []
         by_status = {r["status"]: r["n"] for r in rows}
+
+        # ---- ролевые сводки для Обзора (скоуп по видимости: наблюдатель — всё, иначе своё) ----
+        import datetime as _dt
+        external_logins = {c["login"] for c in clients
+                           if ("delivery" in c.keys()) and c["delivery"] == "external"}
+        obligations = bound_logins | external_logins   # недельные обязательства в моём скоупе
+        today = _dt.date.today()
+        mon = today - _dt.timedelta(days=today.weekday())
+
+        def _iso(d):
+            return d.isoformat() + "T00:00:00"
+        sent_this = self.db.sent_logins_between(_iso(mon), _iso(today + _dt.timedelta(days=1)))
+        skip_this = self.db.status_logins_between("skipped", _iso(mon), _iso(today + _dt.timedelta(days=1)))
+        excused = set(self.db.excused_logins(mon.isoformat()).keys())
+        delivered = obligations & sent_this
+        covered = delivered | (obligations & (skip_this | excused))
+        debt = obligations - covered
+        week = {"obligations": len(obligations), "sent": len(delivered),
+                "debt": len(debt), "covered": len(covered),
+                "coverage": (round(100 * len(covered) / len(obligations)) if obligations else None)}
+        # сторонние, по которым на этой неделе ещё не собирали отчёт (нет ни sent, ни skipped)
+        ext_pending = sorted(external_logins - sent_this - skip_this)
+
+        # бюджеты в моём скоупе
+        visible = {c["login"] for c in clients}
+        brows = [r for r in self.db.list_budgets() if r["login"] in visible]
+        bcrit = [r for r in brows if r["status"] == "critical"]
+        bwarn = [r for r in brows if r["status"] == "warning"]
+        btop = sorted(bcrit, key=lambda r: (r["days_left"] if r["days_left"] is not None else 1e9))[:5]
+        names = {c["login"]: (c["name"] or c["login"]) for c in clients}
+        budgets = {
+            "critical": len(bcrit), "warning": len(bwarn),
+            "updated": self.db.get_kv("budgets_updated"),
+            "top": [{"login": r["login"], "name": r["name"] or names.get(r["login"], r["login"]),
+                     "days_left": r["days_left"], "balance": r["balance"], "currency": r["currency"]}
+                    for r in btop],
+        }
+
+        def _epoch_iso(key):
+            v = self.db.get_kv(key)
+            try:
+                return _dt.datetime.fromtimestamp(float(v)).isoformat(timespec="seconds") if v else None
+            except (TypeError, ValueError):
+                return v
+        health = {"autosync": _epoch_iso("autosync_last"), "budgets": self.db.get_kv("budgets_updated")}
+
         return {
+            "role": (self.user.get("role") if self.user else "admin"),
             "clients": len(clients),
             "chats": len(chats),
             "bound": len(bound_chat_ids),
             "unbound_chats": len(unbound_chats),
             "clients_no_chat": len(clients_no_chat),
             "errors": by_status.get("error", 0),
+            "week": week,
+            "external_pending": len(ext_pending),
+            "budgets": budgets,
+            "health": health,
             "alerts": {
                 "unbound_chats": len(unbound_chats),
                 "clients_no_chat": len(clients_no_chat),
