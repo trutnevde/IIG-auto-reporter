@@ -196,6 +196,20 @@
   .src{font-weight:650}.src small{display:block;color:var(--muted);font-weight:400;margin-top:2px}
   .card.click{cursor:pointer}
   .dash-health{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+  /* changelog / патчноуты */
+  .cl-list{display:flex;flex-direction:column;gap:10px}
+  .cl-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-sm);overflow:hidden}
+  .cl-head{display:flex;align-items:center;gap:12px;padding:13px 16px;cursor:pointer;transition:background .12s}
+  .cl-head:hover{background:var(--surface-2)}
+  .cl-tag{font-size:10.5px;font-weight:800;letter-spacing:.04em;padding:3px 9px;border-radius:999px;white-space:nowrap;flex:0 0 auto}
+  .cl-date{font-size:12.5px;color:var(--muted);font-weight:600;white-space:nowrap;flex:0 0 auto;min-width:74px}
+  .cl-title{font-size:14.5px;flex:0 0 auto}
+  .cl-sum{color:var(--muted);font-size:13px;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cl-arw{color:var(--muted);flex:0 0 auto;transition:transform .18s;font-size:13px}
+  .cl-body{padding:2px 18px 16px 18px;border-top:1px solid var(--line-soft)}
+  .cl-body ul{margin:12px 0 0;padding-left:20px;line-height:1.7}
+  .cl-body li{margin-bottom:5px;font-size:13.5px}
+  @media (max-width:640px){.cl-sum{display:none}.cl-head{flex-wrap:wrap;gap:8px}}
   /* сортируемые заголовки + компактная колонка целей */
   th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
   th.sortable:hover{color:var(--ink)}
@@ -338,6 +352,7 @@
       <h1 id="crumb">Обзор</h1>
       <div class="grow"></div>
       <span class="pill" id="botPill" title="Статус Telegram-бота (webhook)"><span class="dot"></span> Бот</span>
+      <button class="btn sm" onclick="go('changelog')" title="История обновлений и патчноуты">🆕 Что нового</button>
       <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Светлая / тёмная тема">🌙</button>
       <button class="btn sm" onclick="refresh()"><span class="r-ic">⟳</span> Обновить</button>
       <span class="userbox" id="userBox" style="display:none">
@@ -360,6 +375,7 @@
       <section data-view="users"><div id="v_users"></div></section>
       <section data-view="errlog"><div id="v_errlog"></div></section>
       <section data-view="guide"><div id="v_guide"></div></section>
+      <section data-view="changelog"><div id="v_changelog"></div></section>
     </div>
   </div>
 </div>
@@ -445,7 +461,7 @@ function applyTheme(t){document.documentElement.setAttribute('data-theme',t);try
 function toggleTheme(){const cur=document.documentElement.getAttribute('data-theme')||'light';applyTheme(cur==='dark'?'light':'dark');}
 
 /* ---------- роутинг ---------- */
-const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',budgets:'Бюджеты',external:'Сторонний мессенджер',gsheets:'Google-таблицы',settings:'Настройки',supervision:'Контроль',users:'Пользователи',errlog:'Журнал',guide:'Гайд'};
+const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',match:'Привязки',reports:'Отчёты',budgets:'Бюджеты',external:'Сторонний мессенджер',gsheets:'Google-таблицы',settings:'Настройки',supervision:'Контроль',users:'Пользователи',errlog:'Журнал',guide:'Гайд',changelog:'Что нового'};
 function go(v){
   document.querySelectorAll('section[data-view]').forEach(s=>s.classList.toggle('on',s.dataset.view===v));
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active',a.dataset.go===v));
@@ -456,7 +472,7 @@ document.getElementById('nav').addEventListener('click',e=>{const a=e.target.clo
 function toggleNav(){document.body.classList.toggle('nav-open');}   // мобильный бургер
 function closeNav(){document.body.classList.remove('nav-open');}
 let CURRENT='dashboard';
-function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,budgets:renderBudgets,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,guide:renderGuide}[v]||(()=>{}))();}
+function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,match:renderMatch,reports:renderReports,budgets:renderBudgets,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,guide:renderGuide,changelog:renderChangelog}[v]||(()=>{}))();}
 function refresh(){render(CURRENT);loadBadges();}
 
 /* ---------- бейджи/статус ---------- */
@@ -945,6 +961,114 @@ function renderGuideContent(){
 }
 function guideSearch(){GQ=el('gSearch').value;renderGuideContent();}
 function guideTab(t){GTAB=t;GQ='';renderGuide();}
+
+/* ---------- ЧТО НОВОГО (патчноуты) ---------- */
+// Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
+const CHANGELOG=[
+{date:'2026-07-20',tag:'hotfix',title:'Фиксы по обратной связи',
+ sum:'Скоуп сбора бюджетов, надёжные алерты, вёрстка «дышит»',items:[
+  'Бюджеты: «Обновить сейчас» собирает теперь ТОЛЬКО твоих клиентов (у Ирины — её, не всё агентство). Полный сбор идёт сам раз в 12 часов.',
+  'Алерты по бюджету наконец надёжны: привязка Telegram по кнопке (Настройки → «Привязать Telegram»), работает даже без публичного @username — раньше алерты уходили «в никуда».',
+  'Журнал больше не спамит бесконечным «напиши /start» — сообщение «некому слать» пишется не чаще раза в день.',
+  'Вёрстка: контент центрирован и стал шире — больше не «сдавлен влево».']},
+{date:'2026-07-17',tag:'feature',title:'Ролевой Обзор + пак из 8 доработок',
+ sum:'Новый кокпит на «Обзоре» и куча улучшений по всему кабинету',items:[
+  'Обзор переделан под роль: специалисту — бюджеты на исходе, твоя сдача недели, сторонние к сбору, здоровье фона; работодателю — кокпит по всему агентству. Карточки кликабельны.',
+  'Конструктор: кнопка «🎯 Подтянуть цели» когда у клиента нет целей.',
+  'Конструктор: группировка даты «За весь период» (весь диапазон одной строкой).',
+  'Конструктор: черновик — настройки сохраняются сами, вышел и вернулся — всё на месте.',
+  'Специалист может ответить на сообщение работодателя; работодатель видит ответы в Контроле.',
+  'Работодатель назначает проекты специалистам и сразу выбирает доставку (Telegram/Сторонний).',
+  'Клиенты: колонка «Добавлен» + сортировка по дате по умолчанию.',
+  'Google-таблицы: в выпадашке только клиенты с реально существующей таблицей.',
+  'Персональные бюджет-алерты: каждому спецу — по его клиентам в его чат.',
+  'Убраны десктоп-рудименты в текстах (cron вместо «Планировщика Windows», плашка «Бот»).']},
+{date:'2026-07-16',tag:'major',title:'Бюджеты, автосинк, роли, «Сторонние»',
+ sum:'Крупный релиз: контроль денег клиентов, авто-обновления, пересбор ролей',items:[
+  'Новая вкладка «Бюджеты»: остаток счёта, темп трат, «на сколько дней хватит», статусы кампаний, алерты в личку. Обновление раз в 12 часов.',
+  'Суточный автосинк: список клиентов Директа и их цели подтягиваются сами раз в день.',
+  'Роли пересобраны: админ — тоже специалист, видит только своё; всё агентство видит только Наблюдатель.',
+  'Раздел «Сторонние»: способ доставки у клиента, исключение сторонних из рассылки, зачёт в Контроле при сборе.',
+  'Скачивание xlsx-отчёта прямо в браузер (раньше файл оседал на сервере).',
+  'Раздел «Журнал» (админ): технические события и сбои сервера.',
+  'Личная приписка у каждого специалиста (своя подпись в отчётах).',
+  'Мобильная вёрстка: меню за бургером, всё в одну колонку.',
+  'Клиенты: сортировка по колонкам, компактная колонка целей (без «сосиски»).',
+  'Гайд актуализирован под все фичи (43 темы, 14 разделов).']},
+{date:'2026-07-15',tag:'feature',title:'«Сторонний мессенджер» + фикс 10 целей',
+ sum:'Копипаст-отчёты для мессенджеров вне Telegram',items:[
+  'Раздел «Сторонний мессенджер»: собрать недельные отчёты в готовые блоки и вставить вручную (WhatsApp, VK, MAX и т.п.).',
+  'Конструктор: цели запрашиваются батчами по 10 — лечит ошибку Reports API 400 у клиентов с >10 целями.',
+  'Ошибки сервера пишутся в файл-журнал (для диагностики).',
+  'Яндекс Мессенджер был опробован как канал и откачен — его боты работают только внутри организации, до внешних клиентов не достают.']},
+{date:'2026-07-14',tag:'feature',title:'Роль «Наблюдатель» и Контроль',
+ sum:'Работодатель следит за обязательствами команды',items:[
+  'Новая роль «Наблюдатель» (работодатель): видит всё, но только смотрит.',
+  'Раздел «Контроль»: покрытие недельных отчётов по каждому специалисту, кто в долгу.',
+  'Сообщения сотрудникам (выплывают ярким баннером).',
+  'Закрытие долгов по уважительным причинам («проект отвалился», «деньги не крутятся»).']},
+{date:'2026-07-13',tag:'major',title:'Запуск веб-кабинета',
+ sum:'Переезд с десктопа на многопользовательский веб reports.iig.ru',items:[
+  'Мультиаккаунты: вход по email+паролю, у каждого свой стек клиентов (разграничение по владельцу).',
+  'Бот переведён на webhook, всё развёрнуто на хостинге (reports.iig.ru).',
+  'Фирменный стиль IIG Agency + favicon-панда, светлая/тёмная тема.',
+  'Полноценный гайд с вкладками и поиском.',
+  'Рассылка: режим «Проба» (собрать без отправки) с окном прогресса.',
+  'Приписка специалиста стала опциональной; правило «привязал чат → закрепил клиента за собой».',
+  'Google-таблицы: разрезы считают конверсии по целям ленты (сходятся суммы).']},
+{date:'2026-06-28',tag:'feature',title:'Google-таблицы клиентов',
+ sum:'Авто-выгрузка Директа в таблицы «Auto-Reporter»',items:[
+  'Автозаполнение лент клиента (неделя/месяц) живыми данными до сегодня.',
+  'Составные помесячные листы и листы-разрезы (по РК, группам, ключам, регионам).',
+  'Ежедневный авто-синк по расписанию; товарные кампании в фильтре.',
+  'Фикс падения рассылки на клиентах с >10 целями + окно прогресса.']},
+{date:'2026-06-23',tag:'feature',title:'Конструктор отчётов и цели Метрики',
+ sum:'Гибкие произвольные отчёты и умная работа с целями',items:[
+  'Конструктор: любой разрез Директа (уровень, срезы, период, атрибуция), просмотр/отправка/xlsx.',
+  'Автоподгрузка целей из Метрики по счётчику клиента; двухуровневая модель (ключевые/микро).',
+  'Красивые названия, сортировка и поиск в таблице, фильтр по кампании.',
+  'Понятные подсказки при несовместимых сочетаниях разрез+срез.']},
+{date:'2026-06-20',tag:'feature',title:'Интерфейс и удобный запуск',
+ sum:'Веб-UI, темы, ввод токенов в Настройках',items:[
+  'Переработанный интерфейс со светлой и тёмной темой, адаптивные таблицы.',
+  'Ввод токенов Telegram/Яндекса прямо в Настройках (без правки файлов).',
+  'Windows-лаунчеры и single-exe сборка, авто-восстановление после сбоев TLS.']},
+{date:'2026-06-19',tag:'major',title:'Старт проекта',
+ sum:'Самая первая версия',items:[
+  'Еженедельный отчёт по Яндекс.Директу с автоматической отправкой в Telegram-чат клиента.']},
+];
+const CL_TAG={major:['КРУПНОЕ','var(--brand)','rgba(1,113,176,.12)'],feature:['ФИЧА','var(--green)','var(--green-bg)'],fix:['ФИКС','var(--amber)','var(--amber-bg)'],hotfix:['ХОТФИКС','var(--red)','var(--red-bg)']};
+let CL_OPEN={};
+function clDate(d){const p=(d||'').split('-');return p.length===3?(p[2]+'.'+p[1]+'.'+p[0]):d;}
+function renderChangelog(){
+  const host=el('v_changelog');
+  const total=CHANGELOG.reduce((n,e)=>n+(e.items?e.items.length:0),0);
+  const cards=CHANGELOG.map((e,i)=>{
+    const t=CL_TAG[e.tag]||CL_TAG.feature;
+    const open=(i in CL_OPEN)?CL_OPEN[i]:(i===0);   // самый свежий раскрыт по умолчанию
+    return `<div class="cl-card">
+      <div class="cl-head" onclick="clToggle(${i})">
+        <span class="cl-tag" style="color:${t[1]};background:${t[2]}">${t[0]}</span>
+        <span class="cl-date">${clDate(e.date)}</span>
+        <b class="cl-title">${esc(e.title)}</b>
+        <span class="cl-sum">${esc(e.sum||'')}</span>
+        <span class="cl-arw" style="transform:rotate(${open?90:0}deg)">▸</span>
+      </div>
+      <div class="cl-body" id="cl_${i}" style="display:${open?'block':'none'}">
+        <ul>${(e.items||[]).map(x=>'<li>'+esc(x)+'</li>').join('')}</ul>
+      </div></div>`;
+  }).join('');
+  host.innerHTML=`
+    <h2 class="title">🆕 Что нового</h2>
+    <p class="sub">Вся история кабинета — от старта до сегодня. ${CHANGELOG.length} релизов, ${total} изменений. Нажми на карточку, чтобы развернуть.</p>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn sm" onclick="clAll(true)">Развернуть всё</button>
+      <button class="btn sm" onclick="clAll(false)">Свернуть всё</button>
+    </div>
+    <div class="cl-list">${cards}</div>`;
+}
+function clToggle(i){CL_OPEN[i]=!((i in CL_OPEN)?CL_OPEN[i]:(i===0));const b=el('cl_'+i);if(b){const on=CL_OPEN[i];b.style.display=on?'block':'none';const a=b.previousElementSibling.querySelector('.cl-arw');if(a)a.style.transform='rotate('+(on?90:0)+'deg)';}}
+function clAll(open){CHANGELOG.forEach((e,i)=>CL_OPEN[i]=open);renderChangelog();}
 
 /* ---------- REPORTS ---------- */
 let RTAB='prev';
