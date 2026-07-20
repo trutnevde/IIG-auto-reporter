@@ -117,18 +117,22 @@ def get_daily_costs(token, login, _post=None, _sleep=None):
 
 
 # ---------- рабочий пул ----------
-def working_pool(db):
-    """Логины, которыми реально занимаются: есть владелец ИЛИ привязка к чату."""
+def working_pool(db, logins=None):
+    """Логины, которыми реально занимаются: есть владелец ИЛИ привязка к чату.
+    logins — ограничить пул этим набором (ручной сбор «только мои клиенты»)."""
     owned = {c["login"] for c in db.list_clients("all")
              if ("owner" in c.keys()) and c["owner"] is not None}
     bound = {b["login"] for b in db.list_bindings("all")}
-    return sorted(owned | bound)
+    pool = owned | bound
+    if logins is not None:
+        pool &= set(logins)
+    return sorted(pool)
 
 
 # ---------- основной сбор ----------
-def collect(db, token, on_progress=None, _post=None, _sleep=None):
-    """Обновляет таблицу budgets по рабочему пулу. Возвращает сводку."""
-    pool = working_pool(db)
+def collect(db, token, on_progress=None, _post=None, _sleep=None, logins=None):
+    """Обновляет таблицу budgets по рабочему пулу. logins — только эти клиенты. Возвращает сводку."""
+    pool = working_pool(db, logins=logins)
     try:
         balances = get_balances(token, pool, _post=_post)
     except Exception as e:  # noqa: BLE001 — нет доступа к v4: работаем без баланса
@@ -195,67 +199,102 @@ def _alert_line(r):
     return "• {} ({}): {} кампаний остановлено по оплате".format(nm, r["login"], r["camps_pay_stopped"])
 
 
-def send_alerts(db, tg):
-    """Критичные (<3 дней) и остановленные по оплате — в личку ВЛАДЕЛЬЦУ клиента (его
-    users.alert_username), чтобы каждый спец получал алерты по СВОИМ клиентам в свой чат.
-    Клиенты без владельца/без своего чата → общий получатель (kv budget_alert_username).
-    Не чаще раза в сутки на клиента. Каждому получателю — одно сообщение с его клиентами."""
+def _priv_index(db):
+    """Индексы приватных чатов: по chat_id, по @username и по title (для матча без @username)."""
+    by_id, by_un, by_title = {}, {}, {}
+    for c in db.list_chats():
+        if (c["type"] or "") != "private":
+            continue
+        by_id[c["chat_id"]] = c
+        if c["username"]:
+            by_un[str(c["username"]).lower()] = c
+        if c["title"]:
+            by_title[str(c["title"]).lower()] = c
+    return by_id, by_un, by_title
+
+
+def _resolve_chat(u, by_id, by_un, by_title):
+    """Чат пользователя для алертов: сперва привязанный alert_chat_id (deep-link, надёжно),
+    затем @username — по полю username ИЛИ по title (у кого нет публичного @username)."""
+    if not u:
+        return None
+    cid = u["alert_chat_id"] if "alert_chat_id" in u.keys() else None
+    if cid and cid in by_id:
+        return by_id[cid]
+    un = ((u["alert_username"] if "alert_username" in u.keys() else None) or "").strip().lstrip("@").lower()
+    if un:
+        return by_un.get(un) or by_title.get(un)
+    return None
+
+
+def send_alerts(db, tg, logins=None):
+    """Критичные (<3 дней) и остановленные по оплате — в личку ВЛАДЕЛЬЦУ клиента. Чат владельца
+    ищем: привязанный alert_chat_id (надёжно, deep-link) → @username (username или title). Ничьи /
+    без чата → общий получатель (kv budget_alert_username или первый админ с привязкой). Группируем
+    по чату, не чаще раза в сутки на клиента. logins — ограничить набором (ручной сбор своих)."""
     from .settings import log_error
+    lset = set(logins) if logins is not None else None
     rows = [r for r in db.list_budgets()
-            if r["status"] == "critical"
-            or (r["status"] in ("warning",) and (r["camps_pay_stopped"] or 0) > 0)]
+            if (lset is None or r["login"] in lset)
+            and (r["status"] == "critical" or (r["status"] == "warning" and (r["camps_pay_stopped"] or 0) > 0))]
     if not rows:
         return {"sent": 0, "reason": "нет критичных"}
 
     users = {u["id"]: u for u in db.list_users()}
     owner_of = {c["login"]: (c["owner"] if "owner" in c.keys() else None)
                 for c in db.list_clients("all")}
-    global_un = (db.get_kv("budget_alert_username") or "iig_dtrutnev").lstrip("@").lower()
-
-    # группируем строки по получателю-username (владелец → его alert_username, иначе общий)
-    by_recipient = {}
-    for r in rows:
-        owner = owner_of.get(r["login"])
-        un = None
-        if owner and owner in users:
-            au = users[owner]["alert_username"] if "alert_username" in users[owner].keys() else None
-            un = (au or "").strip().lstrip("@").lower() or None
-        un = un or global_un
-        by_recipient.setdefault(un, []).append(r)
-
-    # приватные чаты по username
-    priv = {}
-    for c in db.list_chats():
-        if (c["type"] or "") == "private" and (c["username"] or ""):
-            priv[str(c["username"]).lower()] = c
+    by_id, by_un, by_title = _priv_index(db)
+    # общий/фолбэк получатель — по kv budget_alert_username, иначе первый админ с привязанной личкой
+    global_un = (db.get_kv("budget_alert_username") or "iig_dtrutnev").strip().lstrip("@").lower()
+    global_chat = by_un.get(global_un) or by_title.get(global_un)
+    if not global_chat:
+        for u in users.values():
+            if u["role"] == "admin":
+                gc = _resolve_chat(u, by_id, by_un, by_title)
+                if gc:
+                    global_chat = gc
+                    break
 
     today = dt.date.today().isoformat()
+    by_chat = {}   # chat_id -> (chat, [rows])
+    unroutable = []
+    for r in rows:
+        chat = _resolve_chat(users.get(owner_of.get(r["login"])), by_id, by_un, by_title) or global_chat
+        if not chat:
+            unroutable.append(r["login"])
+            continue
+        by_chat.setdefault(chat["chat_id"], (chat, []))[1].append(r)
+
     total_sent = 0
-    missing = []
-    for un, rs in by_recipient.items():
+    for cid, (chat, rs) in by_chat.items():
         fresh = [r for r in rs if db.get_kv("budget_alerted_" + r["login"]) != today]
         if not fresh:
             continue
-        chat = priv.get(un)
-        if not chat:
-            missing.append(un)
-            log_error("budgets.alert", "личка @{} не найдена — пусть напишет боту /start".format(un))
-            continue
         lines = ["⚠️ БЮДЖЕТ НА ИСХОДЕ"] + [_alert_line(r) for r in fresh]
         lines += ["", "Проверь и пополни: вкладка «Бюджеты» в кабинете."]
-        tg.send_message(chat["chat_id"], "\n".join(lines))
-        for r in fresh:
-            db.set_kv("budget_alerted_" + r["login"], today)
-        total_sent += len(fresh)
-    return {"sent": total_sent, "recipients": len(by_recipient), "missing": missing}
+        try:
+            tg.send_message(cid, "\n".join(lines))
+            for r in fresh:
+                db.set_kv("budget_alerted_" + r["login"], today)
+            total_sent += len(fresh)
+        except Exception as e:  # noqa: BLE001
+            log_error("budgets.alert", "не отправить в чат {}: {}".format(cid, e))
+    # антиспам: про «некому слать» — в журнал не чаще раза в день
+    if unroutable and db.get_kv("budget_alert_nolog") != today:
+        db.set_kv("budget_alert_nolog", today)
+        log_error("budgets.alert",
+                  "{} критичных клиентов некому слать — получатель не привязал личку "
+                  "(Настройки → «Алерты по бюджету» → «Привязать Telegram»): {}".format(
+                      len(unroutable), ", ".join(unroutable[:10])))
+    return {"sent": total_sent, "recipients": len(by_chat), "unroutable": len(unroutable)}
 
 
-def collect_and_alert(db, token, tg=None, on_progress=None):
-    """Полный проход для планировщика: сбор + алерты (если есть кому слать)."""
-    res = collect(db, token, on_progress=on_progress)
+def collect_and_alert(db, token, tg=None, on_progress=None, logins=None):
+    """Полный проход: сбор + алерты. logins — только эти клиенты (ручной сбор своих)."""
+    res = collect(db, token, on_progress=on_progress, logins=logins)
     if tg is not None:
         try:
-            res["alerts"] = send_alerts(db, tg)
+            res["alerts"] = send_alerts(db, tg, logins=logins)
         except Exception as e:  # noqa: BLE001
             from .settings import log_error
             log_error("budgets.alert", e)

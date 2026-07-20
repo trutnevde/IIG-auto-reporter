@@ -1196,12 +1196,13 @@ class Api:
 
     @safe
     def my_alert(self):
-        """Свой @username/чат для бюджет-алертов по СВОИМ клиентам. NULL = не получаю персонально
-        (алерты по моим клиентам не шлются мне отдельно; общий получатель — в отдельной настройке)."""
+        """Куда мне идут бюджет-алерты по СВОИМ клиентам: linked=True — привязана личка по deep-link
+        (надёжно, работает и без публичного @username). alert_username — запасной способ (по @username)."""
         if not self.user:
-            return {"alert_username": None}
+            return {"alert_username": None, "linked": False}
         u = self.db.get_user(self.user["id"])
-        return {"alert_username": (u["alert_username"] if (u is not None and "alert_username" in u.keys()) else None)}
+        return {"alert_username": (u["alert_username"] if (u is not None and "alert_username" in u.keys()) else None),
+                "linked": bool((u["alert_chat_id"] if (u is not None and "alert_chat_id" in u.keys()) else None))}
 
     @safe
     def set_my_alert(self, username):
@@ -1212,6 +1213,27 @@ class Api:
         username = (username or "").strip().lstrip("@").lower() or None
         self.db.set_user_alert(self.user["id"], username)
         return {"saved": True, "alert_username": username}
+
+    @safe
+    def alert_link(self):
+        """Одноразовая deep-link для НАДЁЖНОЙ привязки лички к бюджет-алертам: пользователь
+        открывает ссылку и жмёт Start — бот сохраняет его chat_id напрямую (без @username)."""
+        if not self.user:
+            raise RuntimeError("Доступно только в кабинете")
+        self._require_write()
+        import os
+        token = os.urandom(6).hex()
+        self.db.set_kv("alerttok_" + token, str(self.user["id"]))
+        return {"link": "https://t.me/{}?start=alert_{}".format(self._bot_name(), token)}
+
+    @safe
+    def alert_unlink(self):
+        """Отвязать личку от алертов."""
+        if not self.user:
+            raise RuntimeError("Доступно только в кабинете")
+        self._require_write()
+        self.db.set_user_alert_chat(self.user["id"], None)
+        return {"linked": False}
 
     # ---------- бюджеты ----------
     @safe
@@ -1225,17 +1247,23 @@ class Api:
 
     @safe
     def budgets_refresh(self):
-        """Принудительный сбор бюджетов в фоне (само обновляется раз в 12 часов).
-        Сбор агентский — по всему рабочему пулу; вкладка всё равно скоупит по ролям."""
+        """Принудительный сбор бюджетов в фоне по МОИМ клиентам (специалист/админ — свои,
+        наблюдатель — все). Полный агентский сбор делает 12-часовой авто-планировщик."""
         self._require_write()
         if _BUDGET_RUN["running"]:
             return {"already_running": True}
+        # скоуп ручного сбора: видимые мне клиенты (не всё агентство)
+        scope = None
+        if self._owner() != "all":
+            scope = sorted({c["login"] for c in self.db.list_clients(self._owner())})
+            if not scope:
+                return {"started": False, "reason": "У вас нет клиентов для сбора."}
         _BUDGET_RUN.update({"running": True, "done": 0, "total": 0, "error": None, "summary": None})
         import threading
-        threading.Thread(target=self._budgets_worker, daemon=True).start()
+        threading.Thread(target=self._budgets_worker, args=(scope,), daemon=True).start()
         return {"started": True}
 
-    def _budgets_worker(self):
+    def _budgets_worker(self, logins=None):
         from . import budgets as B
         try:
             token = load_secrets()["yandex_oauth_token"]
@@ -1248,7 +1276,7 @@ class Api:
             def prog(done, total, detail):
                 _BUDGET_RUN["done"], _BUDGET_RUN["total"] = done, total
 
-            res = B.collect_and_alert(self.db, token, tg=tg, on_progress=prog)
+            res = B.collect_and_alert(self.db, token, tg=tg, on_progress=prog, logins=logins)
             _BUDGET_RUN["summary"] = res
             self.db.set_kv("budgets_last", str(__import__("time").time()))
         except Exception as e:  # noqa: BLE001

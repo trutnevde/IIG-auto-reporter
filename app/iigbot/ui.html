@@ -97,7 +97,7 @@
   .icon-btn{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--surface);cursor:pointer;
     font-size:15px;display:grid;place-items:center;transition:background .12s,transform .12s}
   .icon-btn:hover{background:var(--surface-2);transform:translateY(-1px)}
-  .content{padding:24px;max-width:1200px;overflow:auto;width:100%}
+  .content{padding:26px 34px;max-width:1600px;margin:0 auto;overflow:auto;width:100%}
   section[data-view]{display:none}
   section[data-view].on{display:block;animation:fade .26s ease}
   @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -825,7 +825,7 @@ const GUIDE=[
   <p>Критичные раз в сутки уходят <b>алертом в личный Telegram</b> одним сообщением. Число критичных также висит красным бейджем на пункте меню «Бюджеты».</p>
   <div class="note">Чтобы алерты доходили, получатель должен один раз написать боту <span class="gkbd">/start</span> в личку.</div>`},
 {tab:'Бюджеты',icon:'⟳',title:'Как обновляются бюджеты',kw:'обновить 12 часов автоматически собрать сейчас бюджеты',html:`
-  <p>Бюджеты пересобираются <b>сами каждые 12 часов</b>. Нужно прямо сейчас — кнопка <b>«⟳ Обновить сейчас»</b> (сбор идёт по всему агентству, займёт пару минут). Сверху видно, когда собирали последний раз.</p>`},
+  <p>Бюджеты пересобираются <b>сами каждые 12 часов</b> (по всему агентству). Нужно прямо сейчас — кнопка <b>«⟳ Обновить сейчас»</b> собирает <b>только твоих</b> клиентов (быстро). Сверху видно, когда собирали последний раз.</p>`},
 // ===== КОНТРОЛЬ =====
 {tab:'Контроль',icon:'👁',title:'Наблюдатель (работодатель)',kw:'наблюдатель работодатель контроль видит всё роль просмотр начальник',html:`
   <p><b>Наблюдатель</b> — это работодатель: видит <b>всё</b> (всех клиентов, все отчёты, все бюджеты, весь Контроль), но <b>ничего не меняет</b> — только смотрит. Роль выдаёт админ в разделе «Пользователи».</p>`},
@@ -1295,7 +1295,7 @@ async function renderBudgets(){
     ${shown.length?`<div class="panel"><div class="scrollx"><table>
       <thead><tr><th>Клиент</th><th>Остаток</th><th>Темп (7д)</th><th>Дней осталось</th><th>Кампании</th><th>Днев. бюджет</th><th>Статус</th></tr></thead>
       <tbody>${trs}</tbody></table></div></div>`
-    :`<div class="empty">${rows.length?'В этом фильтре пусто.':'Пока пусто: либо ещё не собирали (нажми «Обновить сейчас» — сбор идёт по всему агентству), либо у тебя нет клиентов в рабочем пуле (владелец или привязка).'}</div>`}`;
+    :`<div class="empty">${rows.length?'В этом фильтре пусто.':'Пока пусто: либо ещё не собирали (нажми «Обновить сейчас» — соберёт по твоим клиентам), либо у тебя нет клиентов в рабочем пуле (владелец или привязка). Полный агентский сбор идёт сам раз в 12 часов.'}</div>`}`;
   if(run.running)budPoll();
 }
 function budPoll(){
@@ -1314,7 +1314,8 @@ async function doBudgetsRefresh(){
   try{
     const r=await api('budgets_refresh');
     if(r.already_running){toast('Сбор уже идёт','err');return;}
-    toast('Собираю бюджеты — это может занять пару минут','ok');
+    if(r.started===false){toast(r.reason||'Нечего собирать','err');return;}
+    toast('Собираю бюджеты по твоим клиентам…','ok');
     renderBudgets();
   }catch(e){}
 }
@@ -1534,10 +1535,18 @@ async function renderSettings(){
       <div class="field" id="mnTextWrap" style="display:none"><label>Текст своей приписки</label><textarea id="mnText" rows="2" placeholder="Например: «По вопросам — Денис, +7 ...»"></textarea></div>
       <button class="btn primary" onclick="saveMyNote()">Сохранить приписку</button>
     </div></div>
-    <div class="panel" style="margin-top:16px"><h3><span class="h3-ic">💰</span> Алерты по бюджету — мой чат</h3><div class="body">
-      <p class="muted" style="margin:0 0 10px;font-size:13px">Когда у <b>твоего</b> клиента кончаются деньги — алерт придёт <b>тебе в личку Telegram</b>, а не общему получателю. Укажи свой Telegram-@username и один раз напиши боту <code>/start</code>, чтобы он мог тебе писать. Пусто — персональные алерты по твоим клиентам не шлём.</p>
-      <div class="field"><label>Мой @username в Telegram</label><input id="alUser" placeholder="например iig_dtrutnev (без @)"></div>
-      <button class="btn primary" onclick="saveMyAlert()">Сохранить чат алертов</button>
+    <div class="panel" style="margin-top:16px"><h3><span class="h3-ic">💰</span> Алерты по бюджету — мой Telegram</h3><div class="body">
+      <p class="muted" style="margin:0 0 10px;font-size:13px">Когда у <b>твоего</b> клиента кончаются деньги — алерт придёт <b>тебе в личку</b>. Самый надёжный способ — привязать кнопкой (работает даже если у тебя нет публичного @username).</p>
+      <div id="alStatus" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn primary" onclick="alertLink()">🔗 Привязать Telegram</button>
+        <button class="btn" id="alUnlinkBtn" style="display:none" onclick="alertUnlink()">Отвязать</button>
+        <button class="btn" onclick="renderSettings()">⟳ Проверить статус</button>
+      </div>
+      <details style="margin-top:12px"><summary class="muted" style="cursor:pointer;font-size:12.5px">Запасной способ — по @username</summary>
+        <div class="field" style="margin-top:8px"><label>Мой @username в Telegram (и один раз напиши боту /start)</label><input id="alUser" placeholder="например iig_dtrutnev (без @)"></div>
+        <button class="btn sm" onclick="saveMyAlert()">Сохранить @username</button>
+      </details>
     </div></div>`:''}`;
   if(ME&&ME.role!=='observer'){
     try{const mn=await api('my_note');
@@ -1546,11 +1555,26 @@ async function renderSettings(){
       if(mode==='own')el('mnText').value=mn.note;
       mnModeUi();
     }catch(e){}
-    try{const al=await api('my_alert');if(al&&al.alert_username)el('alUser').value=al.alert_username;}catch(e){}
+    loadAlert();
   }
 }
+async function loadAlert(){
+  try{const al=await api('my_alert');
+    if(al.alert_username&&el('alUser'))el('alUser').value=al.alert_username;
+    const st=el('alStatus'), ub=el('alUnlinkBtn');
+    if(st)st.innerHTML=al.linked?'<span class="badge b-green">✅ Личка привязана — алерты придут сюда</span>':'<span class="badge b-amber">Личка не привязана — привяжи кнопкой ниже</span>';
+    if(ub)ub.style.display=al.linked?'':'none';
+  }catch(e){}
+}
+async function alertLink(){
+  try{const r=await api('alert_link');
+    window.open(r.link,'_blank');
+    toast('Открылся Telegram — нажми Start у бота, потом «⟳ Проверить статус»','ok');
+  }catch(e){}
+}
+async function alertUnlink(){try{await api('alert_unlink');toast('Отвязано','ok');loadAlert();}catch(e){}}
 async function saveMyAlert(){
-  try{const r=await api('set_my_alert',el('alUser').value||'');toast(r.alert_username?('Алерты пойдут в @'+r.alert_username):'Персональные алерты выключены','ok');}catch(e){}
+  try{const r=await api('set_my_alert',el('alUser').value||'');toast(r.alert_username?('Запасной канал: @'+r.alert_username):'@username очищен','ok');}catch(e){}
 }
 function mnModeUi(){const w=el('mnTextWrap');if(w)w.style.display=(el('mnMode').value==='own'?'':'none');}
 async function saveMyNote(){

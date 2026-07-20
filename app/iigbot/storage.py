@@ -142,6 +142,9 @@ class Storage:
         if "alert_username" not in ucols:   # свой чат/username для бюджет-алертов (NULL=общий по умолчанию)
             self.conn.execute("ALTER TABLE users ADD COLUMN alert_username TEXT")
             self.conn.commit()
+        if "alert_chat_id" not in ucols:   # привязанный по deep-link chat_id для алертов (надёжно, без @username)
+            self.conn.execute("ALTER TABLE users ADD COLUMN alert_chat_id INTEGER")
+            self.conn.commit()
         # ответы специалистов на сообщения наблюдателя
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS note_reply (
@@ -300,6 +303,11 @@ class Storage:
         """Свой @username/чат для бюджет-алертов (NULL/'' = общий по умолчанию)."""
         self.conn.execute("UPDATE users SET alert_username=? WHERE id=?",
                           ((username or None), user_id))
+        self.conn.commit()
+
+    def set_user_alert_chat(self, user_id, chat_id):
+        """Привязать конкретный chat_id для алертов (по deep-link /start alert_<token>)."""
+        self.conn.execute("UPDATE users SET alert_chat_id=? WHERE id=?", (chat_id, user_id))
         self.conn.commit()
 
     def add_note_reply(self, note_id, user_id, text):

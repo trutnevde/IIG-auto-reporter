@@ -114,6 +114,25 @@ def cmd_bind(msg, tg, db, cfg, arg):
     print("🔗 bind chat {} -> {} (by {})".format(chat["id"], login, (msg.get("from") or {}).get("id")))
 
 
+def cmd_bind_alert(msg, tg, db, token):
+    """Привязка этой лички к бюджет-алертам по одноразовому токену из кабинета (Настройки)."""
+    chat = msg["chat"]
+    uid = db.get_kv("alerttok_" + token) if token else None
+    if not uid:
+        tg.send_message(chat["id"], "Ссылка привязки алертов устарела или неверна. Открой в кабинете "
+                        "Настройки → «Алерты по бюджету» и нажми «Привязать Telegram» заново.")
+        return
+    try:
+        db.set_user_alert_chat(int(uid), chat["id"])
+        db.set_kv("alerttok_" + token, "")   # гасим токен
+    except Exception as e:  # noqa: BLE001
+        tg.send_message(chat["id"], "Не получилось привязать: {}".format(e))
+        return
+    tg.send_message(chat["id"], "✅ Готово! Сюда будут приходить алерты по бюджету твоих клиентов "
+                    "(когда деньги на исходе). Отключить — в кабинете, Настройки.")
+    print("🔔 alert chat bound: user {} -> chat {}".format(uid, chat["id"]))
+
+
 def cmd_unbind(msg, tg, db, cfg):
     chat = msg["chat"]
     if not is_admin(msg, tg, cfg):
@@ -161,7 +180,9 @@ def handle_message(msg, tg, db, cfg, bot_username):
     arg = arg.strip()
 
     if cmd == "/start":
-        if arg:                       # deep-link: t.me/Bot?start=<логин>
+        if arg.startswith("alert_"):   # deep-link привязки лички для бюджет-алертов
+            cmd_bind_alert(msg, tg, db, arg[len("alert_"):])
+        elif arg:                       # deep-link: t.me/Bot?start=<логин>
             cmd_bind(msg, tg, db, cfg, arg)
         else:
             cmd_whereami(msg, tg, db)
