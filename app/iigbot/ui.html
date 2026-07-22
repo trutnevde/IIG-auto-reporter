@@ -218,6 +218,7 @@
   .goals-cell .chip{margin:0}
   .gcnt{font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap;margin-right:2px}
   .gmore{font-size:11.5px;color:var(--muted);font-weight:650}
+  .rb-goalcol{background:color-mix(in srgb,var(--brand) 6%,transparent);white-space:nowrap}
 
   /* ---------- сторонний мессенджер (копипаст) ---------- */
   .ext-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:7px;max-height:340px;overflow:auto;padding:2px}
@@ -965,6 +966,10 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-07-21',tag:'fix',title:'Конструктор: конверсии по каждой цели + фикс xlsx',
+ sum:'Разбивка конверсий по целям отдельными колонками; поправлен экспорт',items:[
+  'Конструктор: конверсии теперь можно смотреть ПО КАЖДОЙ ЦЕЛИ — на каждую выбранную цель своя колонка «🎯 <цель>» (раньше все цели сливались в одну «Конв.»). Колонки сортируются, есть строка ИТОГО и разбивка в xlsx.',
+  'Фикс «No module named openpyxl» — на сервер доставлена библиотека для выгрузки в xlsx.']},
 {date:'2026-07-20',tag:'hotfix',title:'Фиксы по обратной связи',
  sum:'Скоуп сбора бюджетов, надёжные алерты, вёрстка «дышит»',items:[
   'Бюджеты: «Обновить сейчас» собирает теперь ТОЛЬКО твоих клиентов (у Ирины — её одного, не все 25 агентства). Полный сбор идёт сам раз в 12 часов.',
@@ -1340,28 +1345,34 @@ function rbShell(r){
   head+=` · атрибуция ${esc(r.attribution)} · ${esc(r.date_from)}…${esc(r.date_to)}`;
   if(!r.use_conv)head+=' · <span class="muted">конверсии для этого разреза недоступны</span>';
   else if(!r.by_goals)head+=' · <span class="muted">конверсии — суммарные (без целей)</span>';
+  else if(r.goals&&r.goals.length)head+=' · <span class="muted">конверсии разбиты по целям — 🎯 колонки справа</span>';
   head+='</div>';
   const toolbar=`<div style="display:flex;gap:10px;align-items:center;margin:0 0 10px;flex-wrap:wrap"><input type="search" id="rbSearch" placeholder="🔎 фильтр по строкам…" style="min-width:220px" oninput="rbDrawTable()"><span class="muted" id="rbCount"></span></div>`;
   return head+toolbar+'<div id="rbTable"></div>';
 }
+function rbGoalCols(r){return (r.by_goals&&r.goals&&r.goals.length)?r.goals:[];}
 function rbDrawTable(){
   const r=RB_LAST,host=el('rbTable');if(!r||!host)return;
-  const cols=rbCols(r);
+  const cols=rbCols(r), gcols=rbGoalCols(r);
   const q=(el('rbSearch')?el('rbSearch').value:'').trim().toLowerCase();
   let rows=r.rows.slice();
   if(q)rows=rows.filter(row=>row.dims.some(d=>String(d).toLowerCase().includes(q)));
   const sk=RB_SORT.key,dir=RB_SORT.dir;
+  const gval=(row,gid)=>(row.byGoal&&row.byGoal[gid])||0;
   rows.sort((a,b)=>{
     if(sk.indexOf('dim')===0){const i=+sk.slice(3);return dir*String(a.dims[i]||'').localeCompare(String(b.dims[i]||''),'ru',{numeric:true});}
+    if(sk.indexOf('goal_')===0){const gid=sk.slice(5);return dir*(gval(a,gid)-gval(b,gid));}
     return dir*(((a.m[sk]||0))-((b.m[sk]||0)));
   });
   const arrow=k=>sk===k?(dir<0?' ▼':' ▲'):'';
   const dimTh=r.dim_titles.map((t,i)=>`<th onclick="rbSort('dim${i}')" style="cursor:pointer;user-select:none">${esc(t)}${arrow('dim'+i)}</th>`).join('');
   const metTh=cols.map(c=>`<th class="right" onclick="rbSort('${c.key}')" style="cursor:pointer;user-select:none">${esc(c.label)}${arrow(c.key)}</th>`).join('');
+  const goalTh=gcols.map(g=>`<th class="right rb-goalcol" onclick="rbSort('goal_${esc(g.id)}')" style="cursor:pointer;user-select:none" title="Конверсии по цели «${esc(g.name)}»">🎯 ${esc(g.name)}${arrow('goal_'+g.id)}</th>`).join('');
   const cell=m=>cols.map(c=>'<td class="right">'+c.fmt(m)+'</td>').join('');
-  const totalRow=`<tr style="font-weight:700;background:var(--surface-2)"><td colspan="${r.dim_titles.length}">ИТОГО</td>${cell(r.totals)}</tr>`;
-  const body=rows.map(row=>'<tr>'+row.dims.map(d=>'<td>'+esc(d||'—')+'</td>').join('')+cell(row.m)+'</tr>').join('');
-  host.innerHTML=`<div class="scrollx"><table><thead><tr>${dimTh}${metTh}</tr></thead><tbody>${totalRow}${body}</tbody></table></div>`;
+  const goalCell=bg=>gcols.map(g=>'<td class="right rb-goalcol">'+fmtInt((bg&&bg[g.id])||0)+'</td>').join('');
+  const totalRow=`<tr style="font-weight:700;background:var(--surface-2)"><td colspan="${r.dim_titles.length}">ИТОГО</td>${cell(r.totals)}${goalCell(r.goal_totals)}</tr>`;
+  const body=rows.map(row=>'<tr>'+row.dims.map(d=>'<td>'+esc(d||'—')+'</td>').join('')+cell(row.m)+goalCell(row.byGoal)+'</tr>').join('');
+  host.innerHTML=`<div class="scrollx"><table><thead><tr>${dimTh}${metTh}${goalTh}</tr></thead><tbody>${totalRow}${body}</tbody></table></div>`;
   const cnt=el('rbCount');if(cnt)cnt.textContent='строк: '+rows.length+(q?(' (из '+r.rows.length+')'):'')+' · всего по API: '+r.n_total;
 }
 function rbSort(key){if(RB_SORT.key===key)RB_SORT.dir*=-1;else RB_SORT={key,dir:key.indexOf('dim')===0?1:-1};rbDrawTable();}

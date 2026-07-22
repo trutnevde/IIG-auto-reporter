@@ -184,25 +184,28 @@ def build(token, login, level, date_from, date_to, attribution="LSC", goal_defs=
 
     # агрегируем на своей стороне по кортежу значений измерений (нужно для свёртки дат
     # день->неделя/месяц и чтобы суммы сходились).
+    goal_ids_list = [str(g["id"]) for g in goal_defs] if use_goals else []
     agg = {}
     for r in raw:
         disp = []
         for d in dim_fields:
-            raw = str(r.get(d) or "")
+            rawv = str(r.get(d) or "")
             if d == "Date":
-                val = _date_bucket(raw, date_grain)
+                val = _date_bucket(rawv, date_grain)
             else:
-                val = _pretty(d, raw)
+                val = _pretty(d, rawv)
             disp.append(val)
         imp = R.parse_num(r.get("Impressions"))
         clk = R.parse_num(r.get("Clicks"))
         cost = R.parse_num(r.get("Cost"))
+        by_goal = {}
         if use_goals:
             conv = 0.0
             for g in goal_defs:
                 col = R._find_goal_col(r, g["id"])
-                if col:
-                    conv += R.parse_num(r.get(col))
+                v = R.parse_num(r.get(col)) if col else 0.0
+                by_goal[str(g["id"])] = v   # конверсии ПО КАЖДОЙ цели отдельно
+                conv += v
         elif conv_capable:
             conv = R.parse_num(r.get("Conversions"))
         else:
@@ -210,33 +213,39 @@ def build(token, login, level, date_from, date_to, attribution="LSC", goal_defs=
         key = tuple(disp)
         a = agg.get(key)
         if a is None:
-            agg[key] = [disp, imp, clk, cost, conv]
+            agg[key] = {"disp": disp, "imp": imp, "clk": clk, "cost": cost, "conv": conv,
+                        "byGoal": dict(by_goal)}
         else:
-            a[1] += imp; a[2] += clk; a[3] += cost; a[4] += conv
+            a["imp"] += imp; a["clk"] += clk; a["cost"] += cost; a["conv"] += conv
+            for gid, v in by_goal.items():
+                a["byGoal"][gid] = a["byGoal"].get(gid, 0.0) + v
 
     if not dim_fields:
         # уровень «аккаунт» без срезов — одна строка-сводка
         if agg:
             v = next(iter(agg.values()))
-            v[0] = ["Весь аккаунт"]
+            v["disp"] = ["Весь аккаунт"]
         dim_titles = ["Аккаунт"]
 
-    rows = [{"dims": (v[0] or ["—"]), "imp": v[1], "clk": v[2], "cost": v[3], "conv": v[4]}
-            for v in agg.values()]
+    rows = list(agg.values())
     t_imp = sum(x["imp"] for x in rows)
     t_clk = sum(x["clk"] for x in rows)
     t_cost = sum(x["cost"] for x in rows)
     t_conv = sum(x["conv"] for x in rows)
+    goal_totals = {gid: sum(x["byGoal"].get(gid, 0.0) for x in rows) for gid in goal_ids_list}
 
     rows.sort(key=lambda x: -x["cost"])
     n_total = len(rows)
     rows = rows[:max(1, int(limit or 100))]
-    out_rows = [{"dims": r["dims"], "m": _metrics(r["imp"], r["clk"], r["cost"], r["conv"])} for r in rows]
+    out_rows = [{"dims": (r["disp"] or ["—"]), "m": _metrics(r["imp"], r["clk"], r["cost"], r["conv"]),
+                 "byGoal": r["byGoal"]} for r in rows]
 
     return {
         "level": level, "level_label": LEVEL_LABELS[level],
         "dim_titles": dim_titles or ["Аккаунт"],
         "attribution": attribution, "use_conv": conv_capable, "by_goals": use_goals,
+        "goals": [{"id": str(g["id"]), "name": g["name"]} for g in goal_defs] if use_goals else [],
+        "goal_totals": goal_totals,
         "segments": segs, "date_grain": date_grain if has_date else None,
         "date_from": date_from, "date_to": date_to,
         "rows": out_rows, "totals": _metrics(t_imp, t_clk, t_cost, t_conv),
@@ -286,23 +295,26 @@ def to_xlsx(res, path):
     wb = Workbook()
     ws = wb.active
     ws.title = "Отчёт"
+    goals = res.get("goals") or []   # разрез конверсий по целям (колонки справа)
     headers = list(res["dim_titles"]) + ["Расход", "Показы", "Клики", "CTR %", "CPC"]
     if res["use_conv"]:
         headers += ["Конверсии", "CR %", "CPA"]
+    headers += ["🎯 " + g["name"] for g in goals]
     ws.append(headers)
 
-    def cells(m):
+    def cells(m, by_goal):
         out = [round(m["cost"], 2), int(round(m["imp"])), int(round(m["clicks"])),
                round(m["ctr"], 2), round(m["cpc"], 2)]
         if res["use_conv"]:
             out += [int(round(m["conv"])), round(m["cr"], 2), round(m["cpa"], 2)]
+        out += [int(round((by_goal or {}).get(g["id"], 0))) for g in goals]
         return out
 
     ndim = len(res["dim_titles"])
-    ws.append(["ИТОГО"] + [""] * (ndim - 1) + cells(res["totals"]))
+    ws.append(["ИТОГО"] + [""] * (ndim - 1) + cells(res["totals"], res.get("goal_totals")))
     for row in res["rows"]:
         dims = list(row["dims"]) + [""] * (ndim - len(row["dims"]))
-        ws.append(dims + cells(row["m"]))
+        ws.append(dims + cells(row["m"], row.get("byGoal")))
 
     for i, h in enumerate(headers, 1):
         ws.column_dimensions[get_column_letter(i)].width = max(11, min(48, len(str(h)) + 4))
