@@ -281,23 +281,52 @@ def to_text(login, client_name, res, top=25):
             R.fmt_money(res["totals"]["cost"]), R.fmt_int(res["totals"]["imp"]), R.fmt_int(res["totals"]["clicks"])),
         "  CTR: {}  CPC: {}".format(R.fmt_pct(res["totals"]["ctr"]), R.fmt_money(res["totals"]["cpc"])),
     ]
+    goals = res.get("goals") or []
     if res["use_conv"]:
         L.append("  Конверсии: {}  CR: {}  CPA: {}".format(
             R.fmt_int(res["totals"]["conv"]), R.fmt_pct(res["totals"]["cr"]), R.fmt_money(res["totals"]["cpa"])))
+        if goals:   # разрез конверсий по целям
+            gt = res.get("goal_totals") or {}
+            L.append("  По целям: " + " · ".join(
+                "{} {}".format(g["name"], R.fmt_int(gt.get(g["id"], 0))) for g in goals))
     multi = res["level"] != "account" or res.get("segments")
     if multi:
         L.append("")
         L.append("Топ {} по расходу:".format(min(top, res["n_shown"])))
         for i, row in enumerate(res["rows"][:top], 1):
-            name = " / ".join([d for d in row["dims"] if d]) or "—"
+            name = _row_name(res, row)
             m = row["m"]
             line = "{}) {} — {}, кликов {}".format(i, name, R.fmt_money(m["cost"]), R.fmt_int(m["clicks"]))
             if res["use_conv"]:
                 line += ", конв. {}".format(R.fmt_int(m["conv"]))
+            if goals:   # конверсии по целям в скобках
+                bg = row.get("byGoal") or {}
+                gstr = ", ".join("{}: {}".format(g["name"], R.fmt_int(bg.get(g["id"], 0)))
+                                 for g in goals if bg.get(g["id"], 0))
+                if gstr:
+                    line += " [" + gstr + "]"
             L.append(line)
         if res["n_total"] > res["n_shown"]:
             L.append("… показано {} из {} строк.".format(res["n_shown"], res["n_total"]))
     return "\n".join(L)
+
+
+def _row_name(res, row):
+    """Читаемое имя строки для текстовой выгрузки; на уровне «Объявления» вместо ID — заголовок+текст."""
+    ad_texts = res.get("ad_texts") or {}
+    ad_idx = res.get("ad_id_index")
+    parts = []
+    for i, d in enumerate(row["dims"]):
+        if not d:
+            continue
+        if ad_idx is not None and i == ad_idx:
+            at = ad_texts.get(str(d))
+            if at and (at.get("title") or at.get("text")):
+                txt = (at.get("title", "") + (" — " + at.get("text", "") if at.get("text") else "")).strip(" —")
+                parts.append("{} (ID {})".format(txt, d))
+                continue
+        parts.append(str(d))
+    return " / ".join(parts) or "—"
 
 
 def to_xlsx(res, path):
