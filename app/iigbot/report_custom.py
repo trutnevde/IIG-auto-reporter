@@ -20,7 +20,7 @@ LEVELS = {
     "account":     ("ACCOUNT_PERFORMANCE_REPORT", [], []),
     "campaign":    ("CAMPAIGN_PERFORMANCE_REPORT", ["CampaignName"], ["Кампания"]),
     "adgroup":     ("ADGROUP_PERFORMANCE_REPORT", ["CampaignName", "AdGroupName"], ["Кампания", "Группа"]),
-    "ad":          ("AD_PERFORMANCE_REPORT", ["CampaignName", "AdGroupName", "AdId"], ["Кампания", "Группа", "ID объявл."]),
+    "ad":          ("AD_PERFORMANCE_REPORT", ["CampaignName", "AdGroupName", "AdId"], ["Кампания", "Группа", "Объявление"]),
     "keyword":     ("CRITERIA_PERFORMANCE_REPORT", ["CampaignName", "AdGroupName", "Criterion"], ["Кампания", "Группа", "Фраза"]),
     "searchquery": ("SEARCH_QUERY_PERFORMANCE_REPORT", ["CampaignName", "Query"], ["Кампания", "Запрос"]),
 }
@@ -240,12 +240,25 @@ def build(token, login, level, date_from, date_to, attribution="LSC", goal_defs=
     out_rows = [{"dims": (r["disp"] or ["—"]), "m": _metrics(r["imp"], r["clk"], r["cost"], r["conv"]),
                  "byGoal": r["byGoal"]} for r in rows]
 
+    # уровень «Объявления»: Reports API отдаёт только ID → дотягиваем заголовок+текст объявления
+    ad_texts = {}
+    ad_id_index = None
+    if level == "ad" and "AdId" in dim_fields:
+        ad_id_index = dim_fields.index("AdId")
+        ids = [str(r["dims"][ad_id_index]) for r in out_rows if ad_id_index < len(r["dims"])]
+        try:
+            from . import yandex
+            ad_texts = yandex.get_ads_text(token, login, ids, _post=_post)
+        except Exception:  # noqa: BLE001 — не удалось дотянуть тексты: показываем хотя бы ID
+            ad_texts = {}
+
     return {
         "level": level, "level_label": LEVEL_LABELS[level],
         "dim_titles": dim_titles or ["Аккаунт"],
         "attribution": attribution, "use_conv": conv_capable, "by_goals": use_goals,
         "goals": [{"id": str(g["id"]), "name": g["name"]} for g in goal_defs] if use_goals else [],
         "goal_totals": goal_totals,
+        "ad_texts": ad_texts, "ad_id_index": ad_id_index,
         "segments": segs, "date_grain": date_grain if has_date else None,
         "date_from": date_from, "date_to": date_to,
         "rows": out_rows, "totals": _metrics(t_imp, t_clk, t_cost, t_conv),
@@ -311,9 +324,16 @@ def to_xlsx(res, path):
         return out
 
     ndim = len(res["dim_titles"])
+    ad_texts = res.get("ad_texts") or {}
+    ad_idx = res.get("ad_id_index")
     ws.append(["ИТОГО"] + [""] * (ndim - 1) + cells(res["totals"], res.get("goal_totals")))
     for row in res["rows"]:
         dims = list(row["dims"]) + [""] * (ndim - len(row["dims"]))
+        if ad_idx is not None and ad_idx < len(dims):   # объявление: заголовок+текст вместо ID
+            at = ad_texts.get(str(dims[ad_idx]))
+            if at and (at.get("title") or at.get("text")):
+                dims[ad_idx] = (at.get("title", "") + " — " + at.get("text", "")).strip(" —") + \
+                    " (ID {})".format(row["dims"][ad_idx])
         ws.append(dims + cells(row["m"], row.get("byGoal")))
 
     for i, h in enumerate(headers, 1):
