@@ -285,10 +285,12 @@ def to_text(login, client_name, res, top=25):
     if res["use_conv"]:
         L.append("  Конверсии: {}  CR: {}  CPA: {}".format(
             R.fmt_int(res["totals"]["conv"]), R.fmt_pct(res["totals"]["cr"]), R.fmt_money(res["totals"]["cpa"])))
-        if goals:   # разрез конверсий по целям
+        if goals:   # разрез конверсий по целям (нулевые цели не печатаем — не засоряем отчёт)
             gt = res.get("goal_totals") or {}
-            L.append("  По целям: " + " · ".join(
-                "{} {}".format(g["name"], R.fmt_int(gt.get(g["id"], 0))) for g in goals))
+            nz = ["{} {}".format(g["name"], R.fmt_int(gt.get(g["id"], 0)))
+                  for g in goals if gt.get(g["id"], 0)]
+            if nz:
+                L.append("  По целям: " + " · ".join(nz))
     multi = res["level"] != "account" or res.get("segments")
     if multi:
         L.append("")

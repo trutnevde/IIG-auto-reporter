@@ -548,6 +548,32 @@ class Api:
         return {"bound": True}
 
     @safe
+    def bind_for(self, chat_id, login, owner_id=None, delivery=None):
+        """Привязать чат к клиенту и СРАЗУ назначить владельца-специалиста (админ/наблюдатель).
+        Правило «привязал → взял» тут НЕ работает: раньше работодателю приходилось привязывать
+        под собой, а потом переназначать десятки проектов вручную. owner_id=None — оставить
+        владельца как есть; delivery — опционально задать способ доставки."""
+        self._require_supervisor()
+        cid = int(chat_id)
+        if not login:
+            self.db.remove_binding(cid)
+            return {"bound": False}
+        if not self.db.get_client(login):
+            raise RuntimeError("Клиент не найден")
+        self.db.set_binding(cid, login)
+        if owner_id not in (None, "", 0, "0"):
+            oid = int(owner_id)
+            if not self.db.get_user(oid):
+                raise RuntimeError("Специалист не найден")
+            self.db.set_client_owner(login, oid)
+        if delivery is not None:
+            self.db.set_client_delivery(login, delivery)
+        self._cloud_push_safe()
+        c = self.db.get_client(login)
+        return {"bound": True, "login": login,
+                "owner": (c["owner"] if "owner" in c.keys() else None)}
+
+    @safe
     def unbind(self, chat_id):
         self._require_write()
         cid = int(chat_id)
@@ -910,8 +936,10 @@ class Api:
             for d in self._client_domains(c["name"]):
                 key = str(d).strip().lower().replace("www.", "")
                 if key in sheets:
+                    sid = sheets[key]["id"]
                     out.append({"login": c["login"], "name": c["name"] or c["login"],
-                                "sheet": sheets[key]["title"]})
+                                "sheet": sheets[key]["title"], "sheet_id": sid,
+                                "url": "https://docs.google.com/spreadsheets/d/{}".format(sid)})
                     break
         return out
 
@@ -1196,31 +1224,44 @@ class Api:
 
     @safe
     def my_alert(self):
-        """Куда мне идут бюджет-алерты по СВОИМ клиентам: linked=True — привязана личка по deep-link
-        (надёжно, работает и без публичного @username). alert_username — запасной способ (по @username)."""
+        """Куда мне идут бюджет-алерты: linked=True — привязана личка по deep-link (надёжно, работает
+        и без публичного @username). scope='all' — получаю по ВСЕМУ агентству (для работодателя/админа),
+        иначе только по своим клиентам. can_all — доступен ли режим «все» этой роли."""
         if not self.user:
-            return {"alert_username": None, "linked": False}
+            return {"alert_username": None, "linked": False, "scope": "mine", "can_all": False}
         u = self.db.get_user(self.user["id"])
-        return {"alert_username": (u["alert_username"] if (u is not None and "alert_username" in u.keys()) else None),
-                "linked": bool((u["alert_chat_id"] if (u is not None and "alert_chat_id" in u.keys()) else None))}
+        gk = lambda k: (u[k] if (u is not None and k in u.keys()) else None)  # noqa: E731
+        return {"alert_username": gk("alert_username"),
+                "linked": bool(gk("alert_chat_id")),
+                "scope": ("all" if gk("alert_scope") == "all" else "mine"),
+                "can_all": (self.user.get("role") in ("admin", "observer"))}
 
     @safe
     def set_my_alert(self, username):
-        """Задать свой @username для алертов по своим клиентам (пусто = не получать персонально)."""
+        """Задать свой @username для алертов (пусто = не получать персонально). Наблюдателю можно."""
         if not self.user:
             raise RuntimeError("Доступно только в кабинете")
-        self._require_write()
         username = (username or "").strip().lstrip("@").lower() or None
         self.db.set_user_alert(self.user["id"], username)
         return {"saved": True, "alert_username": username}
 
     @safe
-    def alert_link(self):
-        """Одноразовая deep-link для НАДЁЖНОЙ привязки лички к бюджет-алертам: пользователь
-        открывает ссылку и жмёт Start — бот сохраняет его chat_id напрямую (без @username)."""
+    def set_my_alert_scope(self, scope):
+        """Охват алертов: 'all' — по всем клиентам агентства (админ/наблюдатель), иначе только свои."""
         if not self.user:
             raise RuntimeError("Доступно только в кабинете")
-        self._require_write()
+        if scope == "all" and self.user.get("role") not in ("admin", "observer"):
+            raise RuntimeError("Режим «по всему агентству» доступен админу и наблюдателю")
+        self.db.set_user_alert_scope(self.user["id"], scope)
+        return {"scope": ("all" if scope == "all" else "mine")}
+
+    @safe
+    def alert_link(self):
+        """Одноразовая deep-link для НАДЁЖНОЙ привязки лички к бюджет-алертам: пользователь
+        открывает ссылку и жмёт Start — бот сохраняет его chat_id напрямую (без @username).
+        Доступно всем ролям, включая наблюдателя (он тоже хочет алерты)."""
+        if not self.user:
+            raise RuntimeError("Доступно только в кабинете")
         import os
         token = os.urandom(6).hex()
         self.db.set_kv("alerttok_" + token, str(self.user["id"]))
@@ -1231,18 +1272,23 @@ class Api:
         """Отвязать личку от алертов."""
         if not self.user:
             raise RuntimeError("Доступно только в кабинете")
-        self._require_write()
         self.db.set_user_alert_chat(self.user["id"], None)
         return {"linked": False}
 
     # ---------- бюджеты ----------
     @safe
-    def budgets(self):
-        """Вкладка «Бюджеты»: строки по видимости (наблюдатель — все, специалист/админ — свои),
-        когда собирали последний раз и статус фонового обновления."""
-        visible = {c["login"] for c in self.db.list_clients(self._owner())}
-        rows = [dict(r) for r in self.db.list_budgets() if r["login"] in visible]
+    def budgets(self, scope=None):
+        """Вкладка «Бюджеты». scope='all' — по всему агентству (админ/наблюдатель: у админа может
+        не быть своих проектов, но деньги агентства видеть нужно), иначе — свои клиенты."""
+        can_all = (not self.user) or self.user.get("role") in ("admin", "observer")
+        all_mode = (scope == "all" and can_all) or (self._owner() == "all")
+        if all_mode:
+            rows = [dict(r) for r in self.db.list_budgets()]
+        else:
+            visible = {c["login"] for c in self.db.list_clients(self._owner())}
+            rows = [dict(r) for r in self.db.list_budgets() if r["login"] in visible]
         return {"rows": rows, "updated": self.db.get_kv("budgets_updated"),
+                "scope": ("all" if all_mode else "mine"), "can_all": can_all,
                 "run": {k: _BUDGET_RUN[k] for k in ("running", "done", "total", "error")}}
 
     @safe
@@ -1383,6 +1429,20 @@ class Api:
             reason = {"churned": "проект отвалился", "nospend": "нет открута (деньги не крутятся)"}.get(kind, "уважительно")
         eid = self.db.add_excuse(login, week, kind, reason, (self.user or {}).get("id"))
         return {"id": eid, "login": login, "kind": kind, "reason": reason, "ongoing": week is None}
+
+    @safe
+    def excuse_add_bulk(self, logins, kind="nospend", reason=None):
+        """Закрыть сразу пачку долгов одной причиной (кнопка «закрыть все» / выбранные).
+        Права проверяются по каждому клиенту как в excuse_add."""
+        out = {"closed": 0, "errors": [], "ids": []}
+        for lg in (logins or []):
+            r = self.excuse_add(lg, kind, reason)   # @safe → {"ok":..,"data"/"error"}
+            if r.get("ok"):
+                out["closed"] += 1
+                out["ids"].append((r.get("data") or {}).get("id"))
+            else:
+                out["errors"].append({"login": lg, "error": r.get("error")})
+        return out
 
     @safe
     def excuse_remove(self, excuse_id):

@@ -226,12 +226,11 @@ def format_metrics(cost, imp, clicks, conv, by_goal, goal_defs, indent=""):
     ]
     if goal_defs:
         out.append(p + "— Конверсии (по целям, суммарно): " + fmt_int(conv))
+        # цели с нулём НЕ печатаем — иначе отчёт распухает строками «• Цель: 0»
         for g in goal_defs:
             cv = float(by_goal.get(g["id"], 0)) if by_goal else 0.0
             if cv > 0:
                 out.append(p + "   • {}: {} (CPA {})".format(g["name"], fmt_int(cv), fmt_money(cost / cv)))
-            else:
-                out.append(p + "   • {}: 0".format(g["name"]))
     else:
         out.append(p + "— Конверсии: " + fmt_int(conv))
     out.append(p + "— CR: " + fmt_pct(cr))

@@ -244,30 +244,52 @@ def send_alerts(db, tg, logins=None):
     owner_of = {c["login"]: (c["owner"] if "owner" in c.keys() else None)
                 for c in db.list_clients("all")}
     by_id, by_un, by_title = _priv_index(db)
-    # общий/фолбэк получатель — по kv budget_alert_username, иначе первый админ с привязанной личкой
-    global_un = (db.get_kv("budget_alert_username") or "iig_dtrutnev").strip().lstrip("@").lower()
-    global_chat = by_un.get(global_un) or by_title.get(global_un)
-    if not global_chat:
-        for u in users.values():
-            if u["role"] == "admin":
-                gc = _resolve_chat(u, by_id, by_un, by_title)
-                if gc:
-                    global_chat = gc
-                    break
+
+    # Подписчики «на всё агентство» (users.alert_scope='all', обычно работодатель) — им уходят ВСЕ
+    # критичные, включая ничьих. Фолбэка «свалить всё первому админу» больше нет: раньше из-за него
+    # владельцу токена прилетали чужие клиенты.
+    watchers = []
+    for u in users.values():
+        if not u["active"]:
+            continue
+        scope = (u["alert_scope"] if "alert_scope" in u.keys() else None)
+        if scope == "all":
+            ch = _resolve_chat(u, by_id, by_un, by_title)
+            if ch:
+                watchers.append(ch)
+    # запасной общий получатель (kv) — только если никто не подписан «на всё»
+    global_chat = None
+    if not watchers:
+        gu = (db.get_kv("budget_alert_username") or "").strip().lstrip("@").lower()
+        if gu:
+            global_chat = by_un.get(gu) or by_title.get(gu)
 
     today = dt.date.today().isoformat()
     by_chat = {}   # chat_id -> (chat, [rows])
     unroutable = []
     for r in rows:
-        chat = _resolve_chat(users.get(owner_of.get(r["login"])), by_id, by_un, by_title) or global_chat
-        if not chat:
+        targets = []
+        own_chat = _resolve_chat(users.get(owner_of.get(r["login"])), by_id, by_un, by_title)
+        if own_chat:
+            targets.append(own_chat)
+        for w in watchers:                     # подписчики «на всё» получают копию
+            if not any(t["chat_id"] == w["chat_id"] for t in targets):
+                targets.append(w)
+        if not targets and global_chat:
+            targets.append(global_chat)
+        if not targets:
             unroutable.append(r["login"])
             continue
-        by_chat.setdefault(chat["chat_id"], (chat, []))[1].append(r)
+        for t in targets:
+            by_chat.setdefault(t["chat_id"], (t, []))[1].append(r)
 
     total_sent = 0
     for cid, (chat, rs) in by_chat.items():
-        fresh = [r for r in rs if db.get_kv("budget_alerted_" + r["login"]) != today]
+        # дедуп ПО ПОЛУЧАТЕЛЮ (раньше метка была одна на клиента — и второй адресат, напр.
+        # работодатель, оставался без алерта, потому что первый его «съедал»)
+        def _mark(login):
+            return "budget_alerted_{}_{}".format(login, cid)
+        fresh = [r for r in rs if db.get_kv(_mark(r["login"])) != today]
         if not fresh:
             continue
         lines = ["⚠️ БЮДЖЕТ НА ИСХОДЕ"] + [_alert_line(r) for r in fresh]
@@ -275,7 +297,7 @@ def send_alerts(db, tg, logins=None):
         try:
             tg.send_message(cid, "\n".join(lines))
             for r in fresh:
-                db.set_kv("budget_alerted_" + r["login"], today)
+                db.set_kv(_mark(r["login"]), today)
             total_sent += len(fresh)
         except Exception as e:  # noqa: BLE001
             log_error("budgets.alert", "не отправить в чат {}: {}".format(cid, e))

@@ -219,6 +219,10 @@
   .gcnt{font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap;margin-right:2px}
   .gmore{font-size:11.5px;color:var(--muted);font-weight:650}
   .rb-goalcol{background:color-mix(in srgb,var(--brand) 6%,transparent);white-space:nowrap}
+  .gs-links{display:flex;flex-wrap:wrap;gap:8px}
+  .gs-link{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--line);border-radius:10px;
+    background:var(--surface-2);font-size:13px;font-weight:600;color:var(--ink);text-decoration:none;transition:border-color .12s,transform .12s}
+  .gs-link:hover{border-color:var(--green);transform:translateY(-1px)}
   .rb-adcell{max-width:420px}
   .rb-adtext{font-size:12.5px;line-height:1.45;white-space:normal}
   .rb-adtext b{color:var(--ink)}
@@ -440,7 +444,7 @@
 
 <script>
 /* ---------- инфраструктура ---------- */
-let READY=false, CLIENTS=[], CHATS=[], ME=null;
+let READY=false, CLIENTS=[], CHATS=[], ME=null, GS_CLIENTS=[];
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function toast(msg,kind){const w=document.getElementById('toast');const d=document.createElement('div');d.className='toast'+(kind?(' '+kind):'');d.textContent=msg;w.appendChild(d);setTimeout(()=>d.remove(),kind==='err'?6000:3500);}
 async function callBackend(method,args){
@@ -628,24 +632,30 @@ async function doBulkGoals(){
 }
 
 /* ---------- CHATS ---------- */
+let CHAT_FILTER='mine';   // mine = мои привязанные; free = свободные (можно забрать); all = все видимые
 async function renderChats(){
   const host=el('v_chats');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
   let chats,cls;try{chats=await api('chats');cls=await api('clients');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
   CHATS=chats;
   const opts=cls.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
+  const mineN=chats.filter(c=>c.login).length, freeN=chats.filter(c=>!c.login).length;
+  const F=CHAT_FILTER;
+  const shown=chats.filter(c=>F==='mine'?c.login:(F==='free'?!c.login:true));
+  const tab=(k,label)=>`<span class="t ${F===k?'on':''}" onclick="CHAT_FILTER='${k}';renderChats()">${label}</span>`;
   host.innerHTML=`
-    <h2 class="title">Чаты</h2><p class="sub">Чаты появляются автоматически, когда бота туда добавляют. Сопоставь чат с клиентом.</p>
+    <h2 class="title">Чаты</h2><p class="sub">Чаты появляются автоматически, когда бота туда добавляют. «Свободные» — чаты без привязки: их видят все специалисты, пока никто не забрал (привязал → клиент закрепился за тобой).</p>
+    <div class="tabs">${tab('mine','Мои ('+mineN+')')}${tab('free','Свободные ('+freeN+')')}${tab('all','Все видимые ('+chats.length+')')}</div>
     <div class="panel"><div class="scrollx"><table>
       <thead><tr><th>Чат</th><th>ID</th><th>Тип</th><th>Статус</th><th>Привязка</th><th></th></tr></thead>
-      <tbody>${chats.length?chats.map(c=>`
+      <tbody>${shown.length?shown.map(c=>`
         <tr>
-          <td>${esc(c.title)}</td><td class="muted">${c.chat_id}</td><td>${esc(c.type||'')}</td>
+          <td>${esc(c.title)}${c.login?'':' <span class="badge b-amber" style="font-size:10.5px">свободный</span>'}</td><td class="muted">${c.chat_id}</td><td>${esc(c.type||'')}</td>
           <td>${c.status==='active'?'<span class="badge b-green">активен</span>':'<span class="badge b-grey">удалён</span>'}</td>
           <td><select id="bind_${c.chat_id}"><option value="">— не привязан —</option>${opts}</select></td>
           <td class="right"><button class="btn sm primary" onclick="doBind(${c.chat_id})">Сохранить</button> <button class="btn sm" onclick="doDeleteChat(${c.chat_id})" title="Удалить чат из базы">🗑</button></td>
-        </tr>`).join(''):'<tr><td colspan="6" class="empty">Пока нет чатов. Запусти бота и добавь его в чат.</td></tr>'}
+        </tr>`).join(''):'<tr><td colspan="6" class="empty">'+(F==='mine'?'У тебя пока нет привязанных чатов — загляни во вкладку «Свободные».':'Пусто.')+'</td></tr>'}
       </tbody></table></div></div>`;
-  chats.forEach(c=>{if(c.login){const s=el('bind_'+c.chat_id);if(s)s.value=c.login;}});
+  shown.forEach(c=>{if(c.login){const s=el('bind_'+c.chat_id);if(s)s.value=c.login;}});
 }
 async function doBind(chatId){const sel=el('bind_'+chatId);try{await api('bind',chatId,sel.value);toast(sel.value?'Привязано':'Привязка снята','ok');refresh();}catch(e){}}
 async function doDeleteChat(chatId){
@@ -688,24 +698,50 @@ async function renderMatch(){
       <button class="btn primary" onclick="doBindBulk()">⚡ Привязать все уверенные (≥75%) — ${confN} шт.</button>
       <span class="muted" style="font-size:12.5px">Массово привяжет очевидные совпадения; спорные останутся для ручной правки.</span>
     </div>`:'';
+  // супервайзер (админ/наблюдатель) может привязывать СРАЗУ НА СПЕЦИАЛИСТА — без «привязал → взял себе»
+  const isSup=ME&&(ME.role==='admin'||ME.role==='observer');
+  let supPanel='';
+  if(isSup){
+    try{SUP_USERS=await api('assignable_users');}catch(e){SUP_USERS=[];}
+    supPanel=`<div class="note" style="margin-bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <b>🎯 Привязывать на специалиста:</b>
+      <select id="bindOwner" style="width:auto">
+        <option value="">— оставить владельца как есть —</option>
+        ${(SUP_USERS||[]).map(u=>`<option value="${u.id}">${esc(u.name)}${u.role==='admin'?' (админ)':''}</option>`).join('')}
+      </select>
+      <span class="muted" style="font-size:12.5px">Выбери, за кем закрепить проект — привязка сразу назначит его этому специалисту, а не тебе.</span>
+    </div>`;
+  }
   host.innerHTML=`
     <h2 class="title">Привязки</h2>
     <p class="sub">Главный ручной шаг — сопоставить «чат ↔ клиент». Система предлагает совпадение, тебе остаётся подтвердить (или привязать все уверенные разом).</p>
-    ${cloudPanel}
+    ${cloudPanel}${supPanel}
     <div class="panel"><div class="body">
       ${bulk}
       ${d.matches.length?rows:'<div class="empty">Нет чатов без привязки 🎉</div>'}
       <div class="note" style="margin-top:6px">🔒 В Telegram привязку командой /bind подтверждает только администратор (защита от ошибочной привязки чужого чата).</div>
     </div></div>`;
 }
+function bindOwnerSel(){const e=el('bindOwner');return e?e.value:'';}
 async function doBindBulk(){
   if(!confirm('Привязать все чаты с уверенным совпадением (≥75%) разом? Спорные останутся, их поправишь вручную.'))return;
   try{const r=await api('bind_bulk',75);toast('Привязано разом: '+r.bound,'ok');refresh();}catch(e){}
 }
 async function doCloudPull(){try{const r=await api('cloud_pull');toast('Из облака: привязок '+r.bindings+', целей '+r.goals,'ok');refresh();}catch(e){}}
 async function doCloudPush(){try{const r=await api('cloud_push');toast('В облако: привязок '+r.bindings+', целей '+r.goals,'ok');}catch(e){}}
-async function doBind2(chatId,login){try{await api('bind',chatId,login);toast('Привязано','ok');refresh();}catch(e){}}
-async function doBindManual(chatId){const s=el('mansel_'+chatId);if(!s.value){toast('Выбери клиента','err');return;}try{await api('bind',chatId,s.value);toast('Привязано','ok');refresh();}catch(e){}}
+async function bindSmart(chatId,login){
+  // супервайзер с выбранным специалистом → привязка + назначение владельца одним действием
+  const owner=bindOwnerSel();
+  if(ME&&(ME.role==='admin'||ME.role==='observer')){
+    const r=await api('bind_for',chatId,login,owner||null);
+    const who=(SUP_USERS||[]).find(u=>String(u.id)===String(owner));
+    toast(owner?('Привязано и назначено: '+(who?who.name:'специалисту')):'Привязано','ok');
+    return r;
+  }
+  const r=await api('bind',chatId,login);toast('Привязано','ok');return r;
+}
+async function doBind2(chatId,login){try{await bindSmart(chatId,login);refresh();}catch(e){}}
+async function doBindManual(chatId){const s=el('mansel_'+chatId);if(!s.value){toast('Выбери клиента','err');return;}try{await bindSmart(chatId,s.value);refresh();}catch(e){}}
 
 /* ---------- GUIDE ---------- */
 /* ---------- ГАЙД: вкладки + поиск ---------- */
@@ -969,6 +1005,17 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-07-25',tag:'feature',title:'Права работодателя, массовые долги, алерты и ссылки на таблицы',
+ sum:'Пак по обратной связи: 8 доработок — привязка на специалиста, фильтры, алерты для работодателя',items:[
+  'Работодатель (и админ) теперь привязывает чат СРАЗУ на нужного специалиста: в «Привязках» выбор «Привязывать на специалиста». Раньше проект закреплялся за тем, кто привязывал, и приходилось вручную переназначать десятки проектов.',
+  'Алерты по бюджету доступны и работодателю: в Настройках у всех ролей есть «Привязать Telegram», а у админа/наблюдателя — режим «По всему агентству» (все критичные, включая проекты без владельца).',
+  'Алерты больше не сваливаются на владельца бота: убран фолбэк «ничьи → первому админу». Теперь каждый получает своё, а «всё агентство» — только тот, кто явно включил этот режим.',
+  'Контроль: кнопка «🧹 Закрыть все долги» — закрыть сразу все долги сотрудника одной причиной, вместо клика по каждому.',
+  'Раздача проектов: фильтры по специалисту, по «без владельца» и по способу доставки + счётчик показанных.',
+  'Бюджеты: переключатель «Мои клиенты / Всё агентство» для админа и наблюдателя — админ без своих проектов больше не видит пустой экран.',
+  'Отчёты и Таблицы: ссылки 📗 «Открыть таблицу» — Google-таблица клиента открывается в один клик.',
+  'Чаты: вкладки «Мои / Свободные / Все видимые» — чужие проекты больше не мешаются, свободные чаты вынесены отдельно.',
+  'Отчёты стали чище: цели с нулём конверсий больше не печатаются («Цель: 0» больше не засоряет).']},
 {date:'2026-07-21',tag:'feature',title:'Конструктор: текст объявления на уровне «Объявления»',
  sum:'Видно заголовок и текст объявления, а не только его ID',items:[
   'На уровне «Объявления» в отчёте теперь виден сам креатив: заголовок (жирным) + текст объявления, а ID уходит мелкой подписью снизу. Раньше была только колонка «ID объявл.» с числом.',
@@ -1119,9 +1166,11 @@ async function renderReports(){
   RB_BOUND=new Set(cls.filter(c=>c.chat_id).map(c=>c.login));   // у кого есть привязанный чат
   const opts=cls.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})${c.chat_id?'':' • без чата'}</option>`).join('');
   host.innerHTML=`
-    <h2 class="title">Отчёты</h2><p class="sub">Предпросмотр сообщения и история рассылок.</p>
+    <h2 class="title">Отчёты</h2><p class="sub">Предпросмотр сообщения, конструктор и история рассылок. 📗 — открыть Google-таблицу клиента.</p>
     <div class="tabs"><div class="t ${RTAB==='prev'?'on':''}" onclick="setRtab('prev')">Предпросмотр</div><div class="t ${RTAB==='build'?'on':''}" onclick="setRtab('build')">Конструктор</div><div class="t ${RTAB==='hist'?'on':''}" onclick="setRtab('hist')">История</div></div>
+    <div id="rpSheets" style="margin-bottom:12px"></div>
     <div id="rpane"></div>`;
+  loadSheetLinks();
   if(RTAB==='prev'){
     el('rpane').innerHTML=`<div class="grid2">
       <div class="panel"><h3><span class="h3-ic">⚙️</span> Параметры</h3><div class="body">
@@ -1141,6 +1190,18 @@ async function renderReports(){
     el('rpane').innerHTML='<div class="panel"><div id="histBody" class="empty"><span class="spin"></span> загрузка…</div></div>';
     try{const h=await api('history');el('histBody').outerHTML=histTable(h);}catch(e){el('histBody').innerHTML='Ошибка: '+esc(e.message);}
   }
+}
+async function loadSheetLinks(){
+  // ссылки на Google-таблицы клиентов прямо в «Отчётах» (ходит в Google — грузим фоном)
+  const host=el('rpSheets'); if(!host)return;
+  try{
+    const cs=await api('gsheets_clients'); GS_CLIENTS=cs;
+    if(!cs||!cs.length){host.innerHTML='';return;}
+    host.innerHTML='<div class="panel"><div class="body" style="padding:12px 14px">'+
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:13px">📗 Таблицы клиентов:</b>'+
+      '<div class="gs-links">'+cs.map(c=>'<a class="gs-link" href="'+esc(c.url)+'" target="_blank" rel="noopener" title="Открыть «'+esc(c.sheet)+'»">'+esc(c.name||c.login)+' <span class="muted">↗</span></a>').join('')+
+      '</div></div></div></div>';
+  }catch(e){host.innerHTML='';}
 }
 function setRtab(t){RTAB=t;renderReports();}
 function histTable(h){
@@ -1431,9 +1492,10 @@ function budDays(d){
     <b style="font-size:12.5px;color:${col};white-space:nowrap">${d<10?d.toFixed(1):Math.round(d)} дн.</b></div>`;
 }
 const BUD_ST={critical:['🔴 критично','b-red'],warning:['🟡 внимание','b-amber'],ok:['🟢 ок','b-green'],inactive:['💤 не тратил','b-grey'],error:['⚠ ошибка','b-red']};
+let BUD_SCOPE='mine';   // mine | all (админ/наблюдатель: у админа может не быть своих проектов)
 async function renderBudgets(){
   const host=el('v_budgets');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
-  let d;try{d=await api('budgets');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  let d;try{d=await api('budgets',BUD_SCOPE);}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
   const rows=d.rows||[], run=d.run||{};
   const crit=rows.filter(r=>r.status==='critical').length;
   const warn=rows.filter(r=>r.status==='warning').length;
@@ -1467,6 +1529,9 @@ async function renderBudgets(){
       ${crit?`<span class="badge b-red">🔴 критичных: ${crit}</span>`:''}
       ${warn?`<span class="badge b-amber">🟡 внимание: ${warn}</span>`:''}
       <span class="muted" style="font-size:12.5px">обновлено: ${d.updated?fmtWhen(d.updated):'ещё не собирали'}</span>
+      ${d.can_all?`<select onchange="BUD_SCOPE=this.value;renderBudgets()" style="width:auto" title="Показывать бюджеты своих клиентов или всего агентства">
+        <option value="mine"${d.scope!=='all'?' selected':''}>Мои клиенты</option>
+        <option value="all"${d.scope==='all'?' selected':''}>Всё агентство</option></select>`:''}
       <div class="grow"></div>
       ${run.running?`<span class="badge b-amber" id="budProg"><span class="spin"></span> собираю: ${run.done}/${run.total||'…'}</span>`
         :(ME&&ME.role==='observer'?'':'<button class="btn sm primary" onclick="doBudgetsRefresh()">⟳ Обновить сейчас</button>')}
@@ -1638,21 +1703,34 @@ async function renderGSheets(){
     host.innerHTML='<h2 class="title">Google-таблицы</h2><div class="note" style="margin-top:12px">⚠️ '+esc(st.note||'Ключ сервисного аккаунта не найден.')+'</div>';return;
   }
   try{clients=await api('gsheets_clients');}catch(e){clients=[];}   // только те, у кого реально есть таблица
+  GS_CLIENTS=clients;
   const opts=clients.map(c=>'<option value="'+esc(c.login)+'">'+esc(c.name||c.login)+'</option>').join('')||'<option value="">— нет клиентов с таблицами —</option>';
   const sheetList=(st.sheets||[]).map(s=>'<li>'+esc(s.title)+'</li>').join('')||'<li class="muted">нет расшаренных таблиц</li>';
+  const links=clients.length?('<div class="panel" style="margin-top:14px"><h3><span class="h3-ic">🔗</span> Таблицы моих клиентов ('+clients.length+')</h3><div class="body"><div class="gs-links">'+
+    clients.map(c=>'<a class="gs-link" href="'+esc(c.url)+'" target="_blank" rel="noopener" title="Открыть таблицу «'+esc(c.sheet)+'»">📗 '+esc(c.name||c.login)+' <span class="muted">↗</span></a>').join('')+
+    '</div></div></div>'):'';
   host.innerHTML=`
     <h2 class="title">Google-таблицы</h2>
     <p class="sub">Выгрузка данных Директа в таблицы клиентов (live — включая сегодняшний день). Доступ — сервисный аккаунт, по домену клиента находится его таблица «Auto-Reporter ОТЧЕТ …».</p>
     <div class="panel"><h3><span class="h3-ic">📤</span> Выгрузка по клиенту</h3><div class="body">
-      <div class="field"><label>Клиент</label><select id="gsClient">${opts}</select></div>
+      <div class="field"><label>Клиент</label><div style="display:flex;gap:8px"><select id="gsClient" style="flex:1" onchange="gsSyncLink()">${opts}</select>
+        <a class="btn" id="gsOpen" href="#" target="_blank" rel="noopener" title="Открыть таблицу этого клиента">📗 Открыть таблицу ↗</a></div></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
         <button class="btn primary" onclick="gsPush()" title="Дописать/обновить ленты (неделя+месяц) свежими данными до сегодня">📗 Заполнить ленты (неделя + месяц)</button>
         <button class="btn" onclick="gsBreak()" title="Создать листы-снимки разрезов за текущий месяц">📊 Создать разрезы (текущий месяц)</button>
       </div>
       <div id="gsResult" class="note" style="margin-top:14px;white-space:pre-line;display:none"></div>
     </div></div>
+    ${links}
     <div class="panel" style="margin-top:14px"><h3><span class="h3-ic">📑</span> Таблицы на сервисном аккаунте (${(st.sheets||[]).length})</h3>
       <div class="body"><ul style="margin:0;padding-left:18px;line-height:1.8">${sheetList}</ul></div></div>`;
+  gsSyncLink();
+}
+function gsSyncLink(){
+  const sel=el('gsClient'), a=el('gsOpen'); if(!sel||!a)return;
+  const c=(GS_CLIENTS||[]).find(x=>x.login===sel.value);
+  if(c&&c.url){a.href=c.url;a.style.display='';a.title='Открыть «'+c.sheet+'»';}
+  else{a.href='#';a.style.display='none';}
 }
 function gsShow(t){const r=el('gsResult');r.style.display='block';r.textContent=t;}
 async function gsPush(){
@@ -1714,20 +1792,27 @@ async function renderSettings(){
       </select></div>
       <div class="field" id="mnTextWrap" style="display:none"><label>Текст своей приписки</label><textarea id="mnText" rows="2" placeholder="Например: «По вопросам — Денис, +7 ...»"></textarea></div>
       <button class="btn primary" onclick="saveMyNote()">Сохранить приписку</button>
-    </div></div>
+    </div></div>`:''}
     <div class="panel" style="margin-top:16px"><h3><span class="h3-ic">💰</span> Алерты по бюджету — мой Telegram</h3><div class="body">
-      <p class="muted" style="margin:0 0 10px;font-size:13px">Когда у <b>твоего</b> клиента кончаются деньги — алерт придёт <b>тебе в личку</b>. Самый надёжный способ — привязать кнопкой (работает даже если у тебя нет публичного @username).</p>
+      <p class="muted" style="margin:0 0 10px;font-size:13px">Когда у клиента кончаются деньги — алерт придёт <b>тебе в личку</b>. Самый надёжный способ — привязать кнопкой (работает даже если у тебя нет публичного @username).</p>
       <div id="alStatus" style="margin-bottom:10px"></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn primary" onclick="alertLink()">🔗 Привязать Telegram</button>
         <button class="btn" id="alUnlinkBtn" style="display:none" onclick="alertUnlink()">Отвязать</button>
         <button class="btn" onclick="renderSettings()">⟳ Проверить статус</button>
       </div>
+      <div class="field" id="alScopeWrap" style="margin-top:14px;display:none"><label>По каким клиентам получать алерты</label>
+        <select id="alScope" onchange="saveMyAlertScope()">
+          <option value="mine">Только по моим клиентам</option>
+          <option value="all">По всему агентству (все клиенты)</option>
+        </select>
+        <div class="hint">Режим «по всему агентству» — для работодателя и админа: придут все критичные бюджеты, включая проекты без владельца.</div>
+      </div>
       <details style="margin-top:12px"><summary class="muted" style="cursor:pointer;font-size:12.5px">Запасной способ — по @username</summary>
         <div class="field" style="margin-top:8px"><label>Мой @username в Telegram (и один раз напиши боту /start)</label><input id="alUser" placeholder="например iig_dtrutnev (без @)"></div>
         <button class="btn sm" onclick="saveMyAlert()">Сохранить @username</button>
       </details>
-    </div></div>`:''}`;
+    </div></div>`;
   if(ME&&ME.role!=='observer'){
     try{const mn=await api('my_note');
       const mode=(mn.note==null?'global':(mn.note===''?'off':'own'));
@@ -1735,15 +1820,22 @@ async function renderSettings(){
       if(mode==='own')el('mnText').value=mn.note;
       mnModeUi();
     }catch(e){}
-    loadAlert();
   }
+  loadAlert();   // алерты доступны всем ролям, включая наблюдателя
 }
 async function loadAlert(){
   try{const al=await api('my_alert');
     if(al.alert_username&&el('alUser'))el('alUser').value=al.alert_username;
-    const st=el('alStatus'), ub=el('alUnlinkBtn');
-    if(st)st.innerHTML=al.linked?'<span class="badge b-green">✅ Личка привязана — алерты придут сюда</span>':'<span class="badge b-amber">Личка не привязана — привяжи кнопкой ниже</span>';
+    const st=el('alStatus'), ub=el('alUnlinkBtn'), sw=el('alScopeWrap'), sc=el('alScope');
+    if(st)st.innerHTML=al.linked?('<span class="badge b-green">✅ Личка привязана — алерты придут сюда</span>'+(al.scope==='all'?' <span class="badge b-amber">по всему агентству</span>':'')):'<span class="badge b-amber">Личка не привязана — привяжи кнопкой ниже</span>';
     if(ub)ub.style.display=al.linked?'':'none';
+    if(sw)sw.style.display=al.can_all?'':'none';
+    if(sc)sc.value=al.scope||'mine';
+  }catch(e){}
+}
+async function saveMyAlertScope(){
+  try{const r=await api('set_my_alert_scope',el('alScope').value);
+    toast(r.scope==='all'?'Будешь получать алерты по всему агентству':'Только по своим клиентам','ok');loadAlert();
   }catch(e){}
 }
 async function alertLink(){
@@ -1884,6 +1976,7 @@ async function renderSupervision(){
   let sup,notes;
   try{sup=await api('supervision');notes=await api('notes_list');}
   catch(e){box.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  SUP_LAST=sup;   // для массового закрытия долгов
   // раздача проектов (наблюдатель тоже может выставлять проекты + доставку)
   try{POOL=await api('pool_clients');SUP_USERS=await api('assignable_users');}catch(e){POOL=[];SUP_USERS=[];}
   const supAssignOpts=(SUP_USERS||[]).map(u=>`<option value="${u.id}">${esc(u.name)}${u.role==='admin'?' (админ)':''}</option>`).join('');
@@ -1892,7 +1985,9 @@ async function renderSupervision(){
   const recip=sup.rows.filter(r=>r.role!=='observer').map(r=>'<option value="'+r.user_id+'">'+esc(r.name)+'</option>').join('');
   const rows=sup.rows.map(r=>{
     const st=SUP_ST[r.status]||SUP_ST.none;
-    const debtHtml=r.missing.length?('<div style="margin-top:6px">'+r.missing.map(m=>'<span class="debtchip">'+esc(m.name||m.login)+' <button onclick="supExcuse(\''+encodeURIComponent(m.login)+'\',this)" data-name="'+esc(m.name||m.login)+'" title="Закрыть долг — уважительная причина">закрыть долг</button></span>').join('')+'</div>'):'';
+    const debtHtml=r.missing.length?('<div style="margin-top:6px">'+r.missing.map(m=>'<span class="debtchip">'+esc(m.name||m.login)+' <button onclick="supExcuse(\''+encodeURIComponent(m.login)+'\',this)" data-name="'+esc(m.name||m.login)+'" title="Закрыть долг — уважительная причина">закрыть долг</button></span>').join('')+
+      (r.missing.length>1?('<button class="btn sm" style="margin-top:6px;border-color:var(--red);color:var(--red)" onclick="supExcuseAll('+r.user_id+')" title="Закрыть все долги этого сотрудника одной причиной">🧹 Закрыть все долги ('+r.missing.length+')</button>'):'')+
+      '</div>'):'';
     const excHtml=r.excused.length?('<details style="margin-top:5px"><summary class="muted" style="cursor:pointer;font-size:12px">уважительно закрыто: '+r.excused.length+'</summary>'+r.excused.map(x=>'<div class="mini-2" style="margin-top:3px">✓ '+esc(x.name)+' — '+esc(x.reason)+(x.excuse_id?(' · <a href="#" onclick="supUnexcuse('+x.excuse_id+');return false" style="color:var(--muted)">вернуть долг</a>'):'')+'</div>').join('')+'</details>'):'';
     return '<tr>'+
       '<td><b>'+esc(r.name)+'</b>'+(r.role==='admin'?' <span class="badge b-grey">админ</span>':'')+(!r.active?' <span class="badge b-grey">заблокирован</span>':'')+'<div class="mini-2">'+esc(r.email)+'</div></td>'+
@@ -1936,11 +2031,25 @@ async function renderSupervision(){
     <div class="panel"><h3><span class="h3-ic">🎛</span> Раздача проектов — не назначено: ${supUnassigned} из ${(POOL||[]).length}</h3>
       <div class="body">
         <p class="muted" style="margin-top:0;font-size:13px">Назначь проект специалисту и сразу выбери способ доставки: <b>✈️ Telegram</b> (бот шлёт в чат) или <b>📤 Сторонний</b> (копипаст вручную).</p>
-        <input id="poolFilter" placeholder="Поиск клиента…" oninput="poolFilter()" style="width:100%;margin-bottom:8px">
-        <div class="scrollx"><table>
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <input id="poolFilter" placeholder="🔎 Поиск по названию или логину…" oninput="poolFilter()" style="flex:1;min-width:200px">
+          <select id="poolOwnerF" onchange="poolFilter()" style="width:auto">
+            <option value="">Все владельцы</option>
+            <option value="none">— без владельца (${supUnassigned}) —</option>
+            ${(SUP_USERS||[]).map(u=>`<option value="${u.id}">${esc(u.name)} (${(POOL||[]).filter(c=>String(c.owner)===String(u.id)).length})</option>`).join('')}
+          </select>
+          <select id="poolDelivF" onchange="poolFilter()" style="width:auto">
+            <option value="">Любая доставка</option>
+            <option value="telegram">✈️ Telegram</option>
+            <option value="external">📤 Сторонний</option>
+          </select>
+          <span class="muted" id="poolCount" style="align-self:center;font-size:12.5px"></span>
+        </div>
+        <div class="scrollx" style="max-height:520px;overflow:auto"><table>
           <thead><tr><th>Клиент</th><th style="width:220px">Специалист</th><th style="width:170px">Доставка</th></tr></thead>
           <tbody id="poolBody">${poolRows(POOL||[],supAssignOpts)}</tbody></table></div>
       </div></div>`;
+  poolFilter();
 }
 async function supSendNote(){
   const to=el('noTo').value, kind=el('noKind').value, text=el('noText').value.trim();
@@ -1963,6 +2072,22 @@ async function supExcuse(loginEnc,btn){
   let reason=null;
   if(kind==='other'){ reason=prompt('Укажите причину:',''); if(reason===null)return; if(!reason.trim()){toast('Пустая причина','err');return;} }
   try{ await api('excuse_add', login, kind, reason); toast('Долг закрыт: '+name); renderSupervision(); }catch(e){}
+}
+async function supExcuseAll(userId){
+  const row=(SUP_LAST&&SUP_LAST.rows||[]).find(r=>r.user_id===userId);
+  if(!row||!row.missing.length){toast('Долгов нет','err');return;}
+  const logins=row.missing.map(m=>m.login);
+  const ch=prompt('Закрыть ВСЕ долги сотрудника «'+row.name+'» ('+logins.length+' шт.) одной причиной:\n  1 — проект отвалился (бессрочно)\n  2 — нет открута / деньги не крутятся (на эту неделю)\n  3 — другое\n\nВведите 1, 2 или 3:','2');
+  if(ch===null)return;
+  const c=(ch||'').trim();
+  const kind=c==='1'?'churned':c==='3'?'other':'nospend';
+  let reason=null;
+  if(kind==='other'){reason=prompt('Укажите причину (одна на все '+logins.length+'):','');if(reason===null)return;if(!reason.trim()){toast('Пустая причина','err');return;}}
+  if(!confirm('Закрыть '+logins.length+' долг(ов) сотрудника «'+row.name+'»?\n\n'+row.missing.map(m=>'• '+(m.name||m.login)).join('\n')))return;
+  try{const r=await api('excuse_add_bulk',logins,kind,reason);
+    toast('Закрыто долгов: '+r.closed+(r.errors.length?(', ошибок '+r.errors.length):''),'ok');
+    renderSupervision();
+  }catch(e){}
 }
 async function supUnexcuse(id){ if(!confirm('Вернуть долг — снять уважительную причину?'))return; try{ await api('excuse_remove', id); renderSupervision(); }catch(e){} }
 
@@ -2023,7 +2148,7 @@ async function bootWeb(){
 }
 
 /* ---------- раздел «Пользователи» (админ) ---------- */
-let POOL=[], SUP_USERS=[];
+let POOL=[], SUP_USERS=[], SUP_LAST=null;
 async function renderUsers(){
   const box=el('v_users');
   if(!ME||ME.role!=='admin'){box.innerHTML='<div class="empty">Раздел доступен только администратору.</div>';return;}
@@ -2069,7 +2194,7 @@ async function renderUsers(){
     </div>`;
 }
 function poolRows(list,opts){
-  return list.map(c=>`<tr data-q="${esc((c.name||'')+' '+c.login).toLowerCase()}">
+  return list.map(c=>`<tr data-q="${esc((c.name||'')+' '+c.login).toLowerCase()}" data-owner="${c.owner||''}" data-delivery="${esc(c.delivery||'telegram')}">
       <td><b>${esc(c.name||c.login)}</b><div class="mini-2">${esc(c.login)}</div></td>
       <td><select onchange="assignClient('${esc(c.login)}',this.value)">
         <option value="">— общий пул —</option>
@@ -2081,10 +2206,20 @@ function poolRows(list,opts){
       </select></td></tr>`).join('');
 }
 function poolFilter(){
-  const q=(el('poolFilter').value||'').trim().toLowerCase();
+  const qe=el('poolFilter'); if(!qe)return;
+  const q=(qe.value||'').trim().toLowerCase();
+  const ow=(el('poolOwnerF')||{}).value||'';
+  const dv=(el('poolDelivF')||{}).value||'';
+  let shown=0;
   document.querySelectorAll('#poolBody tr').forEach(tr=>{
-    tr.style.display = (!q || (tr.dataset.q||'').indexOf(q)>=0) ? '' : 'none';
+    const okQ=!q||(tr.dataset.q||'').indexOf(q)>=0;
+    const owner=tr.dataset.owner||'';           // '' = без владельца
+    const okOw=!ow||(ow==='none'?owner==='':owner===ow);
+    const okDv=!dv||(tr.dataset.delivery||'telegram')===dv;
+    const on=okQ&&okOw&&okDv;
+    tr.style.display=on?'':'none'; if(on)shown++;
   });
+  const c=el('poolCount'); if(c)c.textContent='показано: '+shown;
 }
 async function userCreate(){
   const email=el('nuEmail').value.trim(), name=el('nuName').value.trim(),
