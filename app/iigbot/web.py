@@ -39,6 +39,7 @@ def _api_for(user):
 
 # ---------- ленивый планировщик (shared-хостинг: демонов нет, тикаем на живом трафике) ----------
 _periodic = {"checked": 0.0}
+_login_fails = {}   # анти-брутфорс входа: {"ip|email": {"n": попыток, "until": до какого времени пауза}}
 
 
 def _periodic_tick(base):
@@ -63,6 +64,9 @@ def _periodic_tick(base):
     if _due("budgets_last", 12):
         base.db.set_kv("budgets_last", now)
         threading.Thread(target=_budgets_job, args=(base,), daemon=True).start()
+    if _due("backup_last", 24):      # суточный бэкап БД (WAL-safe) с ротацией
+        base.db.set_kv("backup_last", now)
+        threading.Thread(target=_backup_job, args=(base,), daemon=True).start()
     # еженедельная сводка работодателю: понедельник с 10:00, не чаще раза в 5 дней
     import datetime as _dt
     _n = _dt.datetime.now()
@@ -87,6 +91,35 @@ def _autosync_job(base):
             d1.get("synced", "?"), d2.get("with_goals", "?"), d2.get("clients", "?")))
     except Exception as e:  # noqa: BLE001
         log_error("autosync", "сбой: {}".format(e))
+
+
+def _release_notify(base, ui_html):
+    """Если версия кабинета (дата последней записи в CHANGELOG) изменилась — уведомить всех
+    в колокольчике «вышло обновление». Работает без ручного вмешательства при каждом выкате."""
+    import re
+    m = re.search(r"const CHANGELOG=\[\s*\{date:'([\d-]+)',tag:'([a-z]+)',title:'([^']+)'", ui_html)
+    if not m:
+        return
+    date, _tag, title = m.group(1), m.group(2), m.group(3)
+    key = "{} {}".format(date, title)
+    if base.db.get_kv("release_seen") == key:
+        return
+    base.db.set_kv("release_seen", key)
+    try:
+        base.db.add_notification(None, "release", "Вышло обновление кабинета",
+                                 title, "changelog", dedup_key=True)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _backup_job(base):
+    """Суточный бэкап БД: целостная копия (sqlite backup API) + ротация 14 копий."""
+    from .settings import log_error
+    try:
+        name = base._make_backup(keep=14)
+        log_error("backup", "ок: " + name)
+    except Exception as e:  # noqa: BLE001
+        log_error("backup", "сбой: {}".format(e))
 
 
 def _digest_job(base):
@@ -148,6 +181,10 @@ def create_app(api=None):
             favicon_svg = f.read()
     except Exception:  # noqa: BLE001
         favicon_svg = b""
+    try:
+        _release_notify(base, ui_html)   # при старте после выката — уведомить всех об обновлении
+    except Exception:  # noqa: BLE001
+        pass
 
     @app.route("/favicon.svg")
     @app.route("/favicon.ico")
@@ -189,7 +226,18 @@ def create_app(api=None):
                          mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     def _login():
-        data = request.get_json(force=True, silent=True) or {}
+        # анти-брутфорс: после 5 неудач с одного IP+email — пауза, растущая до 5 минут
+        import time as _t
+        ip = (request.headers.get("X-Forwarded-For", "") or request.remote_addr or "?").split(",")[0].strip()
+        data0 = request.get_json(force=True, silent=True) or {}
+        who = (data0[0] if isinstance(data0, list) and data0 else (data0.get("email") if isinstance(data0, dict) else "")) or ""
+        key = "{}|{}".format(ip, str(who).strip().lower())
+        st = _login_fails.get(key)
+        if st and st["until"] > _t.time():
+            wait = int(st["until"] - _t.time()) + 1
+            return jsonify({"ok": False,
+                            "error": "Слишком много попыток входа. Попробуй через {} сек.".format(wait)}), 429
+        data = data0
         if isinstance(data, list):   # контракт api() шлёт позиционные аргументы массивом
             email = data[0] if len(data) > 0 else ""
             password = data[1] if len(data) > 1 else ""
@@ -198,9 +246,75 @@ def create_app(api=None):
             password = data.get("password", "")
         row = base.db.get_user_by_email(email or "")
         if not row or not row["active"] or not auth.verify_password(row["pass_hash"], password):
+            s = _login_fails.setdefault(key, {"n": 0, "until": 0})
+            s["n"] += 1
+            if s["n"] >= 5:   # 5-я и далее: пауза 15с, 30с, 60с … максимум 5 минут
+                s["until"] = _t.time() + min(300, 15 * (2 ** (s["n"] - 5)))
+            if len(_login_fails) > 500:   # не растим словарь бесконечно
+                for k in [k for k, v in list(_login_fails.items()) if v["until"] < _t.time() - 3600][:200]:
+                    _login_fails.pop(k, None)
             return jsonify({"ok": False, "error": "Неверный email или пароль"}), 401
+        _login_fails.pop(key, None)   # успешный вход — счётчик сбрасываем
         auth.login_session(row["id"])
         return jsonify({"ok": True, "user": _safe_user(dict(row))})
+
+    @app.route("/download/backup/<path:name>")
+    def download_backup(name):
+        """Скачать бэкап БД (только админ)."""
+        if not g.user or g.user.get("role") != "admin":
+            return jsonify({"ok": False, "error": "только администратор"}), 403
+        from .settings import BASE_DIR
+        fn = os.path.basename(name)
+        if fn != name or not (fn.startswith("iigbot_") and fn.endswith(".sqlite3")):
+            return jsonify({"ok": False, "error": "bad filename"}), 400
+        path = os.path.join(BASE_DIR, "backups", fn)
+        if not os.path.isfile(path):
+            return jsonify({"ok": False, "error": "файл не найден"}), 404
+        from flask import send_file
+        return send_file(path, as_attachment=True, download_name=fn, mimetype="application/octet-stream")
+
+    @app.route("/download/export/<what>.csv")
+    def download_export(what):
+        """Экспорт в CSV: clients | history | budgets (в рамках видимости пользователя)."""
+        if not g.user:
+            return jsonify({"ok": False, "error": "not_authenticated"}), 401
+        import csv
+        import io as _io
+        api_u = _api_for(g.user)
+        buf = _io.StringIO()
+        w = csv.writer(buf, delimiter=";")
+        if what == "clients":
+            r = api_u.clients()
+            if not r.get("ok"):
+                return jsonify(r), 400
+            w.writerow(["Логин", "Название", "Чат", "Доставка", "Целей активных", "Атрибуция", "Добавлен"])
+            for c in r["data"]:
+                goals = [g_ for g_ in (c.get("goals") or []) if g_.get("active") is not False]
+                w.writerow([c["login"], c["name"], c.get("chat_title") or "", c.get("delivery"),
+                            len(goals), c.get("attribution") or "", (c.get("added_at") or "")[:10]])
+        elif what == "history":
+            r = api_u.history()
+            if not r.get("ok"):
+                return jsonify(r), 400
+            w.writerow(["Когда", "Клиент", "Чат", "Период", "Статус", "Ошибка"])
+            for h in r["data"]:
+                w.writerow([h.get("sent_at", "")[:19], h.get("login"), h.get("chat_title") or "",
+                            "{} — {}".format(h.get("period_from"), h.get("period_to")),
+                            h.get("status"), (h.get("error") or "")[:200]])
+        elif what == "budgets":
+            r = api_u.budgets("all" if g.user.get("role") in ("admin", "observer") else None)
+            if not r.get("ok"):
+                return jsonify(r), 400
+            w.writerow(["Логин", "Клиент", "Остаток", "Темп/день", "Дней осталось", "Кампаний вкл",
+                        "Остановлено по оплате", "Статус", "Обновлено"])
+            for b in r["data"]["rows"]:
+                w.writerow([b["login"], b["name"], b["balance"], b["rate"], b["days_left"],
+                            b["camps_on"], b["camps_pay_stopped"], b["status"], (b.get("updated_at") or "")[:19]])
+        else:
+            return jsonify({"ok": False, "error": "неизвестный экспорт"}), 404
+        data = "﻿" + buf.getvalue()   # BOM — чтобы Excel открыл кириллицу правильно
+        return Response(data, mimetype="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="{}.csv"'.format(what)})
 
     @app.route("/api/<method>", methods=["POST"])
     def call(method):

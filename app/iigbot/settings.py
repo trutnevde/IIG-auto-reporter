@@ -187,12 +187,25 @@ def save_secrets(patch):
 ERROR_LOG_PATH = os.path.join(BASE_DIR, "iig_errors.log")
 
 
+LOG_MAX_BYTES = 1024 * 1024   # 1 МБ — дальше ротация, чтобы файл не рос вечно
+
+
 def log_error(where, message):
     """Дописывает ошибку в iig_errors.log рядом с базой (BASE_DIR). Нужно, чтобы сбои —
     особенно в авто-рассылке на сервере, где консоли не видно, — можно было потом разобрать
-    по SFTP. Файл под _app/ (Require all denied), по вебу недоступен. Сбои самой записи глотаем."""
+    по SFTP. Файл под _app/ (Require all denied), по вебу недоступен. Сбои самой записи глотаем.
+    При росте >1 МБ файл ротируется в .1 (одно поколение — истории и так хватает)."""
     try:
         import datetime
+        import os
+        try:
+            if os.path.isfile(ERROR_LOG_PATH) and os.path.getsize(ERROR_LOG_PATH) > LOG_MAX_BYTES:
+                old = ERROR_LOG_PATH + ".1"
+                if os.path.isfile(old):
+                    os.remove(old)
+                os.rename(ERROR_LOG_PATH, old)
+        except OSError:
+            pass
         stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         line = "{}\t{}\t{}\n".format(stamp, where, str(message).replace("\n", " ").replace("\t", " "))
         with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:

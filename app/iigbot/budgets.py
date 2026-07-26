@@ -140,8 +140,11 @@ def collect(db, token, on_progress=None, _post=None, _sleep=None, logins=None):
         from .settings import log_error
         log_error("budgets.balance", e)
     names = {c["login"]: (c["name"] or c["login"]) for c in db.list_clients("all")}
+    owners = {c["login"]: (c["owner"] if "owner" in c.keys() else None) for c in db.list_clients("all")}
     res = {"clients": len(pool), "active": 0, "critical": 0, "warning": 0, "errors": 0}
-    for i, login in enumerate(pool, 1):
+
+    def _one(login):
+        """Сбор по одному клиенту (сетевые запросы) — без работы с БД, чтобы гонять параллельно."""
         row = {"login": login, "name": names.get(login) or login,
                "balance": None, "currency": "RUB", "cost7": 0.0, "cost21": 0.0,
                "rate": 0.0, "days_left": None, "camps_total": 0, "camps_on": 0,
@@ -156,7 +159,7 @@ def collect(db, token, on_progress=None, _post=None, _sleep=None, logins=None):
                 row["status"] = "inactive"
                 row["note"] = "не тратил последние 3 недели"
             else:
-                res["active"] += 1
+                row["_active"] = True
                 camps = get_campaign_states(token, login, _post=_post)
                 row.update({"camps_total": camps["total"], "camps_on": camps["on"],
                             "camps_pay_stopped": camps["pay_stopped"],
@@ -165,27 +168,50 @@ def collect(db, token, on_progress=None, _post=None, _sleep=None, logins=None):
                 row["rate"] = rate
                 if row["balance"] is not None and rate > 0:
                     row["days_left"] = round(row["balance"] / rate, 1)
-                    if row["days_left"] < CRIT_DAYS:
-                        row["status"] = "critical"; res["critical"] += 1
-                    elif row["days_left"] < WARN_DAYS:
-                        row["status"] = "warning"; res["warning"] += 1
-                    else:
-                        row["status"] = "ok"
+                    row["status"] = ("critical" if row["days_left"] < CRIT_DAYS
+                                     else "warning" if row["days_left"] < WARN_DAYS else "ok")
                 elif row["balance"] is None:
                     row["status"] = "ok" if camps["pay_stopped"] == 0 else "warning"
                     row["note"] = "баланс недоступен (нет общего счёта или прав)"
                     if camps["pay_stopped"]:
                         row["note"] += "; есть кампании, остановленные по оплате"
-                        res["warning"] += 1
                 else:   # баланс есть, но не тратит по темпу (rate 0 при cost21>0 — редкость)
                     row["status"] = "ok"
         except Exception as e:  # noqa: BLE001
             row["status"] = "error"
             row["note"] = str(e)[:300]
+        return row
+
+    # параллельно: сбор упирается в сеть (Директ), 5 потоков дают ~4-5x ускорение
+    from concurrent.futures import ThreadPoolExecutor
+    rows = []
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for i, row in enumerate(ex.map(_one, pool), 1):
+            rows.append(row)
+            if on_progress:
+                on_progress(i, len(pool), {"login": row["login"], "status": row["status"]})
+    for row in rows:
+        login = row["login"]
+        if row.pop("_active", False):
+            res["active"] += 1
+        if row["status"] == "critical":
+            res["critical"] += 1
+        elif row["status"] == "warning":
+            res["warning"] += 1
+        elif row["status"] == "error":
             res["errors"] += 1
         db.save_budget(row)
-        if on_progress:
-            on_progress(i, len(pool), {"login": login, "status": row["status"]})
+        # уведомление в кабинет владельцу — деньги на исходе (дедуп: не чаще раза в сутки)
+        if row["status"] == "critical":
+            try:
+                own = owners.get(login)
+                if own:
+                    db.add_notification(own, "budget", "Бюджет на исходе: " + (row["name"] or login),
+                                        ("осталось ~{} дн.".format(row["days_left"])
+                                         if row["days_left"] is not None else "остановлено по оплате"),
+                                        "budgets", dedup_key=True)
+            except Exception:  # noqa: BLE001
+                pass
     db.set_kv("budgets_updated", dt.datetime.now().isoformat(timespec="seconds"))
     return res
 

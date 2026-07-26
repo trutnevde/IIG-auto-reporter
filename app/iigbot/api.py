@@ -199,6 +199,13 @@ class Api:
         attr = rep.get("attribution_model") or "LSC"
         return intro, note, attr
 
+    def _notify(self, to_user, kind, title, text=None, link=None, dedup=False):
+        """Создать уведомление в колокольчик (to_user=None — всем)."""
+        try:
+            return self.db.add_notification(to_user, kind, title, text, link, dedup_key=dedup)
+        except Exception:  # noqa: BLE001 — уведомление не должно ломать основную операцию
+            return None
+
     def _audit(self, action, target=None, detail=None):
         """Записать действие в аудит-лог (кто/что/когда) — для «Журнала действий» работодателя."""
         u = self.user or {}
@@ -580,6 +587,9 @@ class Api:
         who = self.db.get_user(int(owner_id)) if owner_id not in (None, "", 0, "0") else None
         self._audit("bind", login, "чат «{}»{}".format(
             self._chat_title(cid), (" → " + (who["name"] or who["email"])) if who else ""))
+        if who and who["id"] != (self.user or {}).get("id"):
+            self._notify(who["id"], "client", "Вам назначили проект",
+                         "{} — чат «{}»".format((c["name"] if c else login), self._chat_title(cid)), "clients")
         return {"bound": True, "login": login,
                 "owner": (c["owner"] if "owner" in c.keys() else None)}
 
@@ -1199,6 +1209,10 @@ class Api:
             self.db.set_client_delivery(login, "external" if delivery == "external" else "telegram")
         who = self.db.get_user(owner) if owner else None
         self._audit("assign", login, "владелец: " + ((who["name"] or who["email"]) if who else "общий пул"))
+        if owner and owner != (self.user or {}).get("id"):
+            c = self.db.get_client(login)
+            self._notify(owner, "client", "Вам назначили проект",
+                         "{} ({})".format((c["name"] if c else login), login), "clients")
         return {"login": login, "owner": owner,
                 "delivery": ("external" if delivery == "external" else "telegram") if delivery is not None else None}
 
@@ -1224,6 +1238,9 @@ class Api:
         nm = lambda uid: (lambda u: (u["name"] or u["email"]) if u else "общий пул")(  # noqa: E731
             self.db.get_user(uid) if uid else None)
         self._audit("reassign", nm(dst), "передано {} проект(ов) от «{}»".format(len(moved), nm(src)))
+        if dst and moved:
+            self._notify(dst, "client", "Вам передали проекты",
+                         "{} проект(ов) от «{}»".format(len(moved), nm(src)), "clients")
         return {"moved": len(moved), "logins": moved[:50], "from": src, "to": dst}
 
     @safe
@@ -1323,6 +1340,92 @@ class Api:
         self.db.set_kv("digest_last", str(__import__("time").time()))
         self._audit("digest", "сводка", "отправлено получателям: {}".format(sent))
         return {"sent": sent, "missing": missing}
+
+    # ---------- центр уведомлений (колокольчик) ----------
+    @safe
+    def notifications(self, limit=40):
+        """Уведомления текущего пользователя + счётчик непрочитанных."""
+        if not self.user:
+            return {"items": [], "unread": 0}
+        uid = self.user["id"]
+        items = [{"id": n["id"], "kind": n["kind"], "title": n["title"], "text": n["text"],
+                  "link": n["link"], "created_at": n["created_at"], "read": bool(n["is_read"])}
+                 for n in self.db.notifications_for(uid, limit)]
+        return {"items": items, "unread": self.db.unread_count(uid)}
+
+    @safe
+    def notif_read(self, notif_id=None):
+        """Отметить одно уведомление прочитанным (или все, если id не задан)."""
+        if not self.user:
+            return {"unread": 0}
+        if notif_id in (None, "", 0, "0"):
+            self.db.mark_all_notif_read(self.user["id"])
+        else:
+            self.db.mark_notif_read(int(notif_id), self.user["id"])
+        return {"unread": self.db.unread_count(self.user["id"])}
+
+    # ---------- бэкапы базы (админ) ----------
+    def _backup_dir(self):
+        import os
+        from .settings import BASE_DIR
+        d = os.path.join(BASE_DIR, "backups")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def _make_backup(self, keep=14):
+        """Целостный бэкап БД + ротация. Возвращает имя файла."""
+        import os
+        import datetime as dt
+        self.db.wal_checkpoint()
+        d = self._backup_dir()
+        name = "iigbot_{}.sqlite3".format(dt.datetime.now().strftime("%Y%m%d_%H%M"))
+        self.db.backup_to(os.path.join(d, name))
+        files = sorted(f for f in os.listdir(d) if f.startswith("iigbot_") and f.endswith(".sqlite3"))
+        for old in files[:-int(keep)] if len(files) > keep else []:
+            try:
+                os.remove(os.path.join(d, old))
+            except OSError:
+                pass
+        return name
+
+    @safe
+    def backup_now(self):
+        """Сделать бэкап прямо сейчас (админ)."""
+        self._require_admin()
+        import os
+        name = self._make_backup()
+        size = os.path.getsize(os.path.join(self._backup_dir(), name))
+        self.db.set_kv("backup_last", str(__import__("time").time()))
+        self._audit("backup", name, "ручной бэкап, {} КБ".format(round(size / 1024)))
+        return {"file": name, "size_kb": round(size / 1024)}
+
+    @safe
+    def backup_list(self):
+        """Список бэкапов (админ): что есть, когда, сколько весит."""
+        self._require_admin()
+        import os
+        import datetime as dt
+        d = self._backup_dir()
+        out = []
+        for f in sorted(os.listdir(d), reverse=True):
+            if not (f.startswith("iigbot_") and f.endswith(".sqlite3")):
+                continue
+            p = os.path.join(d, f)
+            out.append({"file": f, "size_kb": round(os.path.getsize(p) / 1024),
+                        "created": dt.datetime.fromtimestamp(os.path.getmtime(p)).isoformat(timespec="seconds")})
+        return {"items": out[:30], "last": self.db.get_kv("backup_last")}
+
+    # ---------- переотправка отчёта ----------
+    @safe
+    def resend_report(self, login):
+        """Отправить недельный отчёт по клиенту заново (кнопка в Истории)."""
+        self._require_write()
+        self._require_owned(login)
+        token = load_secrets()["yandex_oauth_token"]
+        intro, note, attr = self._report_ctx()
+        res = report.send_for_login(token, self._tg_client(), self.db, login, intro, note, attr)
+        self._audit("resend", login, "статус: {}".format(res.get("status")))
+        return res
 
     # ---------- аудит действий (кто что сделал) ----------
     @safe
@@ -1795,6 +1898,7 @@ class Api:
             if not self.db.get_user(tu):
                 raise RuntimeError("Получатель не найден")
         nid = self.db.create_note(tu, (self.user or {}).get("id"), text, kind)
+        self._notify(tu, "message", "Сообщение от руководителя", text[:140], "dashboard")
         return {"id": nid, "to_user": tu, "kind": kind}
 
     @safe

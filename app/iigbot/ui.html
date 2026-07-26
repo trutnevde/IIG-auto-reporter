@@ -219,6 +219,23 @@
   .gcnt{font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap;margin-right:2px}
   .gmore{font-size:11.5px;color:var(--muted);font-weight:650}
   .rb-goalcol{background:color-mix(in srgb,var(--brand) 6%,transparent);white-space:nowrap}
+  /* центр уведомлений */
+  .notif-wrap{position:relative;display:inline-flex}
+  .notif-badge{position:absolute;top:-5px;right:-5px;background:var(--red);color:#fff;font-size:10px;font-weight:800;
+    min-width:17px;height:17px;border-radius:99px;display:grid;place-items:center;padding:0 4px;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+  .notif-drop{position:absolute;right:0;top:44px;width:380px;max-width:92vw;background:var(--surface);border:1px solid var(--line);
+    border-radius:14px;box-shadow:var(--shadow-lg);z-index:60;display:none;overflow:hidden}
+  .notif-drop.on{display:block}
+  .notif-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--surface-2)}
+  #notifList{max-height:420px;overflow:auto}
+  .notif-item{display:flex;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line-soft);cursor:pointer;transition:background .12s}
+  .notif-item:hover{background:var(--surface-2)}
+  .notif-item.unread{background:color-mix(in srgb,var(--brand) 7%,transparent)}
+  .notif-item.unread .notif-t{font-weight:700}
+  .notif-ic{font-size:16px;flex:0 0 auto}
+  .notif-t{font-size:13.5px;line-height:1.35}
+  .notif-x{font-size:12.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis}
+  .notif-d{font-size:11px;color:var(--muted);margin-top:3px}
   .trend-row{display:flex;align-items:center;gap:12px;padding:5px 0;border-bottom:1px solid var(--line-soft);font-size:13px}
   .trend-row:last-child{border-bottom:none}
   .gs-links{display:flex;flex-wrap:wrap;gap:8px}
@@ -362,6 +379,13 @@
       <h1 id="crumb">Обзор</h1>
       <div class="grow"></div>
       <span class="pill" id="botPill" title="Статус Telegram-бота (webhook)"><span class="dot"></span> Бот</span>
+      <span class="notif-wrap">
+        <button class="icon-btn" id="notifBtn" onclick="toggleNotif()" title="Уведомления">🔔<span class="notif-badge" id="notifBadge" style="display:none">0</span></button>
+        <div class="notif-drop" id="notifDrop">
+          <div class="notif-head"><b>Уведомления</b><button class="btn sm" onclick="notifReadAll()">Прочитать все</button></div>
+          <div id="notifList"><div class="empty" style="padding:18px">загрузка…</div></div>
+        </div>
+      </span>
       <button class="btn sm" onclick="go('changelog')" title="История обновлений и патчноуты">🆕 Что нового</button>
       <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Светлая / тёмная тема">🌙</button>
       <button class="btn sm" onclick="refresh()"><span class="r-ic">⟳</span> Обновить</button>
@@ -556,6 +580,7 @@ async function renderClients(){
       <div style="flex:1"></div>
       <button class="btn" onclick="doSync()">🔄 Подтянуть из Директа</button>
       <button class="btn" onclick="doBulkGoals()">🎯 Цели из Метрики (всем)</button>
+      <a class="btn" href="/download/export/clients.csv" title="Выгрузить список клиентов в CSV (Excel)">⬇ Экспорт CSV</a>
       <button class="btn" onclick="doImport()">⬇ Импорт config.json</button>
     </div>
     <div class="panel"><div class="scrollx"><table>
@@ -1106,6 +1131,16 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-07-26',tag:'major',title:'Уведомления, бэкапы, скорость и безопасность',
+ sum:'Колокольчик с уведомлениями, резервные копии базы, ускорение и защита входа',items:[
+  '🔔 Центр уведомлений: колокольчик справа сверху со счётчиком непрочитанных. Внутри — «вышло обновление кабинета», «вам назначили проект», «бота добавили в новый чат», «бюджет на исходе», «сообщение от руководителя». Клик по уведомлению переносит в нужный раздел и снимает счётчик; есть «Прочитать все».',
+  '💾 Резервные копии базы: делаются автоматически раз в сутки (хранятся 14 последних), копия целостная — с учётом WAL. В Настройках у админа — список копий, «Сделать копию сейчас» и скачивание.',
+  '⚡ «Отчёты» больше не тормозят: список Google-таблиц кэшируется на 15 минут (2,9 сек → 11 мс).',
+  '⚡ Сбор бюджетов ускорен в ~4 раза — запросы к Директу идут параллельно.',
+  '🔒 Защита входа от перебора паролей: после 5 неудачных попыток — пауза, растущая до 5 минут.',
+  '🔁 «Отправить снова» — повторная отправка недельного отчёта клиенту прямо из Истории.',
+  '⬇ Экспорт в CSV (Excel): клиенты, история отправок, бюджеты.',
+  '🧹 Журнал ошибок больше не растёт бесконечно — ротация при 1 МБ.']},
 {date:'2026-07-26',tag:'fix',title:'Гайд актуализирован (60 тем)',
  sum:'Догнали руководство: описаны все фичи с 17 по 26 июля',items:[
   'Гайд вырос с 43 до 60 тем: добавлены Досье специалиста, Тренд сдачи и нагрузка, Сводка в Telegram, Раздача и передача проектов, Журнал действий, Управление командой, Заметки по проектам.',
@@ -1323,11 +1358,24 @@ async function loadSheetLinks(){
 }
 function setRtab(t){RTAB=t;renderReports();}
 function histTable(h){
-  if(!h.length)return '<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th></tr></thead><tbody><tr><td colspan="5" class="empty">Пока нет отправок.</td></tr></tbody></table></div>';
+  const head='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">'+
+    '<a class="btn sm" href="/download/export/history.csv" title="Выгрузить историю в CSV (Excel)">⬇ Экспорт CSV</a>'+
+    '<span class="muted" style="font-size:12.5px">«Отправить снова» — повторно шлёт недельный отчёт клиенту в чат.</span></div>';
+  if(!h.length)return head+'<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th><th></th></tr></thead><tbody><tr><td colspan="6" class="empty">Пока нет отправок.</td></tr></tbody></table></div>';
   const badge=s=>s==='sent'?'<span class="badge b-green">отправлено</span>':(s==='error'?'<span class="badge b-red">ошибка</span>':'<span class="badge b-grey">'+esc(s)+'</span>');
-  return '<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th></tr></thead><tbody>'+
-    h.map(r=>`<tr><td class="nowrap">${esc((r.sent_at||'').replace('T',' ').slice(0,16))}</td><td>${esc(r.client_name)}</td><td>${r.chat_title?esc(r.chat_title):'<span class="muted">—</span>'}</td><td class="muted nowrap">${esc(r.period_from)}…${esc(r.period_to)}</td><td>${badge(r.status)}${r.error?(' <span class="muted">'+esc(r.error)+'</span>'):''}</td></tr>`).join('')+
+  const canSend=!(ME&&ME.role==='observer');
+  return head+'<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th><th></th></tr></thead><tbody>'+
+    h.map(r=>`<tr><td class="nowrap">${esc((r.sent_at||'').replace('T',' ').slice(0,16))}</td><td>${esc(r.client_name)}</td><td>${r.chat_title?esc(r.chat_title):'<span class="muted">—</span>'}</td><td class="muted nowrap">${esc(r.period_from)}…${esc(r.period_to)}</td><td>${badge(r.status)}${r.error?(' <span class="muted">'+esc(r.error)+'</span>'):''}</td>`+
+      `<td class="right">${canSend?('<button class="btn sm" onclick="doResend(\''+esc(r.login)+'\',\''+esc(r.client_name||r.login)+'\')" title="Отправить недельный отчёт заново">🔁</button>'):''}</td></tr>`).join('')+
     '</tbody></table></div>';
+}
+async function doResend(login,name){
+  if(!confirm('Отправить недельный отчёт по «'+name+'» заново?\nУйдёт в привязанный чат клиента — реальным людям.'))return;
+  toast('Собираю и отправляю…');
+  try{const r=await api('resend_report',login);
+    toast(r.status==='sent'?('Отправлено в чатов: '+r.chats):('Статус: '+(r.reason||r.status)),r.status==='sent'?'ok':'err');
+    if(RTAB==='hist')renderReports();
+  }catch(e){}
 }
 async function doPreview(){
   const login=el('rpClient').value;if(!login)return;
@@ -1651,6 +1699,7 @@ async function renderBudgets(){
         <option value="mine"${d.scope!=='all'?' selected':''}>Мои клиенты</option>
         <option value="all"${d.scope==='all'?' selected':''}>Всё агентство</option></select>`:''}
       <div class="grow"></div>
+      <a class="btn sm" href="/download/export/budgets.csv" title="Выгрузить бюджеты в CSV (Excel)">⬇ CSV</a>
       ${run.running?`<span class="badge b-amber" id="budProg"><span class="spin"></span> собираю: ${run.done}/${run.total||'…'}</span>`
         :(ME&&ME.role==='observer'?'':'<button class="btn sm primary" onclick="doBudgetsRefresh()">⟳ Обновить сейчас</button>')}
     </div>
@@ -1930,7 +1979,16 @@ async function renderSettings(){
         <div class="field" style="margin-top:8px"><label>Мой @username в Telegram (и один раз напиши боту /start)</label><input id="alUser" placeholder="например iig_dtrutnev (без @)"></div>
         <button class="btn sm" onclick="saveMyAlert()">Сохранить @username</button>
       </details>
-    </div></div>`;
+    </div></div>
+    ${ME&&ME.role==='admin'?`
+    <div class="panel" style="margin-top:16px"><h3><span class="h3-ic">💾</span> Резервные копии базы</h3><div class="body">
+      <p class="muted" style="margin:0 0 10px;font-size:13px">Копия делается автоматически <b>раз в сутки</b> (хранятся последние 14). В базе — клиенты, привязки, цели, история, пользователи. Копия целостная (с учётом WAL), можно скачать и положить к себе.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn primary" onclick="doBackupNow()">💾 Сделать копию сейчас</button>
+        <button class="btn" onclick="loadBackups()">⟳ Обновить список</button>
+      </div>
+      <div id="backupList" class="muted">загрузка…</div>
+    </div></div>`:''}`;
   if(ME&&ME.role!=='observer'){
     try{const mn=await api('my_note');
       const mode=(mn.note==null?'global':(mn.note===''?'off':'own'));
@@ -1940,6 +1998,21 @@ async function renderSettings(){
     }catch(e){}
   }
   loadAlert();   // алерты доступны всем ролям, включая наблюдателя
+  if(ME&&ME.role==='admin')loadBackups();
+}
+async function loadBackups(){
+  const host=el('backupList'); if(!host)return;
+  try{const d=await api('backup_list');
+    host.innerHTML=(d.items||[]).length?('<div class="scrollx" style="max-height:220px;overflow:auto"><table><thead><tr><th>Файл</th><th>Когда</th><th class="right">Размер</th><th></th></tr></thead><tbody>'+
+      d.items.map(b=>'<tr><td class="muted" style="font-size:12.5px">'+esc(b.file)+'</td><td class="nowrap">'+fmtWhen(b.created)+'</td>'+
+        '<td class="right nowrap">'+b.size_kb+' КБ</td>'+
+        '<td class="right"><a class="btn sm" href="/download/backup/'+encodeURIComponent(b.file)+'">⬇</a></td></tr>').join('')+
+      '</tbody></table></div>'):'<span class="muted">Копий пока нет — нажми «Сделать копию сейчас».</span>';
+  }catch(e){host.innerHTML='<span class="muted">не удалось загрузить</span>';}
+}
+async function doBackupNow(){
+  toast('Делаю копию базы…');
+  try{const r=await api('backup_now');toast('Копия готова: '+r.file+' ('+r.size_kb+' КБ)','ok');loadBackups();}catch(e){}
 }
 async function loadAlert(){
   try{const al=await api('my_alert');
@@ -2375,6 +2448,46 @@ async function checkNotes(){
   }).join('');
 }
 async function ackNote(id){ try{await api('note_ack',id);}catch(e){} checkNotes(); }
+
+/* ---------- центр уведомлений (колокольчик) ---------- */
+const NOTIF_IC={release:'🆕',client:'👤',chat:'💬',budget:'💰',message:'✉️',debt:'📋',system:'⚙️'};
+let NOTIF_OPEN=false;
+async function loadNotif(render){
+  if(!ME)return;
+  try{
+    const d=await api('notifications',40);
+    const b=el('notifBadge');
+    if(b){ if(d.unread>0){b.textContent=d.unread>99?'99+':d.unread;b.style.display='';} else b.style.display='none'; }
+    if(render!==false&&el('notifList')){
+      el('notifList').innerHTML=(d.items||[]).length?d.items.map(n=>
+        '<div class="notif-item'+(n.read?'':' unread')+'" onclick="openNotif('+n.id+',\''+esc(n.link||'')+'\')">'+
+        '<span class="notif-ic">'+(NOTIF_IC[n.kind]||'•')+'</span>'+
+        '<div style="flex:1;min-width:0"><div class="notif-t">'+esc(n.title)+'</div>'+
+        (n.text?'<div class="notif-x">'+esc(n.text)+'</div>':'')+
+        '<div class="notif-d">'+fmtWhen(n.created_at)+'</div></div></div>').join('')
+        :'<div class="empty" style="padding:20px">Пока пусто ✨</div>';
+    }
+  }catch(e){}
+}
+function toggleNotif(){
+  NOTIF_OPEN=!NOTIF_OPEN;
+  el('notifDrop').classList.toggle('on',NOTIF_OPEN);
+  if(NOTIF_OPEN)loadNotif(true);
+}
+async function openNotif(id,link){
+  try{await api('notif_read',id);}catch(e){}
+  NOTIF_OPEN=false;el('notifDrop').classList.remove('on');
+  if(link&&NAMES[link])go(link);
+  loadNotif(false);
+}
+async function notifReadAll(){
+  try{await api('notif_read',null);toast('Все уведомления прочитаны','ok');}catch(e){}
+  loadNotif(true);
+}
+document.addEventListener('click',e=>{           // клик вне — закрыть выпадашку
+  if(!NOTIF_OPEN)return;
+  if(!e.target.closest('.notif-wrap')){NOTIF_OPEN=false;el('notifDrop').classList.remove('on');}
+});
 function noteReplyToggle(id){const w=el('noteReply_'+id);if(w){w.style.display=w.style.display==='none'?'flex':'none';const t=el('noteReplyTx_'+id);if(t&&w.style.display!=='none')t.focus();}}
 async function noteReplySend(id){
   const t=el('noteReplyTx_'+id);const tx=(t&&t.value||'').trim();
@@ -2525,6 +2638,7 @@ function init(){
   applyUser();
   go('dashboard');loadBadges();
   if(ME){checkNotes();if(!window._noteTimer)window._noteTimer=setInterval(checkNotes,45000);}  // яркие сообщения руководителя
+  if(ME){loadNotif(false);if(!window._notifTimer)window._notifTimer=setInterval(()=>loadNotif(NOTIF_OPEN),60000);}  // колокольчик
   const modeTx = ME ? ('Веб · '+esc(ME.email)) : 'Десктоп · ПК-режим';
   api('settings').then(s=>{el('botInfo').innerHTML='Бот: @'+esc((s.telegram&&s.telegram.username)||'?')+'<br><span class="mini-2">'+modeTx+'</span>';
     el('botPill').innerHTML='<span class="dot"></span> '+(s.telegram.status==='ок'?'Подключён':'Нет связи');

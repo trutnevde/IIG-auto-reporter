@@ -65,14 +65,27 @@ def client(readonly=True):
     return gspread.authorize(creds)
 
 
-def discover(gc=None):
-    """{домен: {'id','title'}} по всем таблицам, расшаренным на сервисный аккаунт."""
+_DISCOVER_CACHE = {"at": 0.0, "data": None}
+DISCOVER_TTL = 900   # 15 минут: список таблиц меняется редко, а запрос в Google медленный
+
+
+def discover(gc=None, force=False):
+    """{домен: {'id','title'}} по всем таблицам, расшаренным на сервисный аккаунт.
+
+    Результат кэшируется на 15 минут: раздел «Отчёты» дёргает его при каждом открытии,
+    а поход в Google Drive за списком файлов занимает секунды.
+    """
+    import time as _t
+    if not force and _DISCOVER_CACHE["data"] is not None and \
+            (_t.time() - _DISCOVER_CACHE["at"]) < DISCOVER_TTL:
+        return _DISCOVER_CACHE["data"]
     gc = gc or client()
     out = {}
     for f in gc.list_spreadsheet_files():
         m = TITLE_RE.search((f.get("name") or "").strip())
         if m:
             out[m.group(1).strip().lower()] = {"id": f.get("id"), "title": f.get("name")}
+    _DISCOVER_CACHE["at"], _DISCOVER_CACHE["data"] = _t.time(), out
     return out
 
 

@@ -75,7 +75,15 @@ def handle_my_chat_member(ev, tg, db, cfg):
     chat = ev["chat"]
     status = (ev.get("new_chat_member") or {}).get("status")
     if status in JOINED:
+        known = db.get_chat(chat["id"])
         db.upsert_chat(chat, my_status=status, status="active")
+        if not known and chat.get("type") in ("group", "supergroup", "channel"):
+            # новый чат — уведомляем всех в кабинете, иначе он молча висит без привязки
+            try:
+                db.add_notification(None, "chat", "Бота добавили в новый чат",
+                                    "«{}» — привяжите клиента".format(_title(chat)), "match")
+            except Exception:  # noqa: BLE001
+                pass
         print("➕ Добавлен/обновлён: «{}» | id={} | type={} | роль={}".format(
             _title(chat), chat["id"], chat.get("type"), status))
         if cfg.get("announce_on_join", True) and chat.get("type") in ("group", "supergroup", "channel"):

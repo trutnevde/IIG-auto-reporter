@@ -151,6 +151,23 @@ class Storage:
         if "note" not in cols:   # заметка по проекту («на паузе до августа») — видна всем причастным
             self.conn.execute("ALTER TABLE clients ADD COLUMN note TEXT")
             self.conn.commit()
+        # уведомления кабинета (колокольчик): to_user=NULL — всем
+        self.conn.execute(
+            """CREATE TABLE IF NOT EXISTS notifications (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                to_user    INTEGER,          -- NULL = всем пользователям
+                kind       TEXT,             -- release | client | chat | budget | message | debt | system
+                title      TEXT NOT NULL,
+                text       TEXT,
+                link       TEXT,             -- раздел кабинета для перехода (view)
+                created_at TEXT
+            )""")
+        self.conn.execute(
+            """CREATE TABLE IF NOT EXISTS notif_read (
+                notif_id INTEGER, user_id INTEGER, read_at TEXT,
+                PRIMARY KEY (notif_id, user_id)
+            )""")
+        self.conn.commit()
         # аудит действий: кто что сделал (привязки, назначения, долги, сотрудники)
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS audit (
@@ -327,6 +344,69 @@ class Storage:
         """Привязать конкретный chat_id для алертов (по deep-link /start alert_<token>)."""
         self.conn.execute("UPDATE users SET alert_chat_id=? WHERE id=?", (chat_id, user_id))
         self.conn.commit()
+
+    # ---------- уведомления кабинета ----------
+    def add_notification(self, to_user, kind, title, text=None, link=None, dedup_key=None):
+        """Создать уведомление. dedup_key — если такое же уже есть за сутки, не дублируем."""
+        if dedup_key:
+            row = self.conn.execute(
+                "SELECT id FROM notifications WHERE kind=? AND title=? AND COALESCE(to_user,-1)=? "
+                "AND created_at > datetime('now','-1 day')",
+                (kind, title, (to_user if to_user is not None else -1))).fetchone()
+            if row:
+                return row["id"]
+        cur = self.conn.execute(
+            "INSERT INTO notifications(to_user,kind,title,text,link,created_at) VALUES(?,?,?,?,?,?)",
+            (to_user, kind, title, text, link, _now()))
+        self.conn.commit()
+        return cur.lastrowid
+
+    def notifications_for(self, user_id, limit=40):
+        """Уведомления пользователя (адресные + общие) с флагом прочитанности."""
+        return self.conn.execute(
+            """SELECT n.*, (a.user_id IS NOT NULL) AS is_read FROM notifications n
+               LEFT JOIN notif_read a ON a.notif_id=n.id AND a.user_id=?
+               WHERE n.to_user=? OR n.to_user IS NULL
+               ORDER BY n.id DESC LIMIT ?""", (user_id, user_id, int(limit))).fetchall()
+
+    def unread_count(self, user_id):
+        return self.conn.execute(
+            """SELECT COUNT(*) n FROM notifications n
+               WHERE (n.to_user=? OR n.to_user IS NULL)
+                 AND NOT EXISTS (SELECT 1 FROM notif_read a WHERE a.notif_id=n.id AND a.user_id=?)""",
+            (user_id, user_id)).fetchone()["n"]
+
+    def mark_notif_read(self, notif_id, user_id):
+        self.conn.execute("INSERT OR IGNORE INTO notif_read(notif_id,user_id,read_at) VALUES(?,?,?)",
+                          (int(notif_id), user_id, _now()))
+        self.conn.commit()
+
+    def mark_all_notif_read(self, user_id):
+        self.conn.execute(
+            """INSERT OR IGNORE INTO notif_read(notif_id,user_id,read_at)
+               SELECT n.id, ?, ? FROM notifications n WHERE n.to_user=? OR n.to_user IS NULL""",
+            (user_id, _now(), user_id))
+        self.conn.commit()
+
+    # ---------- бэкап базы ----------
+    def backup_to(self, path):
+        """Целостная копия БД (sqlite3 backup API — корректно даже при WAL, в отличие от
+        обычного копирования файла, где свежие данные остаются в -wal)."""
+        import sqlite3 as _s
+        dst = _s.connect(path)
+        try:
+            with dst:
+                self.conn.backup(dst)
+        finally:
+            dst.close()
+        return path
+
+    def wal_checkpoint(self):
+        """Слить WAL в основной файл (иначе -wal разрастается)."""
+        try:
+            self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except Exception:  # noqa: BLE001
+            pass
 
     # ---------- аудит действий ----------
     def log_action(self, user_id, user_name, action, target=None, detail=None):
