@@ -219,6 +219,8 @@
   .gcnt{font-size:11.5px;font-weight:700;color:var(--muted);white-space:nowrap;margin-right:2px}
   .gmore{font-size:11.5px;color:var(--muted);font-weight:650}
   .rb-goalcol{background:color-mix(in srgb,var(--brand) 6%,transparent);white-space:nowrap}
+  .trend-row{display:flex;align-items:center;gap:12px;padding:5px 0;border-bottom:1px solid var(--line-soft);font-size:13px}
+  .trend-row:last-child{border-bottom:none}
   .gs-links{display:flex;flex-wrap:wrap;gap:8px}
   .gs-link{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--line);border-radius:10px;
     background:var(--surface-2);font-size:13px;font-weight:600;color:var(--ink);text-decoration:none;transition:border-color .12s,transform .12s}
@@ -1038,6 +1040,15 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-07-26',tag:'major',title:'Кабинет работодателя: досье, тренды, сводка в Telegram, аудит',
+ sum:'Большой пак для руководителя — 7 новых возможностей в «Контроле»',items:[
+  '📨 Понедельничная сводка в Telegram: покрытие агентства, кто не сдал (поимённо), бюджеты на исходе, нагрузка. Уходит сама по понедельникам всем с режимом «По всему агентству» + кнопки «Посмотреть текст» и «Отправить сейчас».',
+  '👤 Досье специалиста: клик по «Досье» в Контроле — покрытие недели, долги, темп трат его клиентов, все проекты со статусом сдачи и остатком бюджета, тренд за 8 недель, переписка с ответами. Оттуда же — написать и передать проекты.',
+  '📈 Тренд сдачи по неделям: графики-спарклайны по агентству и каждому специалисту — видно систематических должников, а не только текущую неделю.',
+  '⚖️ Баланс нагрузки: у кого сколько обязательств (полосками), среднее по команде, подсветка перегруженных и недогруженных + предупреждение «N проектов с чатом, но без владельца».',
+  '🕵️ Журнал действий: кто привязал, назначил, передал стек, закрыл долг, менял доставку и сотрудников — с фильтром по типу действия.',
+  '👥 Работодатель управляет командой: раздел «Пользователи» теперь доступен и ему — завести сотрудника, сменить пароль, заблокировать, выдать роль. Трогать администраторов и выдавать админку он не может.',
+  '📝 Заметки по проектам: «клиент на паузе до августа» — видно в досье и в карточке клиента, чтобы контекст не терялся.']},
 {date:'2026-07-25',tag:'feature',title:'Права работодателя, массовые долги, алерты и ссылки на таблицы',
  sum:'Пак по обратной связи: 8 доработок — привязка на специалиста, фильтры, алерты для работодателя',items:[
   'Работодатель (и админ) теперь привязывает чат СРАЗУ на нужного специалиста: в «Привязках» выбор «Привязывать на специалиста». Раньше проект закреплялся за тем, кто привязывал, и приходилось вручную переназначать десятки проектов.',
@@ -1996,7 +2007,7 @@ function applyUser(){
   el('userName').textContent=ME.name||ME.email;
   el('userRole').textContent=ROLE_RU[ME.role]||'Специалист';
   el('userAva').textContent=((ME.name||ME.email||'?').trim().charAt(0)||'?');
-  setNav('navUsers',ME.role==='admin');
+  setNav('navUsers',ME.role==='admin'||ME.role==='observer');   // работодатель управляет командой
   setNav('navSup',ME.role==='admin'||ME.role==='observer');   // Контроль — админ и наблюдатель
   setNav('navErrlog',ME.role==='admin');                      // Журнал ошибок — только админ
 }
@@ -2030,7 +2041,8 @@ async function renderSupervision(){
       '<td style="min-width:200px">'+covBar(r.coverage)+'<div class="mini-2">сдано '+r.sent+' · уважит. '+r.excused.length+' · <b style="color:'+(r.debt?'var(--red)':'var(--muted)')+'">долг '+r.debt+'</b> · на пн '+r.on_monday+' · пред.нед. '+(r.prev_coverage==null?'—':r.prev_coverage+'%')+'</div>'+debtHtml+excHtml+'</td>'+
       '<td class="nowrap mini-2">'+fmtWhen(r.last_activity)+'</td>'+
       '<td><span class="badge" style="color:'+st.c+';background:'+st.bg+'">'+st.t+'</span></td>'+
-      '<td class="right"><button class="btn sm" onclick="supNudge('+r.user_id+',this)" data-name="'+esc(r.name)+'" title="Написать сотруднику">✉️ Напомнить</button></td>'+
+      '<td class="right"><button class="btn sm" onclick="event.stopPropagation();supNudge('+r.user_id+',this)" data-name="'+esc(r.name)+'" title="Написать сотруднику">✉️</button> '+
+        '<button class="btn sm primary" onclick="event.stopPropagation();openSpecCard('+r.user_id+')" title="Карточка специалиста: проекты, тренд, деньги">👤 Досье</button></td>'+
     '</tr>';}).join('');
   const notesHtml=notes.length?notes.map(n=>{
     const kc=n.kind==='urgent'?'var(--red)':n.kind==='warn'?'var(--amber)':'var(--brand)';
@@ -2062,7 +2074,28 @@ async function renderSupervision(){
       <textarea id="noText" rows="4" placeholder="Текст сообщения сотруднику…" style="margin-top:10px;width:100%;min-height:96px;resize:vertical;box-sizing:border-box"></textarea>
       <div style="margin-top:10px"><button class="btn primary" onclick="supSendNote()">Отправить</button></div>
     </div></div>
+    <div class="panel" style="margin-bottom:16px"><h3><span class="h3-ic">📈</span> Тренд сдачи и нагрузка</h3>
+      <div class="body"><div id="supTrend" class="muted">загрузка…</div></div></div>
+    <div class="panel" style="margin-bottom:16px"><h3><span class="h3-ic">📨</span> Сводка в Telegram</h3><div class="body">
+      <p class="muted" style="margin-top:0;font-size:13px">Каждый понедельник (после 10:00) сводка уходит сама всем, у кого в Настройках включён режим «По всему агентству»: покрытие, кто не сдал, бюджеты на исходе, нагрузка.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" onclick="digestPreview()">👁 Посмотреть текст</button>
+        <button class="btn primary" onclick="digestSend()">📨 Отправить сейчас</button>
+      </div>
+      <pre id="digestBox" style="display:none;white-space:pre-wrap;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:12px;font-size:12.5px"></pre>
+    </div></div>
     <div class="panel" style="margin-bottom:16px"><h3><span class="h3-ic">🗂</span> Отправленные сообщения</h3><div class="body">${notesHtml}</div></div>
+    <div class="panel" style="margin-bottom:16px"><h3><span class="h3-ic">🕵️</span> Журнал действий</h3>
+      <div class="body"><div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <select id="auAction" onchange="loadAudit()" style="width:auto">
+          <option value="">Все действия</option><option value="bind">Привязки</option>
+          <option value="assign">Назначения</option><option value="reassign">Передача стека</option>
+          <option value="excuse">Долги</option><option value="delivery">Доставка</option>
+          <option value="note">Заметки</option><option value="user">Сотрудники</option>
+          <option value="digest">Сводки</option>
+        </select>
+        <button class="btn sm" onclick="loadAudit()">⟳ Обновить</button>
+      </div><div id="auditBox" class="muted">загрузка…</div></div></div>
     <div class="panel"><h3><span class="h3-ic">🎛</span> Раздача проектов — не назначено: ${supUnassigned} из ${(POOL||[]).length}</h3>
       <div class="body">
         <p class="muted" style="margin-top:0;font-size:13px">Назначь проект специалисту и сразу выбери способ доставки: <b>✈️ Telegram</b> (бот шлёт в чат) или <b>📤 Сторонний</b> (копипаст вручную).</p>
@@ -2093,6 +2126,7 @@ async function renderSupervision(){
         </div>
       </div></div>`;
   poolFilter();
+  loadTrend(); loadAudit();
 }
 async function supSendNote(){
   const to=el('noTo').value, kind=el('noKind').value, text=el('noText').value.trim();
@@ -2133,6 +2167,117 @@ async function supExcuseAll(userId){
   }catch(e){}
 }
 async function supUnexcuse(id){ if(!confirm('Вернуть долг — снять уважительную причину?'))return; try{ await api('excuse_remove', id); renderSupervision(); }catch(e){} }
+
+/* --- тренд сдачи + баланс нагрузки --- */
+function spark(series,w=132,h=30){
+  const vals=series.map(v=>v==null?null:v);
+  const pts=vals.map((v,i)=>({x:i/(Math.max(1,vals.length-1))*w, y:h-(v==null?0:v)/100*h, v}));
+  const line=pts.filter(p=>p.v!=null).map((p,i)=>(i?'L':'M')+p.x.toFixed(1)+' '+p.y.toFixed(1)).join(' ');
+  const last=[...vals].reverse().find(v=>v!=null);
+  const col=last==null?'var(--muted)':(last>=90?'var(--green)':last>=50?'var(--amber)':'var(--red)');
+  return '<svg width="'+w+'" height="'+h+'" style="vertical-align:middle">'+
+    '<line x1="0" y1="'+(h-0.9*h)+'" x2="'+w+'" y2="'+(h-0.9*h)+'" stroke="var(--line)" stroke-dasharray="3 3"/>'+
+    (line?'<path d="'+line+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linejoin="round"/>':'')+
+    pts.filter(p=>p.v!=null).map(p=>'<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="2" fill="'+col+'"/>').join('')+
+    '</svg>';
+}
+async function loadTrend(){
+  const host=el('supTrend'); if(!host)return;
+  let h,w;
+  try{h=await api('coverage_history',8);w=await api('workload');}catch(e){host.innerHTML='<span class="muted">не удалось загрузить</span>';return;}
+  const wk=(h.weeks||[]).map(d=>d.slice(5).split('-').reverse().join('.'));
+  const agencyRow='<div class="trend-row"><b style="min-width:150px">Агентство</b>'+spark(h.agency)+
+    '<span class="muted" style="font-size:12px">'+(h.agency||[]).map((v,i)=>wk[i]+': '+(v==null?'—':v+'%')).join(' · ')+'</span></div>';
+  const userRows=(h.users||[]).filter(u=>(u.series||[]).some(v=>v!=null)).map(u=>
+    '<div class="trend-row"><span style="min-width:150px">'+esc(u.name)+'</span>'+spark(u.series)+
+    '<span class="muted" style="font-size:12px">сейчас: '+(u.series[u.series.length-1]==null?'—':u.series[u.series.length-1]+'%')+'</span></div>').join('');
+  const rows=(w.rows||[]);
+  const max=Math.max(1,...rows.map(r=>r.obligations));
+  const load=rows.map(r=>{
+    const pct=Math.round(r.obligations/max*100);
+    const over=r.obligations>w.avg*1.4, under=r.obligations<w.avg*0.6;
+    const col=over?'var(--red)':under?'var(--amber)':'var(--green)';
+    return '<div class="trend-row"><span style="min-width:150px">'+esc(r.name)+(r.role==='admin'?' <span class="muted">(админ)</span>':'')+'</span>'+
+      '<div style="flex:1;max-width:280px;height:10px;background:var(--surface-3);border-radius:99px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+col+'"></div></div>'+
+      '<b style="min-width:34px;text-align:right">'+r.obligations+'</b>'+
+      '<span class="muted" style="font-size:12px">проектов '+r.clients+(r.external?(' · 📤 '+r.external):'')+'</span></div>';
+  }).join('');
+  host.innerHTML='<div style="font-size:12.5px;font-weight:700;color:var(--muted);margin-bottom:6px">ПОКРЫТИЕ ПО НЕДЕЛЯМ (8 недель)</div>'+
+    agencyRow+userRows+
+    '<div style="font-size:12.5px;font-weight:700;color:var(--muted);margin:14px 0 6px">НАГРУЗКА (обязательств на человека, среднее '+w.avg+')</div>'+load+
+    (w.unassigned_bound?'<div class="alert amber" style="margin-top:10px">📥 <div><b>'+w.unassigned_bound+' проект(ов) с чатом, но без владельца</b> — их никто не ведёт. Раздай в блоке ниже.</div></div>':'');
+}
+
+/* --- журнал действий --- */
+async function loadAudit(){
+  const host=el('auditBox'); if(!host)return;
+  const act=(el('auAction')||{}).value||'';
+  let d;try{d=await api('audit_log',200,act||null);}catch(e){host.innerHTML='<span class="muted">не удалось загрузить</span>';return;}
+  const ic={bind:'🔗',assign:'🎛',reassign:'🔁',excuse:'🛡',delivery:'📤',note:'📝',user:'👤',digest:'📨'};
+  const rows=(d.entries||[]).map(e=>'<tr><td class="nowrap muted" style="font-size:12px">'+esc(fmtWhen(e.created_at))+'</td>'+
+    '<td class="nowrap">'+(ic[e.action]||'•')+' '+esc(e.user_name||'—')+'</td>'+
+    '<td>'+esc(e.target||'')+'</td><td class="muted" style="font-size:12.5px">'+esc(e.detail||'')+'</td></tr>').join('');
+  host.innerHTML=(d.entries||[]).length?('<div class="scrollx" style="max-height:340px;overflow:auto"><table><thead><tr><th>Когда</th><th>Кто</th><th>Что</th><th>Детали</th></tr></thead><tbody>'+rows+'</tbody></table></div>')
+    :'<span class="muted">Пока пусто — действия начнут записываться сейчас.</span>';
+}
+
+/* --- сводка в Telegram --- */
+async function digestPreview(){
+  try{const r=await api('digest_preview');const b=el('digestBox');b.style.display='block';b.textContent=r.text;}catch(e){}
+}
+async function digestSend(){
+  if(!confirm('Отправить сводку сейчас всем, у кого включён режим «По всему агентству»?'))return;
+  try{const r=await api('digest_send');
+    toast('Сводка отправлена: '+r.sent+(r.missing.length?(' · без привязки Telegram: '+r.missing.join(', ')):''),r.sent?'ok':'err');
+  }catch(e){}
+}
+
+/* --- карточка специалиста (досье) --- */
+async function openSpecCard(uid){
+  el('drawerBg').classList.add('on');el('drawer').classList.add('on');
+  el('drTitle').textContent='Досье специалиста';el('drBody').innerHTML='<div class="empty"><span class="spin"></span></div>';
+  let d;try{d=await api('specialist_card',uid);}catch(e){el('drBody').innerHTML='Ошибка';return;}
+  el('drTitle').innerHTML='👤 '+esc(d.user.name)+' <span class="muted" style="font-weight:400">· '+esc(d.user.role==='admin'?'админ':'специалист')+'</span>';
+  const w=d.week, cov=w.coverage;
+  const st=(s)=>({sent:['✅ сдан','var(--green)'],skipped:['⏭ нет открута','var(--muted)'],excused:['🛡 уважительно','var(--amber)'],debt:['❌ долг','var(--red)']}[s]||['—','var(--muted)']);
+  const projRows=(d.projects||[]).map(p=>{
+    const s=st(p.week_status);
+    const money=p.days_left!=null?('<span style="color:'+(p.days_left<3?'var(--red)':p.days_left<7?'var(--amber)':'var(--muted)')+'">~'+p.days_left+' дн.</span>'):'<span class="muted">—</span>';
+    return '<tr><td><b>'+esc(p.name)+'</b><div class="mini-2">'+esc(p.login)+(p.delivery==='external'?' · 📤 сторонний':'')+'</div>'+
+      (p.note?'<div class="mini-2" style="color:var(--brand)">📝 '+esc(p.note)+'</div>':'')+'</td>'+
+      '<td class="nowrap"><span style="color:'+s[1]+';font-weight:600;font-size:12.5px">'+s[0]+'</span></td>'+
+      '<td class="nowrap">'+money+'</td>'+
+      '<td class="right"><button class="btn sm" onclick="cardNote(\''+esc(p.login)+'\',\''+esc((p.note||'').replace(/'/g,"\\'"))+'\')" title="Заметка по проекту">📝</button></td></tr>';
+  }).join('');
+  const hist=d.history||[];
+  el('drBody').innerHTML=`
+    <div class="cards" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">
+      <div class="card"><div class="card-meta"><div class="card-k">Покрытие недели</div><div class="card-v" style="color:${cov==null?'var(--muted)':(cov>=100?'var(--green)':cov>=50?'var(--amber)':'var(--red)')}">${cov==null?'—':cov+'%'}</div><div class="card-s">${w.sent}/${w.obligations} сдано</div></div></div>
+      <div class="card"><div class="card-meta"><div class="card-k">Долги</div><div class="card-v" style="color:${w.debt?'var(--red)':'var(--green)'}">${w.debt}</div><div class="card-s">на этой неделе</div></div></div>
+      <div class="card"><div class="card-meta"><div class="card-k">Темп трат</div><div class="card-v">${Math.round(d.money.total_rate).toLocaleString('ru-RU')} ₽</div><div class="card-s">в день · 🔴 ${d.money.critical}</div></div></div>
+    </div>
+    <div class="field"><label>Покрытие по неделям</label>
+      ${spark(hist.map(h=>h.coverage),320,44)}
+      <div class="mini-2">${hist.map(h=>h.week.slice(5).split('-').reverse().join('.')+': '+(h.coverage==null?'—':h.coverage+'%')).join(' · ')}</div></div>
+    <div class="field"><label>Проекты (${(d.projects||[]).length})</label>
+      <div class="scrollx" style="max-height:320px;overflow:auto"><table><thead><tr><th>Проект</th><th>Неделя</th><th>Бюджет</th><th></th></tr></thead><tbody>${projRows||'<tr><td colspan="4" class="muted">нет проектов</td></tr>'}</tbody></table></div></div>
+    <div class="field"><label>Сообщения и ответы</label>
+      ${(d.messages||[]).length?d.messages.map(m=>'<div style="border-left:3px solid var(--brand);padding:6px 10px;margin-bottom:6px;background:var(--surface-2);border-radius:8px"><div style="font-size:13px">'+esc(m.text)+'</div><div class="mini-2">'+fmtWhen(m.created_at)+(m.replies.length?(' · ответ: '+esc(m.replies[m.replies.length-1].text)):'')+'</div></div>').join(''):'<span class="muted">переписки нет</span>'}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn primary" onclick="closeDrawer();supNudgeDirect(${d.user.id},'${esc(d.user.name)}')">✉️ Написать</button>
+      <button class="btn" onclick="closeDrawer();go('supervision')">🔁 Передать проекты</button>
+    </div>`;
+}
+async function cardNote(login,cur){
+  const t=prompt('Заметка по проекту «'+login+'» (видна всем причастным). Пусто — удалить:',cur||'');
+  if(t===null)return;
+  try{await api('set_client_note',login,t);toast(t.trim()?'Заметка сохранена':'Заметка удалена','ok');}catch(e){}
+}
+function supNudgeDirect(uid,name){
+  const t=prompt('Сообщение для «'+name+'» (появится ярким баннером):','');
+  if(!t||!t.trim())return;
+  api('note_create',String(uid),t.trim(),'info').then(()=>{toast('Отправлено','ok');renderSupervision();}).catch(()=>{});
+}
 
 /* ---------- баннер сообщений сотруднику ---------- */
 async function checkNotes(){
@@ -2194,7 +2339,7 @@ async function bootWeb(){
 let POOL=[], SUP_USERS=[], SUP_LAST=null;
 async function renderUsers(){
   const box=el('v_users');
-  if(!ME||ME.role!=='admin'){box.innerHTML='<div class="empty">Раздел доступен только администратору.</div>';return;}
+  if(!ME||(ME.role!=='admin'&&ME.role!=='observer')){box.innerHTML='<div class="empty">Раздел доступен администратору и работодателю.</div>';return;}
   box.innerHTML='<div class="empty">Загрузка…</div>';
   let users;
   try{ users=await api('users_list'); POOL=await api('pool_clients'); }

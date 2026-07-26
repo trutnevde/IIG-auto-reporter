@@ -63,6 +63,12 @@ def _periodic_tick(base):
     if _due("budgets_last", 12):
         base.db.set_kv("budgets_last", now)
         threading.Thread(target=_budgets_job, args=(base,), daemon=True).start()
+    # еженедельная сводка работодателю: понедельник с 10:00, не чаще раза в 5 дней
+    import datetime as _dt
+    _n = _dt.datetime.now()
+    if _n.weekday() == 0 and _n.hour >= 10 and _due("digest_last", 24 * 5):
+        base.db.set_kv("digest_last", now)
+        threading.Thread(target=_digest_job, args=(base,), daemon=True).start()
 
 
 def _autosync_job(base):
@@ -81,6 +87,20 @@ def _autosync_job(base):
             d1.get("synced", "?"), d2.get("with_goals", "?"), d2.get("clients", "?")))
     except Exception as e:  # noqa: BLE001
         log_error("autosync", "сбой: {}".format(e))
+
+
+def _digest_job(base):
+    """Понедельничная сводка работодателю (покрытие, долги, деньги, нагрузка). Итог — в Журнал."""
+    from .settings import log_error
+    try:
+        r = base.digest_send()
+        d = r.get("data") or {}
+        if not r.get("ok"):
+            raise RuntimeError(r.get("error"))
+        log_error("digest", "ок: отправлено {}{}".format(
+            d.get("sent"), (", без привязки: " + ", ".join(d.get("missing") or [])) if d.get("missing") else ""))
+    except Exception as e:  # noqa: BLE001
+        log_error("digest", "сбой: {}".format(e))
 
 
 def _budgets_job(base):

@@ -148,6 +148,21 @@ class Storage:
         if "alert_scope" not in ucols:   # 'mine' (по умолчанию) | 'all' — получать алерты по всему агентству
             self.conn.execute("ALTER TABLE users ADD COLUMN alert_scope TEXT")
             self.conn.commit()
+        if "note" not in cols:   # заметка по проекту («на паузе до августа») — видна всем причастным
+            self.conn.execute("ALTER TABLE clients ADD COLUMN note TEXT")
+            self.conn.commit()
+        # аудит действий: кто что сделал (привязки, назначения, долги, сотрудники)
+        self.conn.execute(
+            """CREATE TABLE IF NOT EXISTS audit (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER,
+                user_name  TEXT,
+                action     TEXT,      -- bind | assign | reassign | excuse | delivery | user | note …
+                target     TEXT,      -- клиент/чат/пользователь
+                detail     TEXT,
+                created_at TEXT
+            )""")
+        self.conn.commit()
         # ответы специалистов на сообщения наблюдателя
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS note_reply (
@@ -311,6 +326,36 @@ class Storage:
     def set_user_alert_chat(self, user_id, chat_id):
         """Привязать конкретный chat_id для алертов (по deep-link /start alert_<token>)."""
         self.conn.execute("UPDATE users SET alert_chat_id=? WHERE id=?", (chat_id, user_id))
+        self.conn.commit()
+
+    # ---------- аудит действий ----------
+    def log_action(self, user_id, user_name, action, target=None, detail=None):
+        """Пишет действие в аудит (кто/что/когда). Сбои не должны ломать основную операцию."""
+        try:
+            self.conn.execute(
+                "INSERT INTO audit(user_id,user_name,action,target,detail,created_at) VALUES(?,?,?,?,?,?)",
+                (user_id, user_name, action, target, detail, _now()))
+            self.conn.commit()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def list_audit(self, limit=300, action=None, user_id=None):
+        sql = "SELECT * FROM audit"
+        cond, args = [], []
+        if action:
+            cond.append("action=?"); args.append(action)
+        if user_id:
+            cond.append("user_id=?"); args.append(int(user_id))
+        if cond:
+            sql += " WHERE " + " AND ".join(cond)
+        sql += " ORDER BY id DESC LIMIT ?"
+        args.append(int(limit))
+        return self.conn.execute(sql, tuple(args)).fetchall()
+
+    # ---------- заметка по проекту ----------
+    def set_client_note(self, login, note):
+        self.conn.execute("UPDATE clients SET note=?, updated_at=? WHERE login=?",
+                          ((note or None), _now(), login))
         self.conn.commit()
 
     def set_user_alert_scope(self, user_id, scope):

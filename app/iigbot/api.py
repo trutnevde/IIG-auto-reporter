@@ -199,6 +199,12 @@ class Api:
         attr = rep.get("attribution_model") or "LSC"
         return intro, note, attr
 
+    def _audit(self, action, target=None, detail=None):
+        """Записать действие в аудит-лог (кто/что/когда) — для «Журнала действий» работодателя."""
+        u = self.user or {}
+        self.db.log_action(u.get("id"), (u.get("name") or u.get("email") or "система"),
+                           action, target, detail)
+
     def _chat_title(self, chat_id):
         c = self.db.get_chat(chat_id)
         return c["title"] if c else str(chat_id)
@@ -545,6 +551,7 @@ class Api:
         self.db.set_binding(cid, login)
         self._claim_if_pool(login)          # привязал свободного → закрепил за собой
         self._cloud_push_safe()
+        self._audit("bind", login, "чат «{}»".format(self._chat_title(cid)))
         return {"bound": True}
 
     @safe
@@ -570,6 +577,9 @@ class Api:
             self.db.set_client_delivery(login, delivery)
         self._cloud_push_safe()
         c = self.db.get_client(login)
+        who = self.db.get_user(int(owner_id)) if owner_id not in (None, "", 0, "0") else None
+        self._audit("bind", login, "чат «{}»{}".format(
+            self._chat_title(cid), (" → " + (who["name"] or who["email"])) if who else ""))
         return {"bound": True, "login": login,
                 "owner": (c["owner"] if "owner" in c.keys() else None)}
 
@@ -1082,7 +1092,8 @@ class Api:
     # ---------- пользователи (админ) ----------
     @safe
     def users_list(self):
-        self._require_admin()
+        """Список сотрудников (админ и наблюдатель — работодателю нужно управлять командой)."""
+        self._require_supervisor()
         out = []
         for u in self.db.list_users():
             out.append({"id": u["id"], "email": u["email"], "name": u["name"] or "",
@@ -1092,40 +1103,60 @@ class Api:
 
     @safe
     def user_create(self, email, password, name=None, role="user"):
-        self._require_admin()
+        """Завести сотрудника. Наблюдатель (работодатель) тоже может — он же нанимает; но выдать
+        роль «Администратор» (доступ к токенам/журналу) может только админ."""
+        self._require_supervisor()
         from . import auth
         email = (email or "").strip().lower()
         if not email or not password:
             raise RuntimeError("Нужны email и пароль")
         if role not in ("user", "admin", "observer"):
             role = "user"
+        if role == "admin":
+            self._require_admin()
         if self.db.get_user_by_email(email):
             raise RuntimeError("Пользователь с таким email уже есть")
         uid = self.db.create_user(email, auth.hash_password(password), name, role)
+        self._audit("user", (name or email), "создан сотрудник, роль: " + role)
         return {"id": uid, "email": email, "role": role}
+
+    def _require_manage_user(self, user_id):
+        """Наблюдатель управляет специалистами и наблюдателями, но НЕ администраторами."""
+        self._require_supervisor()
+        u = self.db.get_user(int(user_id))
+        if not u:
+            raise RuntimeError("Пользователь не найден")
+        if u["role"] == "admin" and not self._is_admin():
+            raise RuntimeError("Администратора может менять только администратор")
+        return u
 
     @safe
     def user_set_role(self, user_id, role):
-        """Сменить роль пользователя (в т.ч. выдать «Наблюдатель»). Админ."""
-        self._require_admin()
+        """Сменить роль (в т.ч. выдать «Наблюдатель»). Роль «Администратор» назначает только админ."""
+        u = self._require_manage_user(user_id)
         if role not in ("user", "admin", "observer"):
             raise RuntimeError("Неизвестная роль")
+        if role == "admin":
+            self._require_admin()
         self.db.set_user_role(int(user_id), role)
+        self._audit("user", (u["name"] or u["email"]), "роль изменена: {} → {}".format(u["role"], role))
         return {"id": int(user_id), "role": role}
 
     @safe
     def user_set_active(self, user_id, active):
-        self._require_admin()
+        u = self._require_manage_user(user_id)
         self.db.set_user_active(int(user_id), bool(active))
+        self._audit("user", (u["name"] or u["email"]), "разблокирован" if active else "заблокирован")
         return {"id": int(user_id), "active": bool(active)}
 
     @safe
     def user_set_password(self, user_id, password):
-        self._require_admin()
+        u = self._require_manage_user(user_id)
         from . import auth
         if not password:
             raise RuntimeError("Пустой пароль")
         self.db.set_user_password(int(user_id), auth.hash_password(password))
+        self._audit("user", (u["name"] or u["email"]), "сменён пароль")
         return {"id": int(user_id)}
 
     @safe
@@ -1166,6 +1197,8 @@ class Api:
         self.db.set_client_owner(login, owner)
         if delivery is not None:
             self.db.set_client_delivery(login, "external" if delivery == "external" else "telegram")
+        who = self.db.get_user(owner) if owner else None
+        self._audit("assign", login, "владелец: " + ((who["name"] or who["email"]) if who else "общий пул"))
         return {"login": login, "owner": owner,
                 "delivery": ("external" if delivery == "external" else "telegram") if delivery is not None else None}
 
@@ -1188,6 +1221,9 @@ class Api:
             if owner == src:
                 self.db.set_client_owner(c["login"], dst)
                 moved.append(c["login"])
+        nm = lambda uid: (lambda u: (u["name"] or u["email"]) if u else "общий пул")(  # noqa: E731
+            self.db.get_user(uid) if uid else None)
+        self._audit("reassign", nm(dst), "передано {} проект(ов) от «{}»".format(len(moved), nm(src)))
         return {"moved": len(moved), "logins": moved[:50], "from": src, "to": dst}
 
     @safe
@@ -1197,7 +1233,105 @@ class Api:
         if not self.db.get_client(login):
             raise RuntimeError("Клиент не найден")
         self.db.set_client_delivery(login, "external" if mode == "external" else "telegram")
+        self._audit("delivery", login, "доставка: " + ("сторонний (копипаст)" if mode == "external" else "Telegram"))
         return {"login": login, "delivery": "external" if mode == "external" else "telegram"}
+
+    # ---------- заметки по проектам ----------
+    @safe
+    def set_client_note(self, login, note):
+        """Заметка по проекту («клиент на паузе до августа») — видна всем причастным.
+        Свой клиент — специалисту; любой — админу/наблюдателю."""
+        c = self.db.get_client(login)
+        if not c:
+            raise RuntimeError("Клиент не найден")
+        owner = c["owner"] if "owner" in c.keys() else None
+        if not (self._is_admin() or self._is_observer() or (self.user and owner == self.user["id"])):
+            raise RuntimeError("Можно писать заметку только по своему клиенту")
+        note = (note or "").strip() or None
+        self.db.set_client_note(login, note)
+        self._audit("note", login, (note or "заметка удалена")[:120])
+        return {"login": login, "note": note}
+
+    # ---------- дайджест работодателю ----------
+    def _digest_text(self):
+        """Текст еженедельной сводки: покрытие, кто не сдал, деньги на исходе, свободные чаты."""
+        sup = (self.supervision() or {}).get("data") or {}
+        wl = (self.workload() or {}).get("data") or {}
+        ag = sup.get("agency") or {}
+        rows = sup.get("rows") or []
+        L = ["📊 СВОДКА ПО АГЕНТСТВУ", ""]
+        cov = ag.get("coverage")
+        L.append("Сдача недели: {} · обязательств {} · сдано {} · долгов {}".format(
+            (str(cov) + "%") if cov is not None else "—",
+            ag.get("bound_total", 0), ag.get("sent_total", 0), ag.get("debt_total", 0)))
+        L.append("")
+        L.append("По сотрудникам:")
+        for r in sorted(rows, key=lambda x: (x["coverage"] if x["coverage"] is not None else 999)):
+            if not r["bound"]:
+                continue
+            mark = "✅" if not r["debt"] else ("⚠️" if r["sent"] else "❌")
+            L.append("{} {}: {}% ({}/{}){}".format(
+                mark, r["name"], (r["coverage"] if r["coverage"] is not None else 0),
+                r["sent"], r["bound"],
+                (" · долг: " + ", ".join(m["name"] for m in r["missing"][:5])) if r["debt"] else ""))
+        # деньги
+        brows = [dict(b) for b in self.db.list_budgets()]
+        crit = [b for b in brows if b["status"] == "critical"]
+        if crit:
+            L += ["", "💰 Бюджет на исходе ({}):".format(len(crit))]
+            for b in sorted(crit, key=lambda x: (x["days_left"] if x["days_left"] is not None else 99))[:8]:
+                L.append("• {}: ~{} дн.".format(b["name"] or b["login"],
+                                                b["days_left"] if b["days_left"] is not None else "?"))
+        # нагрузка и хвосты
+        if wl:
+            L += ["", "⚖️ Нагрузка: " + " · ".join(
+                "{} {}".format(r["name"], r["obligations"]) for r in (wl.get("rows") or [])[:6])]
+            if wl.get("unassigned_bound"):
+                L.append("📥 Без владельца, но с чатом: {} — стоит раздать".format(wl["unassigned_bound"]))
+        L += ["", "Подробности — в кабинете: reports.iig.ru"]
+        return "\n".join(L)
+
+    @safe
+    def digest_preview(self):
+        """Посмотреть текст сводки, не отправляя."""
+        self._require_supervisor()
+        return {"text": self._digest_text()}
+
+    @safe
+    def digest_send(self):
+        """Отправить сводку всем подписчикам «по всему агентству» (alert_scope='all')."""
+        self._require_supervisor()
+        text = self._digest_text()
+        sent, missing = 0, []
+        try:
+            tg = self._tg_client()
+        except Exception as e:  # noqa: BLE001
+            raise RuntimeError("Telegram-бот недоступен: {}".format(e))
+        from . import budgets as B
+        by_id, by_un, by_title = B._priv_index(self.db)
+        for u in self.db.list_users():
+            if not u["active"]:
+                continue
+            if (u["alert_scope"] if "alert_scope" in u.keys() else None) != "all":
+                continue
+            ch = B._resolve_chat(u, by_id, by_un, by_title)
+            if not ch:
+                missing.append(u["name"] or u["email"])
+                continue
+            tg.send_message(ch["chat_id"], text)
+            sent += 1
+        self.db.set_kv("digest_last", str(__import__("time").time()))
+        self._audit("digest", "сводка", "отправлено получателям: {}".format(sent))
+        return {"sent": sent, "missing": missing}
+
+    # ---------- аудит действий (кто что сделал) ----------
+    @safe
+    def audit_log(self, limit=300, action=None, user_id=None):
+        """Журнал действий для работодателя/админа: привязки, назначения, долги, сотрудники."""
+        self._require_supervisor()
+        rows = [dict(r) for r in self.db.list_audit(limit=limit, action=action, user_id=user_id)]
+        users = [{"id": u["id"], "name": u["name"] or u["email"]} for u in self.db.list_users()]
+        return {"entries": rows, "users": users}
 
     # ---------- журнал ошибок (админ) ----------
     @safe
@@ -1442,6 +1576,151 @@ class Api:
                   "at_risk": sum(1 for r in rows if r["status"] in ("miss", "partial"))}
         return {"agency": agency, "rows": rows}
 
+    # ---------- обязательства: помощники по неделям ----------
+    @staticmethod
+    def _week_bounds(weeks_back=0):
+        """(понедельник, следующий понедельник) недели N назад."""
+        from datetime import date, timedelta
+        today = date.today()
+        mon = today - timedelta(days=today.weekday()) - timedelta(days=7 * weeks_back)
+        return mon, mon + timedelta(days=7)
+
+    def _obligations_by_owner(self):
+        """{owner_id: set(логинов)} — недельные обязательства: привязанные ∪ сторонние."""
+        clients = self.db.list_clients("all")
+        owner_of = {c["login"]: (c["owner"] if "owner" in c.keys() else None) for c in clients}
+        by_owner = {}
+        for b in self.db.list_bindings("all"):
+            by_owner.setdefault(owner_of.get(b["login"]), set()).add(b["login"])
+        for c in clients:
+            if ("delivery" in c.keys()) and c["delivery"] == "external":
+                by_owner.setdefault(owner_of.get(c["login"]), set()).add(c["login"])
+        return by_owner
+
+    def _coverage_for(self, logins, mon, nxt):
+        """Покрытие набора клиентов за неделю [mon, nxt): (covered, total, sent)."""
+        def iso(d):
+            return d.isoformat() + "T00:00:00"
+        if not logins:
+            return 0, 0, 0
+        sent = self.db.sent_logins_between(iso(mon), iso(nxt)) & logins
+        skipped = self.db.status_logins_between("skipped", iso(mon), iso(nxt)) & logins
+        excused = set(self.db.excused_logins(mon.isoformat()).keys()) & logins
+        covered = sent | skipped | excused
+        return len(covered), len(logins), len(sent)
+
+    @safe
+    def coverage_history(self, weeks=8):
+        """Тренд сдачи по неделям: агентство и каждый специалист (для графиков в Контроле)."""
+        self._require_supervisor()
+        weeks = max(2, min(int(weeks or 8), 26))
+        by_owner = self._obligations_by_owner()
+        users = [u for u in self.db.list_users() if u["role"] != "observer"]
+        all_logins = set()
+        for s in by_owner.values():
+            all_logins |= s
+        out_weeks, agency, per_user = [], [], {u["id"]: [] for u in users}
+        for back in range(weeks - 1, -1, -1):
+            mon, nxt = self._week_bounds(back)
+            out_weeks.append(mon.isoformat())
+            cov, tot, _ = self._coverage_for(all_logins, mon, nxt)
+            agency.append(round(100 * cov / tot) if tot else None)
+            for u in users:
+                lg = by_owner.get(u["id"], set())
+                c2, t2, _ = self._coverage_for(lg, mon, nxt)
+                per_user[u["id"]].append(round(100 * c2 / t2) if t2 else None)
+        return {"weeks": out_weeks, "agency": agency,
+                "users": [{"id": u["id"], "name": u["name"] or u["email"],
+                           "series": per_user[u["id"]]} for u in users]}
+
+    @safe
+    def workload(self):
+        """Баланс нагрузки: сколько проектов у кого, сколько ничьих, кто перегружен."""
+        self._require_supervisor()
+        clients = self.db.list_clients("all")
+        bound = {b["login"] for b in self.db.list_bindings("all")}
+        by_owner = self._obligations_by_owner()
+        users = [u for u in self.db.list_users() if u["role"] in ("user", "admin") and u["active"]]
+        rows = []
+        for u in users:
+            own = [c for c in clients if (("owner" in c.keys()) and c["owner"] == u["id"])]
+            ext = [c for c in own if ("delivery" in c.keys()) and c["delivery"] == "external"]
+            rows.append({"user_id": u["id"], "name": u["name"] or u["email"], "role": u["role"],
+                         "clients": len(own), "obligations": len(by_owner.get(u["id"], set())),
+                         "external": len(ext),
+                         "bound": len([c for c in own if c["login"] in bound])})
+        rows.sort(key=lambda r: -r["obligations"])
+        unassigned = len([c for c in clients if not (("owner" in c.keys()) and c["owner"])])
+        unassigned_bound = len([c for c in clients
+                                if not (("owner" in c.keys()) and c["owner"]) and c["login"] in bound])
+        total_obl = sum(r["obligations"] for r in rows)
+        avg = round(total_obl / len(rows), 1) if rows else 0
+        return {"rows": rows, "unassigned": unassigned, "unassigned_bound": unassigned_bound,
+                "avg": avg, "total_obligations": total_obl}
+
+    @safe
+    def specialist_card(self, user_id):
+        """Досье специалиста: проекты (покрытие/бюджет/доставка/заметка), тренд сдачи,
+        деньги его клиентов, сообщения и ответы. Для работодателя/админа."""
+        self._require_supervisor()
+        uid = int(user_id)
+        u = self.db.get_user(uid)
+        if not u:
+            raise RuntimeError("Сотрудник не найден")
+        mon, nxt = self._week_bounds(0)
+
+        def iso(d):
+            return d.isoformat() + "T00:00:00"
+        obl = self._obligations_by_owner().get(uid, set())
+        sent = self.db.sent_logins_between(iso(mon), iso(nxt))
+        skipped = self.db.status_logins_between("skipped", iso(mon), iso(nxt))
+        excused = self.db.excused_logins(mon.isoformat())
+        budgets = {b["login"]: dict(b) for b in self.db.list_budgets()}
+        bound = {b["login"] for b in self.db.list_bindings("all")}
+        projects = []
+        for c in self.db.list_clients("all"):
+            if not (("owner" in c.keys()) and c["owner"] == uid):
+                continue
+            lg = c["login"]
+            b = budgets.get(lg) or {}
+            st = ("sent" if lg in sent else "skipped" if lg in skipped
+                  else "excused" if lg in excused else ("debt" if lg in obl else "—"))
+            projects.append({
+                "login": lg, "name": c["name"] or lg,
+                "delivery": (c["delivery"] if "delivery" in c.keys() else None) or "telegram",
+                "note": (c["note"] if "note" in c.keys() else None),
+                "bound": lg in bound, "obligation": lg in obl, "week_status": st,
+                "balance": b.get("balance"), "days_left": b.get("days_left"),
+                "budget_status": b.get("status"), "rate": b.get("rate"),
+                "last_send": self.db.last_send_at(lg),
+            })
+        projects.sort(key=lambda p: (p["week_status"] != "debt", -(p["rate"] or 0)))
+        # тренд по неделям
+        hist = []
+        for back in range(7, -1, -1):
+            m2, n2 = self._week_bounds(back)
+            cov, tot, _ = self._coverage_for(obl, m2, n2)
+            hist.append({"week": m2.isoformat(), "coverage": (round(100 * cov / tot) if tot else None),
+                         "total": tot})
+        # сообщения и ответы
+        replies = self.db.all_note_replies()
+        msgs = []
+        for n in self.db.list_notes(limit=50):
+            if n["to_user"] in (uid, None):
+                msgs.append({"id": n["id"], "text": n["text"], "kind": n["kind"],
+                             "created_at": n["created_at"], "acks": n["acks"],
+                             "replies": replies.get(n["id"], [])})
+        cov, tot, snt = self._coverage_for(obl, mon, nxt)
+        return {
+            "user": {"id": u["id"], "name": u["name"] or u["email"], "email": u["email"],
+                     "role": u["role"], "active": bool(u["active"])},
+            "week": {"coverage": (round(100 * cov / tot) if tot else None),
+                     "obligations": tot, "sent": snt, "debt": tot - cov},
+            "projects": projects, "history": hist, "messages": msgs[:15],
+            "money": {"total_rate": round(sum((p["rate"] or 0) for p in projects), 2),
+                      "critical": len([p for p in projects if p["budget_status"] == "critical"])},
+        }
+
     @safe
     def excuse_add(self, login, kind="nospend", reason=None):
         """Закрыть «долг» по клиенту: уважительная причина, что отчёт не отправлен.
@@ -1461,6 +1740,7 @@ class Api:
         if not reason:
             reason = {"churned": "проект отвалился", "nospend": "нет открута (деньги не крутятся)"}.get(kind, "уважительно")
         eid = self.db.add_excuse(login, week, kind, reason, (self.user or {}).get("id"))
+        self._audit("excuse", login, "долг закрыт: {}".format(reason))
         return {"id": eid, "login": login, "kind": kind, "reason": reason, "ongoing": week is None}
 
     @safe
