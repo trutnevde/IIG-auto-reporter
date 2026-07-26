@@ -634,18 +634,30 @@ class Api:
         return self._suggest_matches()
 
     @safe
-    def bind_bulk(self, min_confidence=75):
+    def bind_bulk(self, min_confidence=75, owner_id=None):
         """Массовая привязка: привязывает все непривязанные чаты, где уверенность подсказки
-        >= порога. Возвращает {bound, min_confidence, details}. Остальное правишь вручную."""
-        self._require_write()
+        >= порога. owner_id (админ/наблюдатель) — назначить все привязанные проекты этому
+        специалисту вместо правила «привязал → взял себе». Остальное правишь вручную."""
+        assign_to = None
+        if owner_id not in (None, "", 0, "0"):
+            self._require_supervisor()          # раздавать чужие проекты — только супервайзер
+            assign_to = int(owner_id)
+            if not self.db.get_user(assign_to):
+                raise RuntimeError("Специалист не найден")
+        else:
+            self._require_write()
         thr = int(min_confidence)
         bound, details = 0, []
         for x in self._suggest_matches()["matches"]:
             if x.get("suggest_login") and x.get("confidence", 0) >= thr:
                 try:
-                    self._require_bindable(x["suggest_login"])
+                    if assign_to is None:
+                        self._require_bindable(x["suggest_login"])
                     self.db.set_binding(int(x["chat_id"]), x["suggest_login"])
-                    self._claim_if_pool(x["suggest_login"])   # привязал свободного → закрепил
+                    if assign_to is not None:
+                        self.db.set_client_owner(x["suggest_login"], assign_to)
+                    else:
+                        self._claim_if_pool(x["suggest_login"])   # привязал свободного → закрепил
                     bound += 1
                     details.append({"chat_title": x["chat_title"], "login": x["suggest_login"],
                                     "confidence": x["confidence"]})
@@ -1156,6 +1168,27 @@ class Api:
             self.db.set_client_delivery(login, "external" if delivery == "external" else "telegram")
         return {"login": login, "owner": owner,
                 "delivery": ("external" if delivery == "external" else "telegram") if delivery is not None else None}
+
+    @safe
+    def reassign_all(self, from_user_id, to_user_id):
+        """Перекинуть ВСЕ проекты одного специалиста другому (увольнение, отпуск, передача дел).
+        from_user_id='none' — раздать всех «ничьих». to_user_id='none' — вернуть в общий пул."""
+        self._require_supervisor()
+        src = None if from_user_id in (None, "", 0, "0", "none") else int(from_user_id)
+        dst = None if to_user_id in (None, "", 0, "0", "none") else int(to_user_id)
+        if src is not None and not self.db.get_user(src):
+            raise RuntimeError("Специалист-источник не найден")
+        if dst is not None and not self.db.get_user(dst):
+            raise RuntimeError("Специалист-получатель не найден")
+        if src == dst:
+            raise RuntimeError("Источник и получатель совпадают")
+        moved = []
+        for c in self.db.list_clients("all"):
+            owner = c["owner"] if "owner" in c.keys() else None
+            if owner == src:
+                self.db.set_client_owner(c["login"], dst)
+                moved.append(c["login"])
+        return {"moved": len(moved), "logins": moved[:50], "from": src, "to": dst}
 
     @safe
     def set_delivery_super(self, login, mode):

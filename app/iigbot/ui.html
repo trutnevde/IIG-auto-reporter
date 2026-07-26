@@ -642,8 +642,23 @@ async function renderChats(){
   const F=CHAT_FILTER;
   const shown=chats.filter(c=>F==='mine'?c.login:(F==='free'?!c.login:true));
   const tab=(k,label)=>`<span class="t ${F===k?'on':''}" onclick="CHAT_FILTER='${k}';renderChats()">${label}</span>`;
+  // супервайзер привязывает чат СРАЗУ на специалиста (иначе проект закреплялся за тем, кто привязал)
+  const isSup=ME&&(ME.role==='admin'||ME.role==='observer');
+  let supBar='';
+  if(isSup){
+    try{SUP_USERS=await api('assignable_users');}catch(e){SUP_USERS=[];}
+    supBar=`<div class="note" style="margin-bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <b>🎯 Привязывать на специалиста:</b>
+      <select id="chatBindOwner" style="width:auto">
+        <option value="">— оставить владельца как есть —</option>
+        ${(SUP_USERS||[]).map(u=>`<option value="${u.id}">${esc(u.name)}${u.role==='admin'?' (админ)':''}</option>`).join('')}
+      </select>
+      <span class="muted" style="font-size:12.5px">Выбери — и «Сохранить» закрепит проект за ним, а не за тобой.</span>
+    </div>`;
+  }
   host.innerHTML=`
     <h2 class="title">Чаты</h2><p class="sub">Чаты появляются автоматически, когда бота туда добавляют. «Свободные» — чаты без привязки: их видят все специалисты, пока никто не забрал (привязал → клиент закрепился за тобой).</p>
+    ${supBar}
     <div class="tabs">${tab('mine','Мои ('+mineN+')')}${tab('free','Свободные ('+freeN+')')}${tab('all','Все видимые ('+chats.length+')')}</div>
     <div class="panel"><div class="scrollx"><table>
       <thead><tr><th>Чат</th><th>ID</th><th>Тип</th><th>Статус</th><th>Привязка</th><th></th></tr></thead>
@@ -657,7 +672,21 @@ async function renderChats(){
       </tbody></table></div></div>`;
   shown.forEach(c=>{if(c.login){const s=el('bind_'+c.chat_id);if(s)s.value=c.login;}});
 }
-async function doBind(chatId){const sel=el('bind_'+chatId);try{await api('bind',chatId,sel.value);toast(sel.value?'Привязано':'Привязка снята','ok');refresh();}catch(e){}}
+async function doBind(chatId){
+  const sel=el('bind_'+chatId);
+  const owner=(el('chatBindOwner')||{}).value||'';
+  try{
+    if(ME&&(ME.role==='admin'||ME.role==='observer')){
+      await api('bind_for',chatId,sel.value||null,owner||null);
+      const who=(SUP_USERS||[]).find(u=>String(u.id)===String(owner));
+      toast(sel.value?(owner?('Привязано и назначено: '+(who?who.name:'специалисту')):'Привязано'):'Привязка снята','ok');
+    }else{
+      await api('bind',chatId,sel.value);
+      toast(sel.value?'Привязано':'Привязка снята','ok');
+    }
+    refresh();
+  }catch(e){}
+}
 async function doDeleteChat(chatId){
   if(!confirm('Удалить чат '+chatId+' из базы? Привязка к клиенту тоже снимется.\n(Сам чат в Telegram это не трогает — бот просто забудет о нём.)'))return;
   try{await api('delete_chat',chatId);toast('Чат удалён из базы','ok');refresh();}catch(e){}
@@ -724,8 +753,12 @@ async function renderMatch(){
 }
 function bindOwnerSel(){const e=el('bindOwner');return e?e.value:'';}
 async function doBindBulk(){
-  if(!confirm('Привязать все чаты с уверенным совпадением (≥75%) разом? Спорные останутся, их поправишь вручную.'))return;
-  try{const r=await api('bind_bulk',75);toast('Привязано разом: '+r.bound,'ok');refresh();}catch(e){}
+  const owner=bindOwnerSel();
+  const who=(SUP_USERS||[]).find(u=>String(u.id)===String(owner));
+  const tail=owner?('\n\nВсе привязанные проекты будут закреплены за: '+(who?who.name:'выбранным специалистом')+'.'):'';
+  if(!confirm('Привязать все чаты с уверенным совпадением (≥75%) разом? Спорные останутся, их поправишь вручную.'+tail))return;
+  try{const r=await api('bind_bulk',75,owner||null);
+    toast('Привязано разом: '+r.bound+(owner&&who?(' → '+who.name):''),'ok');refresh();}catch(e){}
 }
 async function doCloudPull(){try{const r=await api('cloud_pull');toast('Из облака: привязок '+r.bindings+', целей '+r.goals,'ok');refresh();}catch(e){}}
 async function doCloudPush(){try{const r=await api('cloud_push');toast('В облако: привязок '+r.bindings+', целей '+r.goals,'ok');}catch(e){}}
@@ -1015,7 +1048,9 @@ const CHANGELOG=[
   'Бюджеты: переключатель «Мои клиенты / Всё агентство» для админа и наблюдателя — админ без своих проектов больше не видит пустой экран.',
   'Отчёты и Таблицы: ссылки 📗 «Открыть таблицу» — Google-таблица клиента открывается в один клик.',
   'Чаты: вкладки «Мои / Свободные / Все видимые» — чужие проекты больше не мешаются, свободные чаты вынесены отдельно.',
-  'Отчёты стали чище: цели с нулём конверсий больше не печатаются («Цель: 0» больше не засоряет).']},
+  'Отчёты стали чище: цели с нулём конверсий больше не печатаются («Цель: 0» больше не засоряет).',
+  'Привязка «на специалиста» теперь во ВСЕХ местах: и в «Привязках», и во вкладке «Чаты», и в массовой привязке (≥75%) — проект больше не липнет к тому, кто привязывал.',
+  '🔁 «Передать все проекты» — разом перекинуть весь стек одного специалиста другому (увольнение, отпуск, передача дел) вместо ручного переноса по одному.']},
 {date:'2026-07-21',tag:'feature',title:'Конструктор: текст объявления на уровне «Объявления»',
  sum:'Видно заголовок и текст объявления, а не только его ID',items:[
   'На уровне «Объявления» в отчёте теперь виден сам креатив: заголовок (жирным) + текст объявления, а ID уходит мелкой подписью снизу. Раньше была только колонка «ID объявл.» с числом.',
@@ -2048,6 +2083,14 @@ async function renderSupervision(){
         <div class="scrollx" style="max-height:520px;overflow:auto"><table>
           <thead><tr><th>Клиент</th><th style="width:220px">Специалист</th><th style="width:170px">Доставка</th></tr></thead>
           <tbody id="poolBody">${poolRows(POOL||[],supAssignOpts)}</tbody></table></div>
+        <div class="note" style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <b>🔁 Передать все проекты:</b>
+          <select id="reFrom" style="width:auto"><option value="none">— ничьи (общий пул) —</option>${(SUP_USERS||[]).map(u=>`<option value="${u.id}">${esc(u.name)} (${(POOL||[]).filter(c=>String(c.owner)===String(u.id)).length})</option>`).join('')}</select>
+          <span>→</span>
+          <select id="reTo" style="width:auto"><option value="none">— в общий пул —</option>${(SUP_USERS||[]).map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('')}</select>
+          <button class="btn sm primary" onclick="doReassignAll()">Передать</button>
+          <span class="muted" style="font-size:12.5px">Разом переносит весь стек: увольнение, отпуск, передача дел.</span>
+        </div>
       </div></div>`;
   poolFilter();
 }
@@ -2240,6 +2283,15 @@ async function assignClient(login,uid){
     const c=POOL.find(x=>x.login===login); if(c)c.owner=uid?parseInt(uid):null;
     toast('Владелец сохранён'); }
   catch(e){ render(CURRENT); }
+}
+async function doReassignAll(){
+  const from=el('reFrom').value, to=el('reTo').value;
+  if(from===to){toast('Источник и получатель совпадают','err');return;}
+  const nameOf=v=>v==='none'?'общий пул':((SUP_USERS||[]).find(u=>String(u.id)===String(v))||{}).name||'?';
+  const n=from==='none'?(POOL||[]).filter(c=>!c.owner).length:(POOL||[]).filter(c=>String(c.owner)===String(from)).length;
+  if(!n){toast('Нечего передавать','err');return;}
+  if(!confirm('Передать ВСЕ проекты ('+n+' шт.) от «'+nameOf(from)+'» к «'+nameOf(to)+'»?'))return;
+  try{const r=await api('reassign_all',from,to);toast('Передано проектов: '+r.moved,'ok');renderSupervision();}catch(e){}
 }
 async function assignDelivery(login,delivery){
   try{ await api('set_delivery_super',login,delivery);
