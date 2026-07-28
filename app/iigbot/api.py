@@ -498,14 +498,26 @@ class Api:
 
     @safe
     def sync_clients(self):
-        self._require_admin()
+        """Подтянуть список клиентов агентства из Директа. Доступно админу И наблюдателю:
+        работодатель раздаёт проекты, значит ему нужен свежий справочник (раньше упирался
+        в «только администратор»). Чужие настройки при этом не трогаются — только справочник."""
+        self._require_supervisor()
         clients = yandex.get_agency_clients(load_secrets()["yandex_oauth_token"])
-        n = 0
+        known = {c["login"] for c in self.db.list_clients("all")}
+        n, fresh = 0, []
         for c in clients:
             if c.get("Login"):
+                if c["Login"] not in known:
+                    fresh.append(c.get("ClientInfo") or c["Login"])
                 self.db.upsert_client(login=c["Login"], name=c.get("ClientInfo") or c["Login"], source="yandex")
                 n += 1
-        return {"synced": n}
+        if fresh:
+            self._audit("sync", "Директ", "новых клиентов: {} ({})".format(
+                len(fresh), ", ".join(fresh[:5]) + ("…" if len(fresh) > 5 else "")))
+            self._notify(None, "client", "Новые клиенты из Директа",
+                         "{}: {}".format(len(fresh), ", ".join(fresh[:5]) + ("…" if len(fresh) > 5 else "")),
+                         "clients")
+        return {"synced": n, "new": len(fresh), "new_names": fresh[:20]}
 
     @safe
     def import_config(self):

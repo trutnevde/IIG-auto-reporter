@@ -579,9 +579,9 @@ async function renderClients(){
       <select id="clFilter" onchange="drawClients()"><option value="">Все</option><option value="bound">С привязкой</option><option value="unbound">Без чата</option></select>
       <div style="flex:1"></div>
       <button class="btn" onclick="doSync()">🔄 Подтянуть из Директа</button>
-      <button class="btn" onclick="doBulkGoals()">🎯 Цели из Метрики (всем)</button>
+      ${(ME&&ME.role==='observer')?'':'<button class="btn" onclick="doBulkGoals()">🎯 Цели из Метрики (всем)</button>'}
       <a class="btn" href="/download/export/clients.csv" title="Выгрузить список клиентов в CSV (Excel)">⬇ Экспорт CSV</a>
-      <button class="btn" onclick="doImport()">⬇ Импорт config.json</button>
+      ${(ME&&ME.role==='admin')?'<button class="btn" onclick="doImport()">⬇ Импорт config.json</button>':''}
     </div>
     <div class="panel"><div class="scrollx"><table>
       <thead><tr>
@@ -647,7 +647,14 @@ function drawClients(){
       <td>${clDate(c.added_at)}</td>
     </tr>`).join('');
 }
-async function doSync(){try{toast('Запрашиваю клиентов из Директа…');const r=await api('sync_clients');toast('Синхронизировано: '+r.synced,'ok');refresh();}catch(e){}}
+async function doSync(){
+  try{
+    toast('Запрашиваю клиентов из Директа…');
+    const r=await api('sync_clients');
+    toast('Синхронизировано: '+r.synced+(r.new?(' · новых: '+r.new+' ('+(r.new_names||[]).slice(0,3).join(', ')+(r.new>3?'…':'')+')'):' · новых нет'),'ok');
+    refresh();
+  }catch(e){}
+}
 async function doImport(){try{const r=await api('import_config');toast('Импорт: клиентов '+r.clients+', привязок '+r.bindings,'ok');refresh();}catch(e){}}
 async function doBulkGoals(){
   if(!confirm('Подтянуть цели из Метрики для ВСЕХ привязанных клиентов?\nКлючевые включатся для отчётов, остальные сохранятся выключенными. Уже настроенные вручную галки не сбросятся.'))return;
@@ -1131,6 +1138,11 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-07-26',tag:'fix',title:'Работодатель может подтягивать клиентов из Директа',
+ sum:'Синхронизация справочника клиентов открыта наблюдателю',items:[
+  'Кнопка «🔄 Подтянуть из Директа» теперь работает и у работодателя — раньше упиралась в «только администратор», хотя именно он раздаёт проекты и ему нужен свежий список.',
+  'После синхронизации показывается, сколько клиентов новых и какие именно; новые попадают в уведомления и в журнал действий.',
+  '«Цели из Метрики (всем)» и «Импорт config.json» остаются за специалистом/админом — они меняют настройки проектов.']},
 {date:'2026-07-26',tag:'major',title:'Уведомления, бэкапы, скорость и безопасность',
  sum:'Колокольчик с уведомлениями, резервные копии базы, ускорение и защита входа',items:[
   '🔔 Центр уведомлений: колокольчик справа сверху со счётчиком непрочитанных. Внутри — «вышло обновление кабинета», «вам назначили проект», «бота добавили в новый чат», «бюджет на исходе», «сообщение от руководителя». Клик по уведомлению переносит в нужный раздел и снимает счётчик; есть «Прочитать все».',
