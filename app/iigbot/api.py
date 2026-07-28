@@ -253,9 +253,12 @@ class Api:
         skip_this = self.db.status_logins_between("skipped", _iso(mon), _iso(today + _dt.timedelta(days=1)))
         excused = set(self.db.excused_logins(mon.isoformat()).keys())
         delivered = obligations & sent_this
-        covered = delivered | (obligations & (skip_this | excused))
+        auto_skip = (obligations & skip_this) - delivered      # нет открута — авто-уважительно
+        closed = (obligations & excused) - delivered - auto_skip   # долг закрыт причиной
+        covered = delivered | auto_skip | closed
         debt = obligations - covered
         week = {"obligations": len(obligations), "sent": len(delivered),
+                "no_spend": len(auto_skip), "excused": len(closed),
                 "debt": len(debt), "covered": len(covered),
                 "coverage": (round(100 * len(covered) / len(obligations)) if obligations else None)}
         # сторонние, по которым на этой неделе ещё не собирали отчёт (нет ни sent, ни skipped)

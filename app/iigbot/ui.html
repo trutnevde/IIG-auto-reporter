@@ -117,6 +117,7 @@
     font-size:21px;flex:0 0 auto;z-index:1}
   .card-meta{z-index:1;min-width:0}
   .card-k{font-size:12px;color:var(--muted);font-weight:650;text-transform:uppercase;letter-spacing:.03em}
+  .card-s{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.35}
   .card-v{font-size:26px;font-weight:800;margin-top:2px;color:var(--cc);line-height:1.1}
   .c-cyan{--cc:var(--cyan);--cc-bg:var(--cyan-bg)}
   .c-green{--cc:var(--green);--cc-bg:var(--green-bg)}
@@ -524,8 +525,8 @@ async function loadBadges(){
 function statCard(color,ic,label,val){
   return `<div class="card c-${color}"><div class="card-ic">${ic}</div><div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div></div></div>`;
 }
-function statCardLink(color,ic,label,val,dest){
-  return `<div class="card c-${color} click" onclick="go('${dest}')"><div class="card-ic">${ic}</div><div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div></div></div>`;
+function statCardLink(color,ic,label,val,dest,sub,tip){
+  return `<div class="card c-${color} click" onclick="go('${dest}')"${tip?(' title="'+esc(tip)+'"'):''}><div class="card-ic">${ic}</div><div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div>${sub?('<div class="card-s">'+sub+'</div>'):''}</div></div>`;
 }
 function budMoneyShort(v,cur){return v==null?'':(Math.round(v).toLocaleString('ru-RU')+' '+(cur==='RUB'?'₽':(cur||'')));}
 async function renderDashboard(){
@@ -539,7 +540,13 @@ async function renderDashboard(){
   const cards=[
     statCardLink((bud.critical?'red':'green'),'🔴','Бюджеты на исходе',(bud.critical||0),'budgets'),
     statCardLink((dlg.overdue?'red':(dlg.waiting?'amber':'slate')),'⏳','Ждут ответа',(dlg.waiting||0),'dialogs'),
-    statCardLink(covCol,'📋',(isObs?'Покрытие агентства':'Твоя сдача недели'),(cov==null?'—':(wk.sent+'/'+wk.obligations+' · '+cov+'%')),(isObs?'supervision':'reports')),
+    statCardLink(covCol,'📋',(isObs?'Покрытие агентства':'Твоя сдача недели'),
+      (cov==null?'—':(cov+'%')),(isObs?'supervision':'reports'),
+      (cov==null?'':('отправлено '+wk.sent+' из '+wk.obligations
+        +((wk.no_spend||0)?(' · нет открута '+wk.no_spend):'')
+        +((wk.excused||0)?(' · закрыто '+wk.excused):'')
+        +((wk.debt||0)?(' · <b style="color:var(--red)">долг '+wk.debt+'</b>'):''))),
+      'Покрытие = выполненные обязательства: отправленные отчёты + клиенты без открута (авто) + долги, закрытые уважительной причиной'),
     (!isObs)?statCardLink((d.external_pending?'violet':'slate'),'📤','Сторонние к сбору',(d.external_pending||0),'external'):'',
     statCardLink('blue','👥',(isObs?'Клиентов (все)':'Клиентов'),d.clients,'clients'),
     statCardLink((d.clients_no_chat?'amber':'slate'),'📇','Без чата',d.clients_no_chat,'clients'),
@@ -1224,6 +1231,10 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-07-28',tag:'fix',title:'Понятная карточка сдачи недели',
+ sum:'Больше не смущает «16/24 · 100%»',items:[
+  'Карточка «Твоя сдача недели» показывала «16/24 · 100%» — выглядело как ошибка. На самом деле покрытие считает выполненные обязательства: отправленные отчёты + клиенты без открута (авто-уважительно) + долги, закрытые причиной.',
+  'Теперь на карточке крупно процент, а под ним расшифровка: «отправлено 16 из 24 · нет открута 3 · закрыто 5 · долг 0» — сразу видно, из чего сложились 100%. В подсказке при наведении — формула целиком.']},
 {date:'2026-07-28',tag:'feature',title:'⏳ «Ждут ответа» — видно, каким клиентам мы долго не отвечали',
  sum:'Новый раздел: кто написал в чат, а мы молчим',items:[
   'Бот теперь считает переписку в чатах клиентов: кто написал последним — клиент, наш сотрудник или сам бот. Отчёт бота ответом НЕ считается, поэтому «ответили» не срабатывает ложно по понедельникам.',
