@@ -58,7 +58,13 @@
 
   /* ---------- sidebar ---------- */
   .side{background:var(--side-bg);color:var(--side-ink);padding:16px 14px;display:flex;flex-direction:column;gap:4px;
-    border-right:1px solid rgba(255,255,255,.04)}
+    border-right:1px solid rgba(255,255,255,.04);
+    /* у работодателя пунктов больше — на невысоком экране меню должно прокручиваться,
+       иначе низ («Гайд», «Подключить клиента») обрезается и до него не добраться */
+    overflow-y:auto;overscroll-behavior:contain}
+  .side::-webkit-scrollbar{width:6px}
+  .side::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:3px}
+  .side::-webkit-scrollbar-track{background:transparent}
   .brand{display:flex;align-items:center;gap:11px;padding:8px 8px 18px;font-size:17px;letter-spacing:.2px;color:#fff}
   .brand .logo{width:36px;height:36px;border-radius:11px;background:#fff;display:grid;place-items:center;overflow:hidden;
     box-shadow:0 6px 16px rgba(1,66,129,.38)}
@@ -72,6 +78,13 @@
   .nav a.active{background:var(--grad-soft);color:#fff}
   .nav a.active::before{content:"";position:absolute;left:-14px;top:8px;bottom:8px;width:4px;border-radius:0 4px 4px 0;background:var(--grad)}
   .nav-badge{margin-left:auto}
+  /* подзаголовки-«столпы» в меню: разделяют группы, сами не кликаются */
+  .nav-cap{margin:13px 0 3px;padding:0 11px;font-size:10.5px;font-weight:700;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--side-ink);opacity:.42;user-select:none}
+  /* на планшетной рейке (72px) подписи не влезают — вместо них тонкий разделитель */
+  @media (max-width:900px) and (min-width:641px){
+    .nav-cap{margin:9px 8px 6px;padding:0;height:1px;overflow:hidden;text-indent:-999px;
+      background:rgba(255,255,255,.13);border-radius:1px}}
   .side .spacer{flex:1}
   .mini{font-size:12px;color:var(--side-muted);padding:10px;border-top:1px solid rgba(255,255,255,.06);margin-top:8px;line-height:1.6}
   .mini-2{opacity:.8}
@@ -359,18 +372,26 @@
     <div class="brand"><span class="logo"><img src="/favicon.svg" alt="IIG"></span><span class="brand-tx">IIG <b>Reporter</b></span></div>
     <nav class="nav" id="nav">
       <a data-go="dashboard" class="active"><span class="ic">🏠</span><span>Обзор</span></a>
+
+      <div class="nav-cap">Ведение проектов</div>
       <a data-go="clients"><span class="ic">👥</span><span>Клиенты</span></a>
       <a data-go="chats"><span class="ic">💬</span><span>Чаты</span></a>
       <a data-go="dialogs"><span class="ic">⏳</span><span>Ждут ответа</span><span class="badge b-red nav-badge" id="navDialogs" style="display:none">0</span></a>
       <a data-go="match"><span class="ic">🔗</span><span>Привязки</span><span class="badge b-amber nav-badge" id="navMatch" style="display:none">0</span></a>
-      <a data-go="reports"><span class="ic">📨</span><span>Отчёты</span></a>
       <a data-go="budgets"><span class="ic">💰</span><span>Бюджеты</span><span class="badge b-red nav-badge" id="navBudgets" style="display:none">0</span></a>
+
+      <div class="nav-cap">Отчётность</div>
+      <a data-go="reports"><span class="ic">📨</span><span>Отчёты</span></a>
       <a data-go="external"><span class="ic">📤</span><span>Сторонние</span></a>
       <a data-go="gsheets"><span class="ic">📗</span><span>Таблицы</span></a>
-      <a data-go="settings"><span class="ic">⚙️</span><span>Настройки</span></a>
+
+      <div class="nav-cap" id="navCapManage" style="display:none">Управление</div>
       <a data-go="supervision" id="navSup" style="display:none"><span class="ic">👁</span><span>Контроль</span></a>
       <a data-go="users" id="navUsers" style="display:none"><span class="ic">🔑</span><span>Пользователи</span></a>
       <a data-go="errlog" id="navErrlog" style="display:none"><span class="ic">🩺</span><span>Журнал</span></a>
+
+      <div class="nav-cap">Система</div>
+      <a data-go="settings"><span class="ic">⚙️</span><span>Настройки</span></a>
       <a data-go="guide"><span class="ic">📖</span><span>Гайд</span></a>
     </nav>
     <div class="btn-connect" onclick="closeNav();openOnboard()"><span>＋</span><span>Подключить клиента</span></div>
@@ -924,21 +945,35 @@ const GUIDE=[
     <li><b>Выйти</b> — иконка ⎋ справа вверху (рядом с твоим именем).</li>
     <li>Сессия держится ~30 дней, повторно вводить пароль каждый раз не нужно.</li>
   </ul>`},
-{tab:'Начало',icon:'🧭',title:'Разделы кабинета',kw:'меню разделы навигация интерфейс сайдбар вкладки',html:`
+{tab:'Начало',icon:'🧭',title:'Разделы кабинета',kw:'меню разделы навигация интерфейс сайдбар вкладки столпы группы',html:`
+  <p>Меню слева разбито на четыре смысловых блока — сверху то, чем пользуешься каждый день.</p>
+  <p><b>🏠 Обзор</b> — сводка, тревожные плашки и кнопки рассылки. Точка входа.</p>
+  <p class="gcap"><b>Ведение проектов</b> — всё про клиентов и общение с ними:</p>
   <ul>
-    <li><b>Обзор</b> — сводка + кнопки рассылки.</li>
-    <li><b>Клиенты</b> — твои клиенты, их цели и привязанные чаты (с сортировкой по колонкам).</li>
-    <li><b>Чаты</b> — Telegram-чаты, где есть бот.</li>
-    <li><b>Привязки</b> — связать чат ↔ клиент (с подсказками).</li>
-    <li><b>Отчёты</b> — предпросмотр, конструктор, история отправок.</li>
-    <li><b>Бюджеты</b> — остатки счетов, темп трат, «на сколько хватит» + алерты.</li>
-    <li><b>Сторонние</b> — отчёты для мессенджеров вне Telegram (копипаст).</li>
-    <li><b>Таблицы</b> — выгрузка в Google-таблицы клиентов.</li>
-    <li><b>Настройки</b> — тексты отчёта, моя приписка, атрибуция, расписание.</li>
-    <li><b>Контроль</b> (наблюдатель и админ) — покрытие обязательств по сотрудникам.</li>
-    <li><b>Пользователи</b> (только админ) — сотрудники и раздача клиентов.</li>
-    <li><b>Журнал</b> (только админ) — технические события и сбои сервера.</li>
-  </ul>`},
+    <li><b>👥 Клиенты</b> — твои клиенты, их цели, атрибуция и способ доставки.</li>
+    <li><b>💬 Чаты</b> — Telegram-чаты, где есть бот (вкладки «Мои / Свободные / Все»).</li>
+    <li><b>⏳ Ждут ответа</b> — кому мы не ответили и с кем давно не общались. Красная цифра на пункте — сколько ждут.</li>
+    <li><b>🔗 Привязки</b> — связать чат ↔ клиент. Жёлтая цифра — сколько чатов ещё без клиента.</li>
+    <li><b>💰 Бюджеты</b> — остатки счетов, темп трат, «на сколько хватит» + алерты.</li>
+  </ul>
+  <p class="gcap"><b>Отчётность</b> — всё, чем отдаём результат клиенту:</p>
+  <ul>
+    <li><b>📨 Отчёты</b> — предпросмотр, конструктор, история отправок.</li>
+    <li><b>📤 Сторонние</b> — отчёты для мессенджеров вне Telegram (копипаст).</li>
+    <li><b>📗 Таблицы</b> — выгрузка в Google-таблицы клиентов.</li>
+  </ul>
+  <p class="gcap"><b>Управление</b> — виден только админу и работодателю:</p>
+  <ul>
+    <li><b>👁 Контроль</b> — покрытие обязательств по сотрудникам, досье, нагрузка, передача проектов.</li>
+    <li><b>🔑 Пользователи</b> — сотрудники, доступы и раздача клиентов (админ и работодатель).</li>
+    <li><b>🩺 Журнал</b> — технические события и сбои сервера (только админ).</li>
+  </ul>
+  <p class="gcap"><b>Система</b>:</p>
+  <ul>
+    <li><b>⚙️ Настройки</b> — тексты отчёта, моя приписка, атрибуция, расписание.</li>
+    <li><b>📖 Гайд</b> — эта справка.</li>
+  </ul>
+  <div class="note">Если ты специалист, блок «Управление» просто не показывается — лишних пунктов в меню нет.</div>`},
 {tab:'Начало',icon:'🌗',title:'Тема и обновление',kw:'тема светлая тёмная обновить refresh',html:`
   <p>Вверху справа: <b>🌙/☀️</b> — переключить светлую/тёмную тему (запоминается), <b>⟳ Обновить</b> — перечитать данные с сервера.</p>`},
 // ===== КЛИЕНТЫ =====
@@ -1209,6 +1244,8 @@ function renderGuide(){
       .gtag{font-size:11px;font-weight:600;background:var(--surface-3);color:var(--muted);padding:2px 9px;border-radius:999px;margin-left:8px;vertical-align:middle}
       .gcard .body p{margin:7px 0}.gcard .body ul,.gcard .body ol{margin:7px 0;padding-left:22px}.gcard .body li{margin:5px 0}
       .gkbd{background:var(--surface-3);border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-size:12.5px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap}
+      /* подпись группы внутри статьи гайда (повторяет «столпы» из меню слева) */
+      .gcap{margin:14px 0 2px;color:var(--muted);font-size:12.5px}
       mark{background:var(--accent);color:#3a2600;border-radius:3px;padding:0 2px}
     </style>
     <h2 class="title">📖 Гайд</h2><p class="sub">Полное руководство по кабинету — ${GUIDE.length} тем в ${GUIDE_TABS.length} разделах. Ищи по словам или листай по вкладкам.</p>
@@ -1237,6 +1274,14 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-07-29',tag:'ui',title:'Меню разбито на смысловые блоки',
+ sum:'14 пунктов больше не свалены в кучу',items:[
+  'Пункты меню слева сгруппированы подзаголовками: «Ведение проектов» (Клиенты, Чаты, Ждут ответа, Привязки, Бюджеты), «Отчётность» (Отчёты, Сторонние, Таблицы), «Управление» (Контроль, Пользователи, Журнал) и «Система» (Настройки, Гайд). «Обзор» стоит отдельно сверху как точка входа.',
+  'Сами разделы никуда не переехали — ничего искать заново не нужно, просто стало видно, что к чему относится.',
+  'Блок «Управление» показывается только админу и работодателю: у специалиста подзаголовок не висит пустым.',
+  'На планшете, где меню сжимается в узкую рейку иконок, подписи заменяются тонкими разделителями — группы всё равно читаются.',
+  'Попутно починили: у работодателя на телефоне низ меню («Гайд» и «Подключить клиента») обрезался и до него нельзя было дотянуться — пунктов больше, чем помещалось на экран. Теперь меню прокручивается.',
+  'Гайд: раздел «Разделы кабинета» переписан под новую группировку — заодно в нём не было «Ждут ответа» и «Гайда», а у «Пользователей» была указана неверная роль (там админ и работодатель, а не только админ).']},
 {date:'2026-07-28',tag:'fix',title:'Галочка «в отчёт» наконец работает',
  sum:'Отмеченные цели больше не выбрасывались молча',items:[
   'Главный баг: если у клиента находилась хоть одна «лид-цель» (заявка/звонок/покупка), ВСЕ остальные отмеченные галочкой цели молча выбрасывались из отчёта. Задело 32 клиента из 33: у «Ремонта офисных помещений» специалист включил 13 целей, а в отчёт попадали 2; у kst21 — 11 из 18; клики «Написать в WhatsApp/Telegram» пропадали почти у всех.',
@@ -2280,14 +2325,16 @@ const ROLE_RU={admin:'Администратор',observer:'Наблюдател
 function applyUser(){
   const box=el('userBox');
   const setNav=(id,on)=>{const e=el(id);if(e)e.style.display=on?'':'none';};
-  if(!ME){box.style.display='none';setNav('navUsers',false);setNav('navSup',false);setNav('navErrlog',false);return;}
+  if(!ME){box.style.display='none';setNav('navUsers',false);setNav('navSup',false);setNav('navErrlog',false);setNav('navCapManage',false);return;}
   box.style.display='inline-flex';
   el('userName').textContent=ME.name||ME.email;
   el('userRole').textContent=ROLE_RU[ME.role]||'Специалист';
   el('userAva').textContent=((ME.name||ME.email||'?').trim().charAt(0)||'?');
-  setNav('navUsers',ME.role==='admin'||ME.role==='observer');   // работодатель управляет командой
-  setNav('navSup',ME.role==='admin'||ME.role==='observer');   // Контроль — админ и наблюдатель
+  const boss=(ME.role==='admin'||ME.role==='observer');
+  setNav('navUsers',boss);                                    // работодатель управляет командой
+  setNav('navSup',boss);                                      // Контроль — админ и наблюдатель
   setNav('navErrlog',ME.role==='admin');                      // Журнал ошибок — только админ
+  setNav('navCapManage',boss);   // подзаголовок «Управление» — только если под ним что-то есть
 }
 /* ---------- КОНТРОЛЬ: наблюдатель/админ ---------- */
 const SUP_ST={ok:{t:'✅ всё сдал',c:'var(--green)',bg:'var(--green-bg)'},partial:{t:'⚠️ частично',c:'var(--amber)',bg:'var(--amber-bg)'},miss:{t:'❌ не сдал',c:'var(--red)',c2:1,bg:'var(--red-bg)'},none:{t:'— нет клиентов',c:'var(--muted)',bg:'var(--surface-3)'}};
