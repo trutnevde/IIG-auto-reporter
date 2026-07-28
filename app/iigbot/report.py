@@ -211,7 +211,26 @@ def build_campaign_data(token, login, goal_defs, attribution, per, _post=None, _
 
 
 # ---------- форматирование сообщения ----------
-def format_metrics(cost, imp, clicks, conv, by_goal, goal_defs, indent=""):
+def split_goal_defs(goal_defs):
+    """(ключевые, дополнительные).
+
+    Ключевые — те, что формируют «Конверсии», CR и CPA. Дополнительные показываем строками,
+    но в итог НЕ суммируем: иначе прокрутки и просмотры корзины раздувают цифру, которую
+    клиент читает как «заявки» (у kst21 так выходил CR 45%).
+    Если ключевых не нашлось — считаем по всем, как было раньше.
+    """
+    key = [g for g in goal_defs if g.get("key", True)]
+    other = [g for g in goal_defs if not g.get("key", True)]
+    if not key:
+        return list(goal_defs), []
+    return key, other
+
+
+def format_metrics(cost, imp, clicks, conv, by_goal, goal_defs, indent="", show_extra=True):
+    key_defs, other_defs = split_goal_defs(goal_defs or [])
+    if goal_defs:
+        # итог считаем ТОЛЬКО по ключевым целям, а не по всему, что отмечено галочкой
+        conv = sum(float(by_goal.get(g["id"], 0)) for g in key_defs) if by_goal else 0.0
     ctr = clicks / imp * 100 if imp else 0
     cpc = cost / clicks if clicks else 0
     cr = conv / clicks * 100 if clicks else 0
@@ -224,17 +243,25 @@ def format_metrics(cost, imp, clicks, conv, by_goal, goal_defs, indent=""):
         p + "— CTR: " + fmt_pct(ctr),
         p + "— CPC: " + fmt_money(cpc),
     ]
-    if goal_defs:
-        out.append(p + "— Конверсии (по целям, суммарно): " + fmt_int(conv))
+
+    def goal_lines(defs):
         # цели с нулём НЕ печатаем — иначе отчёт распухает строками «• Цель: 0»
-        for g in goal_defs:
+        for g in defs:
             cv = float(by_goal.get(g["id"], 0)) if by_goal else 0.0
             if cv > 0:
                 out.append(p + "   • {}: {} (CPA {})".format(g["name"], fmt_int(cv), fmt_money(cost / cv)))
+
+    if goal_defs:
+        out.append(p + "— Конверсии (по целям, суммарно): " + fmt_int(conv))
+        goal_lines(key_defs)
     else:
         out.append(p + "— Конверсии: " + fmt_int(conv))
     out.append(p + "— CR: " + fmt_pct(cr))
     out.append(p + "— CPA: " + fmt_money(cpa))
+    # справочный блок печатаем один раз (в «Итого по аккаунту»), иначе он дублируется в каждой кампании
+    if show_extra and other_defs and by_goal and any(float(by_goal.get(g["id"], 0)) > 0 for g in other_defs):
+        out.append(p + "— Дополнительные цели (в конверсии не входят):")
+        goal_lines(other_defs)
     return "\n".join(out)
 
 
@@ -261,7 +288,8 @@ def build_message(client_name, goal_defs, camps, per, intro, note):
         for i, cm in enumerate(camps, 1):
             m.append("{}) {}".format(i, cm["name"]))
             if cm["spent"]:
-                m.append(format_metrics(cm["cost"], cm["imp"], cm["clicks"], cm["conv"], cm["byGoal"], goal_defs, "   "))
+                m.append(format_metrics(cm["cost"], cm["imp"], cm["clicks"], cm["conv"], cm["byGoal"],
+                                        goal_defs, "   ", show_extra=False))
             else:
                 m.append("   ⚠️ Кампания за прошлую неделю не расходовала средств, проверьте причину.")
             m.append("")
@@ -286,7 +314,8 @@ _LEAD_GOAL_TYPES = {"form", "phone", "messenger", "e_purchase",
                     "a_purchase", "a_create_order", "contact_data_sent"}
 _MICRO_GOAL_TYPES = {"number", "search", "step", "file", "social"}
 _LEAD_GOAL_WORDS = ("заявк", "звон", "покупк", "заказ", "купить", "обратн", "лид")
-MAX_REPORT_GOALS = 15   # потолок целей в отчёте: и от лимита Reports API, и от 100+ целей в мусоре
+MAX_KEY_GOALS = 15      # сколько целей формируют «Конверсии»/CR/CPA (состав итога не меняем)
+MAX_REPORT_GOALS = 30   # сколько целей вообще показываем (запросы к Директу идут батчами по 10)
 
 
 def _is_lead_goal(name, gtype):
@@ -304,9 +333,13 @@ def goal_defs_from_client(client_row, only_active=True, only_ids=None):
     """Цели клиента -> [{'id','name'}].
 
     only_ids — взять ровно эти id (конструктор: выбор пользователя), игнорируя active.
-    Иначе при only_active=True остаются только активные, но ДЛЯ ОТЧЁТА берём из них только
-    лид-цели и не больше MAX_REPORT_GOALS (иначе клиент с сотней активных микро-целей роняет
-    рассылку по лимиту Reports API и раздувает отчёт). Цели без active считаются активными.
+    При only_active=True в отчёт идут ВСЕ цели, отмеченные специалистом галочкой «в отчёт».
+
+    Раньше здесь стояло `lead or active`: если находилась хоть одна «лид-цель», все остальные
+    включённые вручную цели молча выбрасывались (у клиента с 13 включёнными в отчёт попадали 2 —
+    «Написать в WhatsApp/Telegram» система считала мусором). Галочка обязана работать.
+    Лид-фильтр остался только как приоритет, если целей больше потолка MAX_REPORT_GOALS:
+    тогда сначала берём лид-цели, потом остальные — чтобы не потерять главное.
     """
     try:
         items = json.loads(client_row["goals"] or "[]")
@@ -320,16 +353,25 @@ def goal_defs_from_client(client_row, only_active=True, only_ids=None):
                          "active": (g.get("active") is not False), "type": g.get("type", "")})
         else:
             norm.append({"id": str(g), "name": "Цель " + str(g), "active": True, "type": ""})
+    key_ids = None                            # None = все выбранные цели формируют итог
     if only_ids is not None:
         want = set(str(x) for x in only_ids)
         sel = [g for g in norm if g["id"] in want]
     elif only_active:
         active = [g for g in norm if g["active"]]
         lead = [g for g in active if _is_lead_goal(g["name"], g.get("type"))]
-        sel = (lead or active)[:MAX_REPORT_GOALS]
+        # состав «Конверсий» оставляем ровно тем, что был до фикса, — цифры у клиентов не едут
+        key_ids = {g["id"] for g in (lead or active)[:MAX_KEY_GOALS]}
+        if len(active) <= MAX_REPORT_GOALS:
+            sel = active                      # показываем всё, что отметил специалист
+        else:                                 # слишком много: лид-цели вперёд, остальные добираем
+            rest = [g for g in active if g not in lead]
+            sel = (lead + rest)[:MAX_REPORT_GOALS]
     else:
         sel = norm
-    return [{"id": g["id"], "name": g["name"]} for g in sel]
+    # key — цель формирует «Конверсии»/CR/CPA; остальные печатаются справочно (см. split_goal_defs)
+    return [{"id": g["id"], "name": g["name"],
+             "key": True if key_ids is None else (g["id"] in key_ids)} for g in sel]
 
 
 def build_for_login(token, db, login, intro, note, default_attr="LSC", _post=None, _sleep=None):

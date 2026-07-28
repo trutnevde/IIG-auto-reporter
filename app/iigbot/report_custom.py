@@ -205,7 +205,8 @@ def build(token, login, level, date_from, date_to, attribution="LSC", goal_defs=
                 col = R._find_goal_col(r, g["id"])
                 v = R.parse_num(r.get(col)) if col else 0.0
                 by_goal[str(g["id"])] = v   # конверсии ПО КАЖДОЙ цели отдельно
-                conv += v
+                if g.get("key", True):      # в «Конверсии» — только ключевые, как в недельном отчёте
+                    conv += v
         elif conv_capable:
             conv = R.parse_num(r.get("Conversions"))
         else:
