@@ -384,6 +384,26 @@ class Storage:
     def list_chat_activity(self):
         return self.conn.execute("SELECT * FROM chat_activity").fetchall()
 
+    def seed_activity_from_sendlog(self):
+        """Разовая инициализация активности из истории отправок: Telegram не отдаёт боту
+        переписку задним числом, но когда МЫ слали отчёт — знаем точно. Даёт «последний
+        контакт с клиентом» сразу, без ожидания новых сообщений. Существующие записи не трогаем."""
+        rows = self.conn.execute(
+            "SELECT chat_id, MAX(sent_at) last FROM send_log "
+            "WHERE status='sent' AND chat_id IS NOT NULL GROUP BY chat_id").fetchall()
+        n = 0
+        for r in rows:
+            cur = self.conn.execute("SELECT last_bot_at FROM chat_activity WHERE chat_id=?",
+                                    (r["chat_id"],)).fetchone()
+            if cur and cur["last_bot_at"]:
+                continue
+            self.conn.execute("INSERT OR IGNORE INTO chat_activity(chat_id) VALUES(?)", (r["chat_id"],))
+            self.conn.execute("UPDATE chat_activity SET last_bot_at=?, updated_at=? WHERE chat_id=?",
+                              (r["last"], _now(), r["chat_id"]))
+            n += 1
+        self.conn.commit()
+        return n
+
     def our_telegram_ids(self, cfg_admin_ids=None):
         """Telegram-id «наших»: админы из app_config + привязанные личики сотрудников
         (в приватном чате chat_id == user_id, поэтому alert_chat_id и есть его tg-id)."""

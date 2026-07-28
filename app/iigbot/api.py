@@ -1422,6 +1422,99 @@ class Api:
         return waiting, silent
 
     @safe
+    def import_chat_history(self, payload):
+        """Импорт истории чата из экспорта Telegram Desktop (result.json).
+
+        Bot API не отдаёт переписку задним числом, но человек может выгрузить её из
+        Telegram Desktop («Экспорт истории чата» → JSON) и загрузить сюда — тогда «кто ждёт
+        ответа» и «давно не общались» заполнятся реальными данными сразу.
+        Принимает объект экспорта (chats.list[] или один чат с messages[])."""
+        self._require_write()
+        import json as _json
+        import datetime as _dt
+        if isinstance(payload, str):
+            payload = _json.loads(payload)
+        chats = payload.get("chats", {}).get("list") if isinstance(payload, dict) else None
+        if chats is None:
+            chats = [payload] if isinstance(payload, dict) else []
+        our_ids = self.db.our_telegram_ids(self.cfg.get("admin_user_ids"))
+        known = {c["chat_id"] for c in self.db.list_chats()}
+        res = {"chats": 0, "matched": 0, "messages": 0, "details": []}
+        for ch in chats:
+            msgs = ch.get("messages") or []
+            if not msgs:
+                continue
+            res["chats"] += 1
+            # id чата в экспорте — положительный; в Bot API у супергрупп префикс -100
+            raw_id = ch.get("id")
+            cands = []
+            if raw_id is not None:
+                cands = [int(raw_id), -int(raw_id), int("-100{}".format(abs(int(raw_id))))]
+            cid = next((c for c in cands if c in known), None)
+            if cid is None:   # пробуем по названию чата
+                nm = (ch.get("name") or "").strip().lower()
+                cid = next((c["chat_id"] for c in self.db.list_chats()
+                            if (c["title"] or "").strip().lower() == nm and nm), None)
+            if cid is None:
+                res["details"].append({"chat": ch.get("name"), "status": "не нашёл такой чат в базе"})
+                continue
+            last = {"client": None, "our": None, "client_name": None, "client_text": None, "our_name": None}
+            for m in msgs:
+                if m.get("type") != "message":
+                    continue
+                date = m.get("date")   # '2026-07-20T12:34:56'
+                if not date:
+                    continue
+                txt = m.get("text")
+                if isinstance(txt, list):   # текст с форматированием — склеиваем
+                    txt = "".join(x if isinstance(x, str) else (x.get("text") or "") for x in txt)
+                fid = str(m.get("from_id") or "")
+                uid = int(fid.replace("user", "")) if fid.startswith("user") and fid[4:].isdigit() else None
+                is_our = (uid in our_ids) if uid else False
+                is_bot = str(m.get("from") or "").lower().endswith("bot")
+                res["messages"] += 1
+                if is_bot:
+                    continue
+                if is_our:
+                    if not last["our"] or date > last["our"]:
+                        last["our"], last["our_name"] = date, m.get("from")
+                else:
+                    if not last["client"] or date > last["client"]:
+                        last["client"], last["client_name"], last["client_text"] = date, m.get("from"), (txt or "")[:300]
+            # пишем как UTC-время (экспорт без таймзоны — считаем локальным МСК → в UTC)
+            def _iso(d):
+                if not d:
+                    return None
+                try:
+                    t = _dt.datetime.fromisoformat(d)
+                    if t.tzinfo is None:
+                        t = t.replace(tzinfo=_dt.timezone(_dt.timedelta(hours=3)))
+                    return t.astimezone(_dt.timezone.utc).isoformat(timespec="seconds")
+                except (TypeError, ValueError):
+                    return None
+            self.db.conn.execute("INSERT OR IGNORE INTO chat_activity(chat_id) VALUES(?)", (cid,))
+            self.db.conn.execute(
+                "UPDATE chat_activity SET last_client_at=COALESCE(?,last_client_at), "
+                "last_client_name=COALESCE(?,last_client_name), last_client_text=COALESCE(?,last_client_text), "
+                "last_our_at=COALESCE(?,last_our_at), last_our_name=COALESCE(?,last_our_name) WHERE chat_id=?",
+                (_iso(last["client"]), last["client_name"], last["client_text"],
+                 _iso(last["our"]), last["our_name"], cid))
+            self.db.conn.commit()
+            res["matched"] += 1
+            res["details"].append({"chat": ch.get("name"), "status": "ок",
+                                   "last_client": _iso(last["client"]), "last_our": _iso(last["our"])})
+        self._audit("import_history", "чатов: {}".format(res["matched"]),
+                    "сообщений разобрано: {}".format(res["messages"]))
+        return res
+
+    @safe
+    def seed_dialogs_from_history(self):
+        """Проинициализировать «последний контакт» из истории наших отправок (без переписки)."""
+        self._require_write()
+        n = self.db.seed_activity_from_sendlog()
+        return {"seeded": n}
+
+    @safe
     def dialogs(self):
         """Вкладка «Ждут ответа»: клиенты, которым мы не ответили, и забытые чаты."""
         waiting, silent = self._chat_dialogs()

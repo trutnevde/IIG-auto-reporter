@@ -684,6 +684,27 @@ function waitFmt(h){
   if(h<48)return Math.round(h)+' ч';
   return Math.round(h/24)+' дн';
 }
+async function doSeedDialogs(){
+  try{const r=await api('seed_dialogs_from_history');
+    toast(r.seeded?('Подтянуто чатов: '+r.seeded+' (последний контакт из отправок)'):'Нечего подтягивать — уже заполнено','ok');
+    renderDialogs();
+  }catch(e){}
+}
+async function doImportHistory(){
+  const f=el('dlgFile'); const res=el('dlgImportRes');
+  if(!f||!f.files||!f.files[0]){toast('Выбери файл result.json из экспорта Telegram','err');return;}
+  res.textContent='Читаю файл…';
+  try{
+    const txt=await f.files[0].text();
+    let data; try{data=JSON.parse(txt);}catch(e){res.textContent='Это не JSON — нужен result.json из экспорта Telegram Desktop';return;}
+    res.innerHTML='<span class="spin"></span> разбираю переписку…';
+    const r=await api('import_chat_history',data);
+    res.innerHTML='Готово: чатов в файле '+r.chats+', сопоставлено с базой <b>'+r.matched+'</b>, сообщений разобрано '+r.messages+
+      (r.details&&r.details.length?('<br>'+r.details.slice(0,8).map(d=>'• '+esc(d.chat||'?')+' — '+esc(d.status)).join('<br>')):'');
+    toast('История импортирована: чатов '+r.matched,'ok');
+    setTimeout(renderDialogs,1200);
+  }catch(e){res.textContent='Ошибка: '+e.message;}
+}
 async function renderDialogs(){
   const host=el('v_dialogs');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
   let d;try{d=await api('dialogs');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
@@ -705,7 +726,16 @@ async function renderDialogs(){
   host.innerHTML=`
     <h2 class="title">⏳ Ждут ответа</h2>
     <p class="sub">Клиенты, которые написали в чат, а мы им ещё не ответили. Считается по реальной переписке: отчёт бота ответом не считается. Жёлтый — ждёт больше ${d.warn_h} ч, красный — больше суток (тогда же прилетает уведомление владельцу проекта).</p>
-    ${!d.has_data?`<div class="note" style="margin-bottom:14px">📭 Пока нет данных о переписке — учёт начинается с этого момента: как только в чатах напишут, здесь появятся диалоги.</div>`:''}
+    ${!d.has_data?`<div class="note" style="margin-bottom:14px">📭 Пока нет данных о переписке — Telegram не отдаёт боту историю задним числом, учёт идёт с момента подключения. Ниже можно подтянуть прошлое.</div>`:''}
+    ${(ME&&ME.role!=='observer')?`<details style="margin-bottom:14px"><summary class="muted" style="cursor:pointer;font-size:13px">📥 Подтянуть историю задним числом</summary>
+      <div class="panel" style="margin-top:8px"><div class="body">
+        <p class="muted" style="margin-top:0;font-size:13px"><b>Способ 1 — по нашим отправкам (быстро):</b> проставит «последний контакт» из истории отправленных отчётов. Заполнит «давно не общались», но не покажет вопросы клиентов.</p>
+        <button class="btn sm" onclick="doSeedDialogs()">⚡ Взять из истории отправок</button>
+        <p class="muted" style="margin:14px 0 6px;font-size:13px"><b>Способ 2 — точный:</b> в Telegram Desktop открой чат клиента → ⋮ → «Экспорт истории чата» → формат <b>JSON</b> → загрузи файл сюда. Разберём, кто писал последним и о чём.</p>
+        <input type="file" id="dlgFile" accept=".json" style="font-size:12.5px">
+        <button class="btn sm primary" onclick="doImportHistory()">📥 Загрузить экспорт</button>
+        <div id="dlgImportRes" class="muted" style="margin-top:8px;font-size:12.5px"></div>
+      </div></div></details>`:''}
     <div class="cards" style="margin-bottom:18px">
       ${statCard(d.counts.waiting?'amber':'green','⏳','Ждут ответа',d.counts.waiting)}
       ${statCard(d.counts.overdue?'red':'slate','🔴','Дольше суток',d.counts.overdue)}
@@ -1201,7 +1231,8 @@ const CHANGELOG=[
   'Второй блок «Давно не общались» — чаты, где вообще нет активности 21+ день: клиент забыт, стоит написать первым.',
   'Счётчик ждущих — в меню и на «Обзоре» отдельной карточкой, плюс строка в «Требует внимания» с топ-3 самых заждавшихся.',
   'Если клиент ждёт дольше суток — владельцу проекта прилетает уведомление в колокольчик (раз в сутки на чат, без спама).',
-  'Скоуп по ролям: специалист видит только своих клиентов, работодатель — всех.']},
+  'Скоуп по ролям: специалист видит только своих клиентов, работодатель — всех.',
+  '📥 Историю можно подтянуть задним числом: «взять из истории отправок» (быстро, заполнит «давно не общались») либо загрузить экспорт чата из Telegram Desktop в JSON — тогда подтянутся и вопросы клиентов, и наши ответы.']},
 {date:'2026-07-26',tag:'fix',title:'Работодатель может подтягивать клиентов из Директа',
  sum:'Синхронизация справочника клиентов открыта наблюдателю',items:[
   'Кнопка «🔄 Подтянуть из Директа» теперь работает и у работодателя — раньше упиралась в «только администратор», хотя именно он раздаёт проекты и ему нужен свежий список.',
