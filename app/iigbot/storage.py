@@ -151,6 +151,22 @@ class Storage:
         if "note" not in cols:   # заметка по проекту («на паузе до августа») — видна всем причастным
             self.conn.execute("ALTER TABLE clients ADD COLUMN note TEXT")
             self.conn.commit()
+        # активность в чатах клиентов: кто последний писал — клиент, мы или бот-отчёт.
+        # Нужно, чтобы видеть «клиент спросил, а мы не ответили N часов».
+        self.conn.execute(
+            """CREATE TABLE IF NOT EXISTS chat_activity (
+                chat_id        INTEGER PRIMARY KEY,
+                last_client_at   TEXT,   -- когда последний раз писал КЛИЕНТ
+                last_client_name TEXT,
+                last_client_text TEXT,
+                last_our_at      TEXT,   -- когда последний раз отвечал НАШ сотрудник
+                last_our_name    TEXT,
+                last_bot_at      TEXT,   -- когда бот кидал отчёт (это НЕ ответ на вопрос)
+                msgs_client      INTEGER DEFAULT 0,
+                msgs_our         INTEGER DEFAULT 0,
+                updated_at       TEXT
+            )""")
+        self.conn.commit()
         # уведомления кабинета (колокольчик): to_user=NULL — всем
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS notifications (
@@ -344,6 +360,45 @@ class Storage:
         """Привязать конкретный chat_id для алертов (по deep-link /start alert_<token>)."""
         self.conn.execute("UPDATE users SET alert_chat_id=? WHERE id=?", (chat_id, user_id))
         self.conn.commit()
+
+    # ---------- активность в чатах (кто кому не ответил) ----------
+    def touch_chat_activity(self, chat_id, kind, name=None, text=None):
+        """Зафиксировать сообщение в чате. kind: 'client' | 'our' | 'bot'."""
+        self.conn.execute("INSERT OR IGNORE INTO chat_activity(chat_id) VALUES(?)", (chat_id,))
+        now = _now()
+        if kind == "client":
+            self.conn.execute(
+                "UPDATE chat_activity SET last_client_at=?, last_client_name=?, last_client_text=?, "
+                "msgs_client=COALESCE(msgs_client,0)+1, updated_at=? WHERE chat_id=?",
+                (now, name, (text or "")[:300], now, chat_id))
+        elif kind == "our":
+            self.conn.execute(
+                "UPDATE chat_activity SET last_our_at=?, last_our_name=?, "
+                "msgs_our=COALESCE(msgs_our,0)+1, updated_at=? WHERE chat_id=?",
+                (now, name, now, chat_id))
+        else:
+            self.conn.execute("UPDATE chat_activity SET last_bot_at=?, updated_at=? WHERE chat_id=?",
+                              (now, now, chat_id))
+        self.conn.commit()
+
+    def list_chat_activity(self):
+        return self.conn.execute("SELECT * FROM chat_activity").fetchall()
+
+    def our_telegram_ids(self, cfg_admin_ids=None):
+        """Telegram-id «наших»: админы из app_config + привязанные личики сотрудников
+        (в приватном чате chat_id == user_id, поэтому alert_chat_id и есть его tg-id)."""
+        ids = set()
+        for x in (cfg_admin_ids or []):
+            try:
+                ids.add(int(x))
+            except (TypeError, ValueError):
+                pass
+        try:
+            for r in self.conn.execute("SELECT alert_chat_id FROM users WHERE alert_chat_id IS NOT NULL"):
+                ids.add(int(r["alert_chat_id"]))
+        except Exception:  # noqa: BLE001 — старая база без колонки
+            pass
+        return ids
 
     # ---------- уведомления кабинета ----------
     def add_notification(self, to_user, kind, title, text=None, link=None, dedup_key=None):

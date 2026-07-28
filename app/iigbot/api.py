@@ -284,6 +284,17 @@ class Api:
                 return v
         health = {"autosync": _epoch_iso("autosync_last"), "budgets": self.db.get_kv("budgets_updated")}
 
+        # диалоги: сколько клиентов ждут ответа (для карточки на Обзоре)
+        try:
+            _wait, _silent = self._chat_dialogs()
+            dialogs = {"waiting": len(_wait),
+                       "overdue": sum(1 for w in _wait if (w.get("wait_h") or 0) >= self.WAIT_CRIT_HOURS),
+                       "silent": len(_silent),
+                       "top": [{"name": w.get("client_name") or w.get("chat_title"),
+                                "wait_h": w.get("wait_h")} for w in _wait[:3]]}
+        except Exception:  # noqa: BLE001
+            dialogs = {"waiting": 0, "overdue": 0, "silent": 0, "top": []}
+
         return {
             "role": (self.user.get("role") if self.user else "admin"),
             "clients": len(clients),
@@ -293,6 +304,7 @@ class Api:
             "clients_no_chat": len(clients_no_chat),
             "errors": by_status.get("error", 0),
             "week": week,
+            "dialogs": dialogs,
             "external_pending": len(ext_pending),
             "budgets": budgets,
             "health": health,
@@ -1352,6 +1364,109 @@ class Api:
         self.db.set_kv("digest_last", str(__import__("time").time()))
         self._audit("digest", "сводка", "отправлено получателям: {}".format(sent))
         return {"sent": sent, "missing": missing}
+
+    # ---------- диалоги с клиентами: кто ждёт ответа ----------
+    SILENT_DAYS = 21          # столько дней без единого сообщения — «клиент забыт»
+    WAIT_WARN_HOURS = 4       # ждёт дольше — подсветка
+    WAIT_CRIT_HOURS = 24      # ждёт дольше — красным + уведомление
+
+    def _chat_dialogs(self):
+        """Сырые данные по диалогам в скоупе пользователя: кто ждёт ответа и кто молчит."""
+        import datetime as dt
+
+        def _age_h(iso):
+            if not iso:
+                return None
+            try:
+                t = dt.datetime.fromisoformat(iso)
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=dt.timezone.utc)
+                return round((dt.datetime.now(dt.timezone.utc) - t).total_seconds() / 3600, 1)
+            except (TypeError, ValueError):
+                return None
+
+        act = {a["chat_id"]: a for a in self.db.list_chat_activity()}
+        bind = {b["chat_id"]: b["login"] for b in self.db.list_bindings("all")}
+        clients = {c["login"]: c for c in self.db.list_clients("all")}
+        users = {u["id"]: (u["name"] or u["email"]) for u in self.db.list_users()}
+        own = self._owned_set()          # None = вижу всё (наблюдатель/десктоп)
+        waiting, silent = [], []
+        for ch in self.db.list_chats():
+            if ch["status"] != "active" or (ch["type"] or "") not in ("group", "supergroup"):
+                continue
+            login = bind.get(ch["chat_id"])
+            if own is not None and (login is None or login not in own):
+                continue                  # чужой/непривязанный чат — не моя зона
+            c = clients.get(login) if login else None
+            owner = (c["owner"] if (c and "owner" in c.keys()) else None)
+            a = act.get(ch["chat_id"])
+            row = {"chat_id": ch["chat_id"], "chat_title": ch["title"],
+                   "login": login, "client_name": (c["name"] if c else None),
+                   "owner": owner, "owner_name": users.get(owner),
+                   "last_client_at": a["last_client_at"] if a else None,
+                   "last_client_text": a["last_client_text"] if a else None,
+                   "last_client_name": a["last_client_name"] if a else None,
+                   "last_our_at": a["last_our_at"] if a else None,
+                   "last_our_name": a["last_our_name"] if a else None}
+            lc, lo = row["last_client_at"], row["last_our_at"]
+            if lc and (not lo or lo < lc):
+                row["wait_h"] = _age_h(lc)
+                waiting.append(row)
+            last_any = max([x for x in (lc, lo, (a["last_bot_at"] if a else None)) if x], default=None)
+            row["last_any_at"] = last_any
+            row["silent_days"] = round((_age_h(last_any) or 0) / 24, 1) if last_any else None
+            if last_any and row["silent_days"] and row["silent_days"] >= self.SILENT_DAYS:
+                silent.append(row)
+        waiting.sort(key=lambda r: -(r.get("wait_h") or 0))
+        silent.sort(key=lambda r: -(r.get("silent_days") or 0))
+        return waiting, silent
+
+    @safe
+    def dialogs(self):
+        """Вкладка «Ждут ответа»: клиенты, которым мы не ответили, и забытые чаты."""
+        waiting, silent = self._chat_dialogs()
+        has_data = bool(self.db.list_chat_activity())
+        return {"waiting": waiting, "silent": silent, "has_data": has_data,
+                "warn_h": self.WAIT_WARN_HOURS, "crit_h": self.WAIT_CRIT_HOURS,
+                "silent_days": self.SILENT_DAYS,
+                "counts": {"waiting": len(waiting),
+                           "overdue": sum(1 for w in waiting if (w.get("wait_h") or 0) >= self.WAIT_CRIT_HOURS),
+                           "silent": len(silent)}}
+
+    def _dialog_alerts(self):
+        """Уведомления владельцам: «клиент ждёт ответа больше суток» (раз в день на чат)."""
+        act = {a["chat_id"]: a for a in self.db.list_chat_activity()}
+        if not act:
+            return 0
+        bind = {b["chat_id"]: b["login"] for b in self.db.list_bindings("all")}
+        clients = {c["login"]: c for c in self.db.list_clients("all")}
+        import datetime as dt
+        now = dt.datetime.now(dt.timezone.utc)
+        n = 0
+        for cid, a in act.items():
+            lc, lo = a["last_client_at"], a["last_our_at"]
+            if not lc or (lo and lo >= lc):
+                continue
+            try:
+                t = dt.datetime.fromisoformat(lc)
+                if t.tzinfo is None:
+                    t = t.replace(tzinfo=dt.timezone.utc)
+            except (TypeError, ValueError):
+                continue
+            hours = (now - t).total_seconds() / 3600
+            if hours < self.WAIT_CRIT_HOURS:
+                continue
+            login = bind.get(cid)
+            c = clients.get(login) if login else None
+            owner = (c["owner"] if (c and "owner" in c.keys()) else None)
+            if not owner:
+                continue
+            title = (c["name"] if c else None) or self._chat_title(cid)
+            self._notify(owner, "chat", "Клиент ждёт ответа: " + str(title),
+                         "без ответа {} ч — «{}»".format(int(hours), (a["last_client_text"] or "")[:80]),
+                         "dialogs", dedup=True)
+            n += 1
+        return n
 
     # ---------- центр уведомлений (колокольчик) ----------
     @safe

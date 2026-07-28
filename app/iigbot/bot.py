@@ -173,9 +173,31 @@ HELP = (
 )
 
 
+def _track_activity(msg, db, cfg):
+    """Кто написал в чат: клиент, наш сотрудник или бот. Нужно для «клиент ждёт ответа»."""
+    chat = msg.get("chat") or {}
+    if chat.get("type") not in ("group", "supergroup"):
+        return
+    frm = msg.get("from") or {}
+    name = (" ".join(x for x in (frm.get("first_name"), frm.get("last_name")) if x)
+            or frm.get("username") or str(frm.get("id") or "?"))
+    text = (msg.get("text") or msg.get("caption") or "")
+    if frm.get("is_bot"):
+        kind = "bot"          # отчёт бота — это НЕ ответ на вопрос клиента
+    elif frm.get("id") in db.our_telegram_ids(cfg.get("admin_user_ids")):
+        kind = "our"
+    else:
+        kind = "client"
+    try:
+        db.touch_chat_activity(chat["id"], kind, name, text)
+    except Exception:  # noqa: BLE001 — учёт активности не должен ломать бота
+        pass
+
+
 def handle_message(msg, tg, db, cfg, bot_username):
     chat = msg["chat"]
     db.upsert_chat(chat, my_status="member", status="active")
+    _track_activity(msg, db, cfg)          # фиксируем ЛЮБОЕ сообщение, не только команды
     text = (msg.get("text") or "").strip()
     if not text.startswith("/"):
         return

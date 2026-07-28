@@ -64,6 +64,9 @@ def _periodic_tick(base):
     if _due("budgets_last", 12):
         base.db.set_kv("budgets_last", now)
         threading.Thread(target=_budgets_job, args=(base,), daemon=True).start()
+    if _due("dialog_alert_last", 3):   # каждые ~3 часа: «клиент ждёт ответа больше суток»
+        base.db.set_kv("dialog_alert_last", now)
+        threading.Thread(target=_dialog_job, args=(base,), daemon=True).start()
     if _due("backup_last", 24):      # суточный бэкап БД (WAL-safe) с ротацией
         base.db.set_kv("backup_last", now)
         threading.Thread(target=_backup_job, args=(base,), daemon=True).start()
@@ -110,6 +113,17 @@ def _release_notify(base, ui_html):
                                  title, "changelog", dedup_key=True)
     except Exception:  # noqa: BLE001
         pass
+
+
+def _dialog_job(base):
+    """Уведомления «клиент ждёт ответа больше суток» владельцам проектов."""
+    from .settings import log_error
+    try:
+        n = base._dialog_alerts()
+        if n:
+            log_error("dialogs", "уведомлений о неотвеченных: {}".format(n))
+    except Exception as e:  # noqa: BLE001
+        log_error("dialogs", "сбой: {}".format(e))
 
 
 def _backup_job(base):
