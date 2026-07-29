@@ -289,7 +289,7 @@ class Api:
 
         # диалоги: сколько клиентов ждут ответа (для карточки на Обзоре)
         try:
-            _wait, _silent = self._chat_dialogs()
+            _wait, _silent, _hidden = self._chat_dialogs()
             dialogs = {"waiting": len(_wait),
                        "overdue": sum(1 for w in _wait if (w.get("wait_h") or 0) >= self.WAIT_CRIT_HOURS),
                        "silent": len(_silent),
@@ -1393,7 +1393,7 @@ class Api:
         clients = {c["login"]: c for c in self.db.list_clients("all")}
         users = {u["id"]: (u["name"] or u["email"]) for u in self.db.list_users()}
         own = self._owned_set()          # None = вижу всё (наблюдатель/десктоп)
-        waiting, silent = [], []
+        waiting, silent, hidden = [], [], []
         for ch in self.db.list_chats():
             if ch["status"] != "active" or (ch["type"] or "") not in ("group", "supergroup"):
                 continue
@@ -1412,17 +1412,23 @@ class Api:
                    "last_our_at": a["last_our_at"] if a else None,
                    "last_our_name": a["last_our_name"] if a else None}
             lc, lo = row["last_client_at"], row["last_our_at"]
+            # снятие с ожидания действует ровно до следующего сообщения клиента
+            off = (a["wait_off_at"] if (a and "wait_off_at" in a.keys()) else None)
+            off_by = (a["wait_off_by"] if (a and "wait_off_by" in a.keys()) else None)
+            row["wait_off_at"] = off
+            row["wait_off_by_name"] = users.get(off_by)
             if lc and (not lo or lo < lc):
                 row["wait_h"] = _age_h(lc)
-                waiting.append(row)
+                (hidden if (off and off >= lc) else waiting).append(row)
             last_any = max([x for x in (lc, lo, (a["last_bot_at"] if a else None)) if x], default=None)
             row["last_any_at"] = last_any
             row["silent_days"] = round((_age_h(last_any) or 0) / 24, 1) if last_any else None
             if last_any and row["silent_days"] and row["silent_days"] >= self.SILENT_DAYS:
                 silent.append(row)
         waiting.sort(key=lambda r: -(r.get("wait_h") or 0))
+        hidden.sort(key=lambda r: -(r.get("wait_h") or 0))
         silent.sort(key=lambda r: -(r.get("silent_days") or 0))
-        return waiting, silent
+        return waiting, silent, hidden
 
     @safe
     def import_chat_history(self, payload):
@@ -1520,14 +1526,38 @@ class Api:
     @safe
     def dialogs(self):
         """Вкладка «Ждут ответа»: клиенты, которым мы не ответили, и забытые чаты."""
-        waiting, silent = self._chat_dialogs()
+        waiting, silent, hidden = self._chat_dialogs()
         has_data = bool(self.db.list_chat_activity())
-        return {"waiting": waiting, "silent": silent, "has_data": has_data,
+        return {"waiting": waiting, "silent": silent, "hidden": hidden, "has_data": has_data,
                 "warn_h": self.WAIT_WARN_HOURS, "crit_h": self.WAIT_CRIT_HOURS,
                 "silent_days": self.SILENT_DAYS,
                 "counts": {"waiting": len(waiting),
                            "overdue": sum(1 for w in waiting if (w.get("wait_h") or 0) >= self.WAIT_CRIT_HOURS),
-                           "silent": len(silent)}}
+                           "silent": len(silent), "hidden": len(hidden)}}
+
+    @safe
+    def dialog_dismiss(self, chat_id):
+        """«Ответ не нужен»: убрать чат из ожидающих (клиент написал «Отлично» — и всё).
+
+        Снимаем именно текущее сообщение клиента: напишет новое — чат вернётся сам."""
+        self._require_write()
+        self._require_chat_visible(chat_id)
+        a = next((x for x in self.db.list_chat_activity() if x["chat_id"] == int(chat_id)), None)
+        mark = (a["last_client_at"] if a else None)
+        if not mark:
+            raise RuntimeError("В этом чате нет сообщений клиента — снимать нечего")
+        self.db.dismiss_chat_wait(chat_id, mark, self.user["id"] if self.user else None)
+        self._audit("dialog", self._chat_title(chat_id), "снят с ожидания ответа")
+        return {"chat_id": int(chat_id), "off_at": mark}
+
+    @safe
+    def dialog_restore(self, chat_id):
+        """Вернуть чат в «Ждут ответа» (отмена «ответ не нужен»)."""
+        self._require_write()
+        self._require_chat_visible(chat_id)
+        self.db.restore_chat_wait(chat_id)
+        self._audit("dialog", self._chat_title(chat_id), "возвращён в ожидающие ответа")
+        return {"chat_id": int(chat_id)}
 
     def _dialog_alerts(self):
         """Уведомления владельцам: «клиент ждёт ответа больше суток» (раз в день на чат)."""
@@ -1543,6 +1573,9 @@ class Api:
             lc, lo = a["last_client_at"], a["last_our_at"]
             if not lc or (lo and lo >= lc):
                 continue
+            off = (a["wait_off_at"] if "wait_off_at" in a.keys() else None)
+            if off and off >= lc:
+                continue          # сняли вручную («ответ не нужен») — не напоминаем
             try:
                 t = dt.datetime.fromisoformat(lc)
                 if t.tzinfo is None:

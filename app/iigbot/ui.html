@@ -789,6 +789,23 @@ function waitFmt(h){
   if(h<48)return Math.round(h)+' ч';
   return Math.round(h/24)+' дн';
 }
+/* «Ответ не нужен»: снимаем чат с ожидания до следующего сообщения клиента. */
+async function dlgOff(chatId,btn){
+  if(btn){btn.disabled=true;btn.textContent='…';}
+  try{
+    await api('dialog_dismiss',chatId);
+    toast('Убрал из ожидающих. Вернётся, когда клиент напишет снова','ok');
+    renderDialogs();loadBadges();
+  }catch(e){if(btn){btn.disabled=false;btn.textContent='✓ Ответ не нужен';}}
+}
+async function dlgOn(chatId,btn){
+  if(btn){btn.disabled=true;btn.textContent='…';}
+  try{
+    await api('dialog_restore',chatId);
+    toast('Вернул в список ожидающих','ok');
+    renderDialogs();loadBadges();
+  }catch(e){if(btn){btn.disabled=false;btn.textContent='↩ Вернуть';}}
+}
 async function doSeedDialogs(){
   try{const r=await api('seed_dialogs_from_history');
     toast(r.seeded?('Подтянуто чатов: '+r.seeded+' (последний контакт из отправок)'):'Нечего подтягивать — уже заполнено','ok');
@@ -813,15 +830,22 @@ async function doImportHistory(){
 async function renderDialogs(){
   const host=el('v_dialogs');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
   let d;try{d=await api('dialogs');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
-  const w=d.waiting||[], s=d.silent||[];
+  const w=d.waiting||[], s=d.silent||[], hid=d.hidden||[];
   const nb=el('navDialogs');if(nb){const n=d.counts.waiting;nb.textContent=n;nb.style.display=n?'':'none';}
   const rowCls=h=>h>=d.crit_h?'dlg-crit':(h>=d.warn_h?'dlg-warn':'');
+  const canAct=(ME&&ME.role!=='observer');   // наблюдатель только смотрит
   const rows=w.map(r=>`<tr class="${rowCls(r.wait_h)}">
       <td><b>${esc(r.client_name||r.chat_title||'—')}</b><div class="mini-2">${esc(r.chat_title||'')}</div></td>
       <td class="nowrap"><b style="color:${r.wait_h>=d.crit_h?'var(--red)':(r.wait_h>=d.warn_h?'var(--amber)':'var(--ink)')}">${waitFmt(r.wait_h)}</b><div class="mini-2">${fmtWhen(r.last_client_at)}</div></td>
       <td><div class="dlg-msg">${esc(r.last_client_text||'—')}</div><div class="mini-2">от: ${esc(r.last_client_name||'клиент')}</div></td>
       <td class="nowrap mini-2">${r.owner_name?esc(r.owner_name):'<span class="muted">без владельца</span>'}</td>
       <td class="nowrap mini-2">${r.last_our_at?('мы: '+fmtWhen(r.last_our_at)):'<span class="muted">мы не писали</span>'}</td>
+      <td class="nowrap">${canAct?`<button class="btn sm" onclick="dlgOff(${r.chat_id},this)" title="Клиент написал «Отлично» — отвечать нечего. Уберём из списка до его следующего сообщения.">✓ Ответ не нужен</button>`:''}</td>
+    </tr>`).join('');
+  const hidRows=hid.map(r=>`<tr>
+      <td><b>${esc(r.client_name||r.chat_title||'—')}</b><div class="mini-2">${esc(r.chat_title||'')}</div></td>
+      <td><div class="dlg-msg">${esc(r.last_client_text||'—')}</div><div class="mini-2">${fmtWhen(r.last_client_at)}${r.wait_off_by_name?(' · снял: '+esc(r.wait_off_by_name)):''}</div></td>
+      <td class="nowrap">${canAct?`<button class="btn sm" onclick="dlgOn(${r.chat_id},this)" title="Вернуть в список ожидающих ответа">↩ Вернуть</button>`:''}</td>
     </tr>`).join('');
   const silentRows=s.map(r=>`<tr>
       <td><b>${esc(r.client_name||r.chat_title||'—')}</b><div class="mini-2">${esc(r.chat_title||'')}</div></td>
@@ -848,9 +872,13 @@ async function renderDialogs(){
     </div>
     ${w.length?`<div class="panel"><h3><span class="h3-ic">⏳</span> Ждут нашего ответа (${w.length})</h3>
       <div class="scrollx"><table>
-        <thead><tr><th>Клиент</th><th>Ждёт</th><th>Последнее сообщение клиента</th><th>Ведёт</th><th>Наш ответ</th></tr></thead>
+        <thead><tr><th>Клиент</th><th>Ждёт</th><th>Последнее сообщение клиента</th><th>Ведёт</th><th>Наш ответ</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table></div></div>`
       :'<div class="empty">Всем ответили 🎉</div>'}
+    ${hid.length?`<details style="margin-top:16px"><summary class="muted" style="cursor:pointer;font-size:13px">🙈 Снятые с ожидания (${hid.length}) — вернутся сами, когда клиент напишет снова</summary>
+      <div class="panel" style="margin-top:8px"><div class="scrollx"><table>
+        <thead><tr><th>Клиент</th><th>Сообщение, на котором сняли</th><th></th></tr></thead>
+        <tbody>${hidRows}</tbody></table></div></div></details>`:''}
     ${s.length?`<div class="panel" style="margin-top:16px"><h3><span class="h3-ic">🌵</span> Давно не общались (${s.length})</h3>
       <div class="body"><p class="muted" style="margin-top:0;font-size:13px">В этих чатах вообще нет активности ${d.silent_days}+ дней — клиент «забыт», стоит написать первым.</p>
       <div class="scrollx"><table><thead><tr><th>Клиент</th><th>Молчание</th><th>Ведёт</th></tr></thead><tbody>${silentRows}</tbody></table></div></div></div>`:''}`;
@@ -1119,6 +1147,16 @@ const GUIDE=[
     <li><b>Все видимые</b> — то и другое вместе.</li>
   </ul>
   <p>Чужие привязанные чаты (клиенты других специалистов) не показываются вообще.</p>`},
+{tab:'Чаты и привязки',icon:'⏳',title:'Раздел «Ждут ответа»',kw:'ждут ответа не ответили молчим забытые давно не общались ответ не нужен скрыть снять',html:`
+  <p>Показывает клиентов, которые написали в чат, а мы им ещё <b>не ответили</b>. Считается по реальной переписке — отчёт бота ответом не считается, поэтому «ответили» не срабатывает ложно по понедельникам.</p>
+  <ul>
+    <li><b>Жёлтым</b> — ждёт больше 4 часов, <b>красным</b> — больше суток. На «дольше суток» владельцу проекта прилетает уведомление в колокольчик (раз в сутки на чат, без спама).</li>
+    <li>Как только кто-то из наших пишет в чат, строка исчезает сама — специально ничего нажимать не надо.</li>
+    <li>Второй блок <b>«Давно не общались»</b> — чаты без всякой активности 21+ день: клиент забыт, стоит написать первым.</li>
+  </ul>
+  <p><b>Кнопка «✓ Ответ не нужен»</b> (справа в строке) — для случаев, когда отвечать нечего: клиент написал «Отлично» или «Ок». Строка уходит из списка, счётчик уменьшается, уведомления по этому чату больше не приходят.</p>
+  <div class="note">Это не «удалить навсегда»: снятие держится <b>ровно до следующего сообщения клиента</b>. Напишет что-то новое — чат сам вернётся в список. Снятые лежат под строкой «🙈 Снятые с ожидания» — там же кнопка <b>«↩ Вернуть»</b>, если нажал по ошибке. Видно, кто снял.</div>
+  <p class="muted" style="font-size:12.5px">Наблюдатель раздел видит, но кнопок у него нет — только просмотр.</p>`},
 {tab:'Чаты и привязки',icon:'⚡',title:'Массовая привязка',kw:'массовая bind_bulk авто уверенность порог много',html:`
   <p>В разделе <b>Привязки</b> кнопка массовой привязки цепляет все непривязанные чаты, где совпадение с клиентом уверенное (по порогу). Остальное подправишь вручную. Массово цепляются только свои и свободные клиенты.</p>`},
 {tab:'Чаты и привязки',icon:'💬',title:'Команды бота в чате',kw:'команды start bind unbind whereami chats help бот',html:`
@@ -1361,6 +1399,13 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-07-29',tag:'feature',title:'«Ждут ответа»: кнопка «Ответ не нужен»',
+ sum:'Клиент написал «Отлично» — убери строку одним кликом',items:[
+  'По просьбе Ксении: в списке ожидающих справа появилась кнопка <b>«✓ Ответ не нужен»</b>. Клиент написал «Отлично» или «Ок» — отвечать нечего, а строка висела и мозолила глаза. Теперь убирается одним кликом: счётчик уменьшается, уведомления по этому чату не приходят.',
+  'Снятие не навсегда — оно держится ровно до следующего сообщения клиента. Напишет что-то новое — чат сам вернётся в список. Ничего чистить руками не нужно.',
+  'Снятые не исчезают бесследно: под таблицей строка «🙈 Снятые с ожидания» со списком, кнопкой «↩ Вернуть» и подписью, кто снял.',
+  'Действие пишется в журнал действий, так что работодателю видно, кто и что снимал. Сам наблюдатель кнопок не имеет — только просмотр.',
+  'В гайд добавлена тема «Раздел “Ждут ответа”» — раньше этот раздел был описан только в патчноутах.']},
 {date:'2026-07-29',tag:'feature',title:'🎮 Перерыв — игра в правом нижнем углу',
  sum:'Устал от отчётов — переключись на пару минут',items:[
   'В правом нижнем углу появилась круглая кнопка 🎮. Открывает панель с «2048»: складывай одинаковые плитки, чтобы получались вдвое большие.',

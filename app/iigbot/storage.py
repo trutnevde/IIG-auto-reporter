@@ -135,6 +135,11 @@ class Storage:
             # бэкфилл существующих: лучшая доступная оценка — updated_at
             self.conn.execute("UPDATE clients SET added_at=updated_at WHERE added_at IS NULL")
             self.conn.commit()
+        acols = {r["name"] for r in self.conn.execute("PRAGMA table_info(chat_activity)")}
+        if acols and "wait_off_at" not in acols:   # снят с ожидания ответа: на каком сообщении клиента
+            self.conn.execute("ALTER TABLE chat_activity ADD COLUMN wait_off_at TEXT")
+            self.conn.execute("ALTER TABLE chat_activity ADD COLUMN wait_off_by INTEGER")
+            self.conn.commit()
         ucols = {r["name"] for r in self.conn.execute("PRAGMA table_info(users)")}
         if "note" not in ucols:   # своя приписка к отчётам: NULL=общая (из Настроек), ''=без, текст=своя
             self.conn.execute("ALTER TABLE users ADD COLUMN note TEXT")
@@ -164,7 +169,9 @@ class Storage:
                 last_bot_at      TEXT,   -- когда бот кидал отчёт (это НЕ ответ на вопрос)
                 msgs_client      INTEGER DEFAULT 0,
                 msgs_our         INTEGER DEFAULT 0,
-                updated_at       TEXT
+                updated_at       TEXT,
+                wait_off_at      TEXT,   -- снят с «ждут ответа» на этом сообщении клиента
+                wait_off_by      INTEGER -- кто снял
             )""")
         self.conn.commit()
         # уведомления кабинета (колокольчик): to_user=NULL — всем
@@ -383,6 +390,25 @@ class Storage:
 
     def list_chat_activity(self):
         return self.conn.execute("SELECT * FROM chat_activity").fetchall()
+
+    def dismiss_chat_wait(self, chat_id, mark_at, user_id=None):
+        """Снять чат с ожидания ответа: клиент написал «Отлично», отвечать нечего.
+
+        Запоминаем ИМЕННО то сообщение, на котором сняли (mark_at = last_client_at на
+        тот момент). Напишет клиент что-то новое — last_client_at станет больше, и чат
+        сам вернётся в список. Никакой уборки по расписанию не нужно."""
+        self.conn.execute("INSERT OR IGNORE INTO chat_activity(chat_id) VALUES(?)", (int(chat_id),))
+        self.conn.execute(
+            "UPDATE chat_activity SET wait_off_at=?, wait_off_by=? WHERE chat_id=?",
+            (mark_at, user_id, int(chat_id)))
+        self.conn.commit()
+
+    def restore_chat_wait(self, chat_id):
+        """Вернуть чат в «Ждут ответа» (отмена снятия)."""
+        self.conn.execute(
+            "UPDATE chat_activity SET wait_off_at=NULL, wait_off_by=NULL WHERE chat_id=?",
+            (int(chat_id),))
+        self.conn.commit()
 
     def seed_activity_from_sendlog(self):
         """Разовая инициализация активности из истории отправок: Telegram не отдаёт боту
