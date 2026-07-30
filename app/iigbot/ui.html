@@ -482,6 +482,11 @@
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+<symbol id="i-keyboard-box" viewBox="0 0 24 24"><path fill="currentColor" d="M3 3h18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1m2 4v2h2V7zm0 4v2h2v-2zm0 4v2h14v-2zm4-4v2h2v-2zm0-4v2h2V7zm4 0v2h2V7zm4 0v2h2V7zm-4 4v2h2v-2zm4 0v2h2v-2z"/></symbol>
+<symbol id="i-time" viewBox="0 0 24 24"><path fill="currentColor" d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10s-4.477 10-10 10m1-10V7h-2v7h6v-2z"/></symbol>
+<symbol id="i-skip-forward" viewBox="0 0 24 24"><path fill="currentColor" d="M16 12.667L5.777 19.482A.5.5 0 0 1 5 19.066V4.934a.5.5 0 0 1 .777-.416L16 11.333V5a1 1 0 1 1 2 0v14a1 1 0 1 1-2 0z"/></symbol>
+<symbol id="i-logout-box-r" viewBox="0 0 24 24"><path fill="currentColor" d="M5 22a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1zm10-6l5-4l-5-4v3H9v2h6z"/></symbol>
+<symbol id="i-arrow-go-back" viewBox="0 0 24 24"><path fill="currentColor" d="M8 7v4L2 6l6-5v4h5a8 8 0 1 1 0 16H4v-2h9a6 6 0 0 0 0-12z"/></symbol>
 <symbol id="i-cloud" viewBox="0 0 24 24"><path fill="currentColor" d="M17 7a8 8 0 0 0-7.493 5.19l1.874.703A6.002 6.002 0 0 1 23 15a6 6 0 0 1-6 6H7A6 6 0 0 1 5.008 9.339a7 7 0 0 1 13.757-2.143A8 8 0 0 0 17 7"/></symbol>
 <symbol id="i-cup" viewBox="0 0 24 24"><path fill="currentColor" d="M5 3h15a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2v3a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V4a1 1 0 0 1 1-1m13 2v3h2V5zM2 19h18v2H2z"/></symbol>
 <symbol id="i-search-2" viewBox="0 0 24 24"><path fill="currentColor" d="M11 2c4.968 0 9 4.032 9 9s-4.032 9-9 9s-9-4.032-9-9s4.032-9 9-9m8.485 16.071l2.829 2.828l-1.415 1.415l-2.828-2.829z"/></symbol>
@@ -596,7 +601,7 @@
       <a data-go="settings"><svg class="ic"><use href="#i-gear"/></svg><span>Настройки</span></a>
       <a data-go="guide"><svg class="ic"><use href="#i-book"/></svg><span>Гайд</span></a>
     </nav>
-    <div class="btn-connect" onclick="closeNav();openOnboard()"><span>＋</span><span>Подключить клиента</span></div>
+    <div class="btn-connect" onclick="closeNav();openOnboard()"><span><svg class="ic"><use href="#i-add-circle"/></svg></span><span>Подключить клиента</span></div>
     <div class="spacer"></div>
     <div class="mini" id="botInfo">Загрузка…</div>
   </aside>
@@ -615,13 +620,13 @@
           <div id="notifList"><div class="empty" style="padding:18px">загрузка…</div></div>
         </div>
       </span>
-      <button class="btn sm" onclick="go('changelog')" title="История обновлений и патчноуты">🆕 Что нового</button>
+      <button class="btn sm" onclick="go('changelog')" title="История обновлений и патчноуты"><svg class="ic"><use href="#i-sparkling-2"/></svg> Что нового</button>
       <button class="icon-btn" id="themeBtn" onclick="toggleTheme()" title="Светлая / тёмная тема"><svg class="ic"><use href="#i-moon"/></svg></button>
-      <button class="btn sm" onclick="refresh()"><span class="r-ic">⟳</span> Обновить</button>
+      <button class="btn sm" onclick="refresh()"><span class="r-ic"><svg class="ic"><use href="#i-refresh"/></svg></span> Обновить</button>
       <span class="userbox" id="userBox" style="display:none">
         <span class="user-ava" id="userAva">?</span>
         <span class="user-meta"><b id="userName">—</b><span class="mini-2" id="userRole"></span></span>
-        <button class="icon-btn" onclick="logout()" title="Выйти">⎋</button>
+        <button class="icon-btn" onclick="logout()" title="Выйти"><svg class="ic"><use href="#i-logout-box-r"/></svg></button>
       </span>
     </header>
     <div class="content">
@@ -737,7 +742,7 @@
   </div>
   <div class="gm-note" id="gmNote">Складывай одинаковые — собери 2048.</div>
   <div class="gm-foot">
-    <button class="btn sm" id="gmUndo" onclick="gmUndo()" title="Отменить последний ход">↩ Ход назад</button>
+    <button class="btn sm" id="gmUndo" onclick="gmUndo()" title="Отменить последний ход"><svg class="ic"><use href="#i-arrow-go-back"/></svg> Ход назад</button>
     <button class="btn sm" id="gmNew" onclick="gmNew()"><svg class="ic"><use href="#i-refresh"/></svg> Заново</button>
     <div class="gm-hint">стрелки, WASD<br>или свайп</div>
   </div>
@@ -926,11 +931,11 @@ let CMDK_ON=false, CMDK_SEL=0, CMDK_ITEMS=[];
 function cmdkSources(){
   const boss=ME&&(ME.role==='admin'||ME.role==='observer');
   const secs=[
-    ['dashboard','<svg class="ic"><use href="#i-home-5"/></svg>'],['clients','<svg class="ic"><use href="#i-group"/></svg>'],['chats','<svg class="ic"><use href="#i-chat-3"/></svg>'],['dialogs','⏳'],['match','<svg class="ic"><use href="#i-links"/></svg>'],
+    ['dashboard','<svg class="ic"><use href="#i-home-5"/></svg>'],['clients','<svg class="ic"><use href="#i-group"/></svg>'],['chats','<svg class="ic"><use href="#i-chat-3"/></svg>'],['dialogs','<svg class="ic"><use href="#i-time"/></svg>'],['match','<svg class="ic"><use href="#i-links"/></svg>'],
     ['reports','<svg class="ic"><use href="#i-send-plane"/></svg>'],['budgets','<svg class="ic"><use href="#i-wallet-3"/></svg>'],['external','<svg class="ic"><use href="#i-upload-2"/></svg>'],['gsheets','<svg class="ic"><use href="#i-table"/></svg>'],
     ...(boss?[['supervision','<svg class="ic"><use href="#i-eye"/></svg>'],['users','<svg class="ic"><use href="#i-key-2"/></svg>']]:[]),
     ...(ME&&ME.role==='admin'?[['errlog','<svg class="ic"><use href="#i-heart-pulse"/></svg>']]:[]),
-    ['settings','<svg class="ic"><use href="#i-settings-3"/></svg>'],['guide','<svg class="ic"><use href="#i-book-2"/></svg>'],['changelog','🆕'],
+    ['settings','<svg class="ic"><use href="#i-settings-3"/></svg>'],['guide','<svg class="ic"><use href="#i-book-2"/></svg>'],['changelog','<svg class="ic"><use href="#i-sparkling-2"/></svg>'],
   ].map(([k,ic])=>({group:'Разделы',ic,label:NAMES[k]||k,run:()=>go(k)}));
   const acts=[
     {ic:'<svg class="ic"><use href="#i-send-plane"/></svg>',label:'Запустить рассылку',hint:'отчёты клиентам',run:()=>{go('dashboard');setTimeout(()=>{const b=[...document.querySelectorAll('#v_dashboard button')].find(x=>/Запустить рассылку/.test(x.textContent));if(b)b.click();},250)}},
@@ -939,7 +944,7 @@ function cmdkSources(){
     {ic:'<svg class="ic"><use href="#i-add-circle"/></svg>',label:'Подключить клиента',run:()=>openOnboard()},
     {ic:'<svg class="ic"><use href="#i-contrast-2"/></svg>',label:'Светлая / тёмная тема',run:()=>toggleTheme()},
     {ic:'<svg class="ic"><use href="#i-gamepad"/></svg>',label:'Перерыв — игра',run:()=>{if(!document.getElementById('gmWrap').classList.contains('on'))gmToggle();}},
-    {ic:'⌨️',label:'Горячие клавиши',run:()=>showKeys()},
+    {ic:'keyboard-box',label:'Горячие клавиши',run:()=>showKeys()},
   ].map(a=>Object.assign({group:'Действия'},a));
   const cls=(CLIENTS||[]).map(c=>({group:'Клиенты',ic:'<svg class="ic"><use href="#i-group"/></svg>',label:c.name||c.login,
     hint:c.login,run:()=>{go('clients');setTimeout(()=>openClient(c.login),220);}}));
@@ -1094,7 +1099,7 @@ async function renderDashboard(){
   const dlg=d.dialogs||{waiting:0,overdue:0};
   const cards=[
     statCardLink((bud.critical?'red':'green'),'<svg class="ic"><use href="#i-alert"/></svg>','Бюджеты на исходе',(bud.critical||0),'budgets'),
-    statCardLink((dlg.overdue?'red':(dlg.waiting?'amber':'slate')),'⏳','Ждут ответа',(dlg.waiting||0),'dialogs'),
+    statCardLink((dlg.overdue?'red':(dlg.waiting?'amber':'slate')),'<svg class="ic"><use href="#i-time"/></svg>','Ждут ответа',(dlg.waiting||0),'dialogs'),
     statCardLink(covCol,'<svg class="ic"><use href="#i-report"/></svg>',(isObs?'Покрытие агентства':'Твоя сдача недели'),
       (cov==null?'—':(cov+'%')),(isObs?'supervision':'reports'),
       (cov==null?'':('отправлено '+wk.sent+' из '+wk.obligations
@@ -1131,8 +1136,8 @@ async function renderDashboard(){
     h+=`<div class="alert red"><svg class="ic"><use href="#i-wallet"/></svg> <div><b>${bud.critical} клиент(ов): бюджет на исходе</b> <a onclick="go('budgets')">Бюджеты →</a>${top}</div></div>`;
   }
   if((dlg.waiting||0)>0){
-    const top=(dlg.top||[]).map(t=>`<div class="mini-2" style="margin-top:2px">⏳ ${esc(t.name||'—')} — ждёт ${t.wait_h>=48?Math.round(t.wait_h/24)+' дн':Math.round(t.wait_h)+' ч'}</div>`).join('');
-    h+=`<div class="alert ${dlg.overdue?'red':'amber'}">⏳ <div><b>${dlg.waiting} клиент(ов) ждут ответа</b>${dlg.overdue?(' · дольше суток: '+dlg.overdue):''} <a onclick="go('dialogs')">Открыть →</a>${top}</div></div>`;
+    const top=(dlg.top||[]).map(t=>`<div class="mini-2" style="margin-top:2px"><svg class="ic"><use href="#i-time"/></svg> ${esc(t.name||'—')} — ждёт ${t.wait_h>=48?Math.round(t.wait_h/24)+' дн':Math.round(t.wait_h)+' ч'}</div>`).join('');
+    h+=`<div class="alert ${dlg.overdue?'red':'amber'}"><svg class="ic"><use href="#i-time"/></svg> <div><b>${dlg.waiting} клиент(ов) ждут ответа</b>${dlg.overdue?(' · дольше суток: '+dlg.overdue):''} <a onclick="go('dialogs')">Открыть →</a>${top}</div></div>`;
   }
   if((wk.debt||0)>0)h+=`<div class="alert amber"><svg class="ic"><use href="#i-report"/></svg> <div><b>${wk.debt} ${isObs?'несданных по агентству':'клиент(ов) без отчёта на этой неделе'}</b>${isObs?(' (покрытие '+cov+'%)'):(' из '+wk.obligations)}. <a onclick="go('${isObs?'supervision':'reports'}')">${isObs?'Контроль':'Отчёты'} →</a></div></div>`;
   if(!isObs&&(d.external_pending||0)>0)h+=`<div class="alert grey"><svg class="ic"><use href="#i-outbox"/></svg> <div><b>${d.external_pending} сторонн. клиент(ов) ждут сбора</b> отчёта. <a onclick="go('external')">Собрать →</a></div></div>`;
@@ -1261,7 +1266,7 @@ async function dlgOn(chatId,btn){
     await api('dialog_restore',chatId);
     toast('Вернул в список ожидающих','ok');
     renderDialogs();loadBadges();
-  }catch(e){if(btn){btn.disabled=false;btn.textContent='↩ Вернуть';}}
+  }catch(e){if(btn){btn.disabled=false;btn.innerHTML='<svg class="ic"><use href="#i-arrow-go-back"/></svg> Вернуть';}}
 }
 async function doSeedDialogs(){
   try{const r=await api('seed_dialogs_from_history');
@@ -1302,7 +1307,7 @@ async function renderDialogs(){
   const hidRows=hid.map(r=>`<tr>
       <td><b>${esc(r.client_name||r.chat_title||'—')}</b><div class="mini-2">${esc(r.chat_title||'')}</div></td>
       <td><div class="dlg-msg">${esc(r.last_client_text||'—')}</div><div class="mini-2">${fmtWhen(r.last_client_at)}${r.wait_off_by_name?(' · снял: '+esc(r.wait_off_by_name)):''}</div></td>
-      <td class="nowrap">${canAct?`<button class="btn sm" onclick="dlgOn(${r.chat_id},this)" title="Вернуть в список ожидающих ответа">↩ Вернуть</button>`:''}</td>
+      <td class="nowrap">${canAct?`<button class="btn sm" onclick="dlgOn(${r.chat_id},this)" title="Вернуть в список ожидающих ответа"><svg class="ic"><use href="#i-arrow-go-back"/></svg> Вернуть</button>`:''}</td>
     </tr>`).join('');
   const silentRows=s.map(r=>`<tr>
       <td><b>${esc(r.client_name||r.chat_title||'—')}</b><div class="mini-2">${esc(r.chat_title||'')}</div></td>
@@ -1310,7 +1315,7 @@ async function renderDialogs(){
       <td class="nowrap mini-2">${r.owner_name?esc(r.owner_name):'<span class="muted">без владельца</span>'}</td>
     </tr>`).join('');
   host.innerHTML=`
-    <h2 class="title">⏳ Ждут ответа</h2>
+    <h2 class="title"><svg class="ic"><use href="#i-time"/></svg> Ждут ответа</h2>
     <p class="sub">Клиенты, которые написали в чат, а мы им ещё не ответили. Считается по реальной переписке: отчёт бота ответом не считается. Жёлтый — ждёт больше ${d.warn_h} ч, красный — больше суток (тогда же прилетает уведомление владельцу проекта).</p>
     ${!d.has_data?`<div class="note" style="margin-bottom:14px"><svg class="ic"><use href="#i-inbox-2"/></svg> Пока нет данных о переписке — Telegram не отдаёт боту историю задним числом, учёт идёт с момента подключения. Ниже можно подтянуть прошлое.</div>`:''}
     ${(ME&&ME.role!=='observer')?`<details style="margin-bottom:14px"><summary class="muted" style="cursor:pointer;font-size:13px"><svg class="ic"><use href="#i-inbox-archive"/></svg> Подтянуть историю задним числом</summary>
@@ -1323,11 +1328,11 @@ async function renderDialogs(){
         <div id="dlgImportRes" class="muted" style="margin-top:8px;font-size:12.5px"></div>
       </div></div></details>`:''}
     <div class="cards" style="margin-bottom:18px">
-      ${statCard(d.counts.waiting?'amber':'green','⏳','Ждут ответа',d.counts.waiting)}
+      ${statCard(d.counts.waiting?'amber':'green','<svg class="ic"><use href="#i-time"/></svg>','Ждут ответа',d.counts.waiting)}
       ${statCard(d.counts.overdue?'red':'slate','<svg class="ic"><use href="#i-error-warning"/></svg>','Дольше суток',d.counts.overdue)}
       ${statCard(d.counts.silent?'violet':'slate','<svg class="ic"><use href="#i-cactus"/></svg>','Забыты ('+d.silent_days+'+ дн)',d.counts.silent)}
     </div>
-    ${w.length?`<div class="panel"><h3><span class="h3-ic">⏳</span> Ждут нашего ответа (${w.length})</h3>
+    ${w.length?`<div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-time"/></svg></span> Ждут нашего ответа (${w.length})</h3>
       <div class="scrollx"><table>
         <thead><tr><th>Клиент</th><th>Ждёт</th><th>Последнее сообщение клиента</th><th>Ведёт</th><th>Наш ответ</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table></div></div>`
@@ -1557,7 +1562,7 @@ const GUIDE=[
   <p>В правом нижнем углу есть круглая кнопка <b>🎮</b> — это перерыв. Голова кипит от отчётов, надо на пару минут переключиться — открывай.</p>
   <p>Внутри <b>2048</b>: складывай одинаковые плитки, чтобы получались вдвое большие. Управление — <b>стрелки</b> или <b>WASD</b>, на телефоне <b>свайп</b>. <span class="gkbd">Esc</span> сворачивает.</p>
   <ul>
-    <li><b>↩ Ход назад</b> — отменить последний ход, если промахнулся.</li>
+    <li><b><svg class="ic"><use href="#i-arrow-go-back"/></svg> Ход назад</b> — отменить последний ход, если промахнулся.</li>
     <li><b>🔄 Заново</b> — начать партию сначала.</li>
     <li>Счёт и <b>рекорд</b> сохраняются в браузере, партия — тоже: свернул, ушёл работать, вернулся и доиграл с того же места.</li>
     <li>По дороге ловишь вехи: 128 — «лид», 256 — «заявка», 512 — «клиент», 1024 — «кейс», 2048 — «кейс года». После 2048 можно продолжать.</li>
@@ -1695,7 +1700,7 @@ const GUIDE=[
 {tab:'Бюджеты',icon:'🔗',title:'Как настроить алерты себе',kw:'привязать telegram алерты настройки по всему агентству мои клиенты username start',html:`
   <p><b>Настройки → «Алерты по бюджету — мой Telegram» → «🔗 Привязать Telegram»</b>: откроется бот, жмёшь <b>Start</b> — и чат привязан. Работает даже если у тебя нет публичного @username (раньше из-за этого алерты не доходили).</p>
   <p><b>Кому что приходит:</b> каждому специалисту — алерты по <b>его</b> клиентам. Админ и работодатель могут выбрать режим <b>«По всему агентству»</b> — тогда придут все критичные, включая проекты без владельца.</p>
-  <p>Проверить статус — кнопка «⟳ Проверить статус»; отключить — «Отвязать».</p>`},
+  <p>Проверить статус — кнопка «Проверить статус»; отключить — «Отвязать».</p>`},
 {tab:'Бюджеты',icon:'👀',title:'Мои клиенты или всё агентство',kw:'мои клиенты всё агентство переключатель админ наблюдатель пусто не вижу бюджеты',html:`
   <p>Вверху вкладки у админа и работодателя есть переключатель <b>«Мои клиенты / Всё агентство»</b>. Если у тебя нет своих проектов, в режиме «Мои» будет пусто — переключись на «Всё агентство».</p>
   <p>Кнопка <b>«⟳ Обновить сейчас»</b> собирает <b>только твоих</b> клиентов (быстро). Полный сбор по агентству идёт сам раз в 12 часов.</p>`},
@@ -2125,7 +2130,7 @@ function renderChangelog(){
       </div></div>`;
   }).join('');
   host.innerHTML=`
-    <h2 class="title">🆕 Что нового</h2>
+    <h2 class="title"><svg class="ic"><use href="#i-sparkling-2"/></svg> Что нового</h2>
     <p class="sub">Вся история кабинета — от старта до сегодня. ${CHANGELOG.length} релизов, ${total} изменений. Нажми на карточку, чтобы развернуть.</p>
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
       <button class="btn sm" onclick="clAll(true)">Развернуть всё</button>
@@ -2248,7 +2253,7 @@ function openRunModal(){
 async function pollRun(){
   let p;try{p=await api('run_weekly_progress');}catch(e){return;}
   const H=el('runHead');if(H)H.textContent=(p.dry?'проба · ':'')+(p.total?('('+p.done+'/'+p.total+')'):'…');
-  const ic=s=>s==='sent'?'<svg class="ic"><use href="#i-checkbox-circle"/></svg>':s==='dry'?'<svg class="ic"><use href="#i-flask"/></svg>':s==='error'?'<svg class="ic"><use href="#i-close-circle"/></svg>':s==='no_chat'?'<svg class="ic"><use href="#i-forbid-2"/></svg>':s==='skipped'?'⏭️':'•';
+  const ic=s=>s==='sent'?'<svg class="ic"><use href="#i-checkbox-circle"/></svg>':s==='dry'?'<svg class="ic"><use href="#i-flask"/></svg>':s==='error'?'<svg class="ic"><use href="#i-close-circle"/></svg>':s==='no_chat'?'<svg class="ic"><use href="#i-forbid-2"/></svg>':s==='skipped'?'<svg class="ic"><use href="#i-skip-forward"/></svg>':'•';
   const rows=(p.details||[]).slice().reverse().map(d=>{
     const ex=d.status==='sent'?('отправлено в чатов: '+(d.chats||0)):d.status==='dry'?('проба: отчёт собран (чатов '+(d.chats||0)+')'):esc(d.reason||d.status||'');
     return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(150,150,170,.12)"><span>'+ic(d.status)+'</span><div style="flex:1;min-width:0"><b>'+esc(d.name||d.login)+'</b><div class="muted" style="font-size:12px;word-break:break-word">'+ex+'</div></div></div>';}).join('');
@@ -2269,7 +2274,7 @@ async function pollRun(){
   else{
     const s=p.summary||{};const failed=(s.details||[]).filter(d=>d.status==='error'||d.status==='no_chat').length;
     F.innerHTML=((!p.dry&&failed)?('<button class="btn" onclick="runFailedAgain()"><svg class="ic"><use href="#i-refresh"/></svg> Переотправить недошедшим ('+failed+')</button>'):'')+
-      '<span class="muted" style="margin-right:auto;font-size:12.5px">'+(p.dry?'Проба (без отправки) — ':'')+'Итог: <svg class="ic"><use href="#i-checkbox-circle"/></svg> '+(s.sent||0)+(s.dry?(' · <svg class="ic"><use href="#i-flask"/></svg> '+s.dry):'')+' · ⏭️ '+(s.skipped||0)+' · <svg class="ic"><use href="#i-forbid-2"/></svg> '+(s.no_chat||0)+' · <svg class="ic"><use href="#i-close-circle"/></svg> '+(s.errors||0)+'</span>'+
+      '<span class="muted" style="margin-right:auto;font-size:12.5px">'+(p.dry?'Проба (без отправки) — ':'')+'Итог: <svg class="ic"><use href="#i-checkbox-circle"/></svg> '+(s.sent||0)+(s.dry?(' · <svg class="ic"><use href="#i-flask"/></svg> '+s.dry):'')+' · <svg class="ic"><use href="#i-skip-forward"/></svg> '+(s.skipped||0)+' · <svg class="ic"><use href="#i-forbid-2"/></svg> '+(s.no_chat||0)+' · <svg class="ic"><use href="#i-close-circle"/></svg> '+(s.errors||0)+'</span>'+
       '<button class="btn primary" onclick="closeRunModal()">Закрыть</button>';
     if(p.error)el('runBody').innerHTML+='<div style="color:var(--red,#e5484d);padding-top:8px">Ошибка запуска: '+esc(p.error)+'</div>';
     loadBadges();
@@ -2322,11 +2327,11 @@ async function renderBuilder(clientOpts){
         <button class="btn primary" onclick="doReportQuery()"><svg class="ic"><use href="#i-bar-chart"/></svg> Сформировать</button>
         <button class="btn" onclick="doReportCopy()"><svg class="ic"><use href="#i-file-copy-2"/></svg> Скопировать текст</button>
         <button class="btn" onclick="doReportXlsx()"><svg class="ic"><use href="#i-download-2"/></svg> Скачать xlsx</button>
-        <button class="btn" onclick="rbClearDraft()" title="Сбросить сохранённый черновик и начать с чистого листа">↩ Сброс</button>
+        <button class="btn" onclick="rbClearDraft()" title="Сбросить сохранённый черновик и начать с чистого листа"><svg class="ic"><use href="#i-arrow-go-back"/></svg> Сброс</button>
         <span id="rbSendNote" class="muted" style="margin-left:auto;font-size:12px;display:none"><svg class="ic"><use href="#i-lock-2"/></svg> не привязано к чату — отправка недоступна</span>
         <button class="btn" id="rbSendBtn" onclick="doReportSend()" title="Уйдёт реальным людям в чате клиента" style="border-color:var(--red);color:var(--red)"><svg class="ic"><use href="#i-send-plane"/></svg> Отправить в чат</button>
       </div>
-      <div class="note" style="margin-top:12px"><svg class="ic"><use href="#i-save-3"/></svg> Настройки конструктора <b>сохраняются автоматически</b> (черновик) — выйдешь и вернёшься, всё на месте; «↩ Сброс» очищает. Конверсии/CR/CPA — для любого клиента (поле Conversions Директа; если есть цели — по ним под атрибуцией). «Группировка даты → За весь период» сворачивает выбранный период в одну строку. В таблице результата: заголовки кликабельны (сортировка ▲▼), есть поиск.</div>
+      <div class="note" style="margin-top:12px"><svg class="ic"><use href="#i-save-3"/></svg> Настройки конструктора <b>сохраняются автоматически</b> (черновик) — выйдешь и вернёшься, всё на месте; «<svg class="ic"><use href="#i-arrow-go-back"/></svg> Сброс» очищает. Конверсии/CR/CPA — для любого клиента (поле Conversions Директа; если есть цели — по ним под атрибуцией). «Группировка даты → За весь период» сворачивает выбранный период в одну строку. В таблице результата: заголовки кликабельны (сортировка ▲▼), есть поиск.</div>
     </div></div>
     <div class="panel" style="margin-top:14px"><div class="body" id="rbResult">${emptyState('<svg class="ic"><use href="#i-hammer"/></svg>','Отчёт ещё не собран','Выбери клиента, разрез и период — покажу таблицу, которую можно отправить клиенту или выгрузить в xlsx.',null)}</div></div>`;
   const pane=el('rpane');if(pane&&!pane._draftHooked){pane._draftHooked=true;pane.addEventListener('change',rbSaveDraft);}
@@ -2537,7 +2542,7 @@ async function renderBudgets(){
       <div class="grow"></div>
       <a class="btn sm" href="/download/export/budgets.csv" title="Выгрузить бюджеты в CSV (Excel)"><svg class="ic"><use href="#i-download-2"/></svg> CSV</a>
       ${run.running?`<span class="badge b-amber" id="budProg"><span class="spin"></span> собираю: ${run.done}/${run.total||'…'}</span>`
-        :(ME&&ME.role==='observer'?'':'<button class="btn sm primary" onclick="doBudgetsRefresh()">⟳ Обновить сейчас</button>')}
+        :(ME&&ME.role==='observer'?'':'<button class="btn sm primary" onclick="doBudgetsRefresh()"><svg class="ic"><use href="#i-refresh"/></svg> Обновить сейчас</button>')}
     </div>
     <div class="tabs">${tab('all','Активные')}${tab('crit','<svg class="ic"><use href="#i-error-warning"/></svg> Критичные')}${tab('warn','<svg class="ic"><use href="#i-error-warning"/></svg>+<svg class="ic"><use href="#i-error-warning"/></svg> Внимание')}${tab('inactive','<svg class="ic"><use href="#i-moon-clear"/></svg> Неактивные ('+inact+')')}</div>
     ${shown.length?`<div class="panel"><div class="scrollx"><table>
@@ -2598,7 +2603,7 @@ async function renderExternal(){
     const isExt=c.delivery==='external';
     const badge=isExt?'<span class="badge b-amber" style="font-size:11px"><svg class="ic"><use href="#i-upload-2"/></svg> Сторонний</span>'
                      :'<span class="badge b-grey" style="font-size:11px"><svg class="ic"><use href="#i-telegram"/></svg> Telegram</span>';
-    const toggle=canEdit?`<button class="btn sm" onclick="event.preventDefault();extToggle('${esc(c.login)}','${isExt?'telegram':'external'}')" title="Переключить способ доставки">${isExt?'↩ в Telegram':'→ сделать сторонним'}</button>`:'';
+    const toggle=canEdit?`<button class="btn sm" onclick="event.preventDefault();extToggle('${esc(c.login)}','${isExt?'telegram':'external'}')" title="Переключить способ доставки">${isExt?'<svg class="ic"><use href="#i-arrow-go-back"/></svg> в Telegram':'→ сделать сторонним'}</button>`:'';
     return `<label class="ext-pick"><input type="checkbox" class="extchk" value="${esc(c.login)}" ${isExt?'checked':''}>
       <span class="ext-nm">${esc(c.name||c.login)}</span>
       <span class="muted" style="font-size:12px">${esc(c.login)}</span>
@@ -2642,7 +2647,7 @@ async function doCollectExternal(){
       <span class="spin"></span><b>Собираю отчёты (${logins.length})</b></div>
     <div class="muted" style="font-size:12.5px;margin-bottom:10px">По каждому клиенту идёт запрос в Директ — обычно 2–3 секунды на клиента.</div>
     ${logins.map(lg=>`<div style="display:flex;gap:8px;padding:5px 0;font-size:13px">
-      <span class="muted">⏳</span><span>${esc(nameOfLogin(lg))}</span></div>`).join('')}
+      <span class="muted"><svg class="ic"><use href="#i-time"/></svg></span><span>${esc(nameOfLogin(lg))}</span></div>`).join('')}
   </div></div>`;
   let res;
   try{res=await api('copy_reports',logins);}catch(e){box.innerHTML=errBlock(e,()=>refresh());return;}
@@ -2701,7 +2706,7 @@ async function renderErrlog(){
     <p class="sub">Технические события сервера — свежие сверху: ошибки (API, рассылка, сбор отчётов)
       и итоги фоновых задач (автосинк клиентов/целей, сбор бюджетов).</p>
     <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
-      <button class="btn sm" onclick="renderErrlog()">⟳ Обновить</button>
+      <button class="btn sm" onclick="renderErrlog()"><svg class="ic"><use href="#i-refresh"/></svg> Обновить</button>
       ${entries.length?'<button class="btn sm" onclick="doClearErrlog()"><svg class="ic"><use href="#i-delete-bin"/></svg> Очистить журнал</button>':''}
       <span class="muted" style="font-size:12px">записей: ${entries.length}${entries.length>=300?' (показаны последние 300)':''}</span>
     </div>
@@ -2821,7 +2826,7 @@ async function renderSettings(){
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn primary" onclick="alertLink()"><svg class="ic"><use href="#i-links"/></svg> Привязать Telegram</button>
         <button class="btn" id="alUnlinkBtn" style="display:none" onclick="alertUnlink()">Отвязать</button>
-        <button class="btn" onclick="renderSettings()">⟳ Проверить статус</button>
+        <button class="btn" onclick="renderSettings()"><svg class="ic"><use href="#i-refresh"/></svg> Проверить статус</button>
       </div>
       <div class="field" id="alScopeWrap" style="margin-top:14px;display:none"><label>По каким клиентам получать алерты</label>
         <select id="alScope" onchange="saveMyAlertScope()">
@@ -2840,7 +2845,7 @@ async function renderSettings(){
       <p class="muted" style="margin:0 0 10px;font-size:13px">Копия делается автоматически <b>раз в сутки</b> (хранятся последние 14). В базе — клиенты, привязки, цели, история, пользователи. Копия целостная (с учётом WAL), можно скачать и положить к себе.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
         <button class="btn primary" onclick="doBackupNow()"><svg class="ic"><use href="#i-save-3"/></svg> Сделать копию сейчас</button>
-        <button class="btn" onclick="loadBackups()">⟳ Обновить список</button>
+        <button class="btn" onclick="loadBackups()"><svg class="ic"><use href="#i-refresh"/></svg> Обновить список</button>
       </div>
       <div id="backupList" class="muted">загрузка…</div>
     </div></div>`:''}`;
@@ -2887,7 +2892,7 @@ async function saveMyAlertScope(){
 async function alertLink(){
   try{const r=await api('alert_link');
     window.open(r.link,'_blank');
-    toast('Открылся Telegram — нажми Start у бота, потом «⟳ Проверить статус»','ok');
+    toast('Открылся Telegram — нажми Start у бота, потом «Проверить статус»','ok');
   }catch(e){}
 }
 async function alertUnlink(){try{await api('alert_unlink');toast('Отвязано','ok');loadAlert();}catch(e){}}
@@ -2936,7 +2941,7 @@ async function openClient(login){
       <div id="dGoals"></div>
       <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
         <button class="btn sm primary" onclick="pullGoals()"><svg class="ic"><use href="#i-focus-3"/></svg> Подтянуть из Метрики</button>
-        <button class="btn sm" onclick="addGoal()">＋ Добавить вручную</button>
+        <button class="btn sm" onclick="addGoal()"><svg class="ic"><use href="#i-add-circle"/></svg> Добавить вручную</button>
       </div>
       <div class="hint">«Подтянуть из Метрики» сам находит счётчик клиента (кампании Директа и/или домен) и грузит ВСЕ его цели. Галка «в отчёт» = цель показывается в отчётах; ключевые (покупка/заявка/звонок) отмечаются сами, остальные лежат выключенными — довключи нужные и «Сохранить».</div></div>`;
   const g=el('dGoals');g.innerHTML='';(c.goals||[]).forEach(x=>addGoal(x.id,x.name,x.active));
@@ -3080,7 +3085,7 @@ async function renderSupervision(){
     '</tr>';}).join('');
   const notesHtml=notes.length?notes.map(n=>{
     const kc=n.kind==='urgent'?'var(--red)':n.kind==='warn'?'var(--amber)':'var(--brand)';
-    const reps=(n.replies||[]).map(rp=>'<div class="mini-2" style="margin-top:4px;padding:6px 10px;background:var(--surface-2);border-radius:8px;border-left:3px solid var(--green)">↩ <b>'+esc(rp.user_name||'специалист')+'</b>: '+esc(rp.text)+' <span class="muted">· '+fmtWhen(rp.created_at)+'</span></div>').join('');
+    const reps=(n.replies||[]).map(rp=>'<div class="mini-2" style="margin-top:4px;padding:6px 10px;background:var(--surface-2);border-radius:8px;border-left:3px solid var(--green)"><svg class="ic"><use href="#i-arrow-go-back"/></svg> <b>'+esc(rp.user_name||'специалист')+'</b>: '+esc(rp.text)+' <span class="muted">· '+fmtWhen(rp.created_at)+'</span></div>').join('');
     return '<div style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)"><span style="width:4px;border-radius:4px;background:'+kc+'"></span><div style="flex:1;min-width:0"><div>'+esc(n.text)+'</div><div class="mini-2">→ '+esc(n.to_name)+' · '+fmtWhen(n.created_at)+' · прочитали: '+n.acks+((n.replies&&n.replies.length)?(' · <b style="color:var(--green)">ответов: '+n.replies.length+'</b>'):'')+'</div>'+reps+'</div><button class="btn sm" onclick="supDelNote('+n.id+')">✕</button></div>';}).join(''):'<div class="muted" style="padding:10px 0">Сообщений пока нет.</div>';
   box.innerHTML=`
     <style>
@@ -3128,7 +3133,7 @@ async function renderSupervision(){
           <option value="note">Заметки</option><option value="user">Сотрудники</option>
           <option value="digest">Сводки</option>
         </select>
-        <button class="btn sm" onclick="loadAudit()">⟳ Обновить</button>
+        <button class="btn sm" onclick="loadAudit()"><svg class="ic"><use href="#i-refresh"/></svg> Обновить</button>
       </div><div id="auditBox" class="muted">загрузка…</div></div></div>
     <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-equalizer"/></svg></span> Раздача проектов — не назначено: ${supUnassigned} из ${(POOL||[]).length}</h3>
       <div class="body">
@@ -3297,7 +3302,7 @@ async function openSpecCard(uid){
   let d;try{d=await api('specialist_card',uid);}catch(e){el('drBody').innerHTML=errBlock(e);return;}
   el('drTitle').innerHTML='<svg class="ic"><use href="#i-user-3"/></svg> '+esc(d.user.name)+' <span class="muted" style="font-weight:400">· '+esc(d.user.role==='admin'?'админ':'специалист')+'</span>';
   const w=d.week, cov=w.coverage;
-  const st=(s)=>({sent:['<svg class="ic"><use href="#i-checkbox-circle"/></svg> сдан','var(--green)'],skipped:['⏭ нет открута','var(--muted)'],excused:['<svg class="ic"><use href="#i-shield-check"/></svg> уважительно','var(--amber)'],debt:['<svg class="ic"><use href="#i-close-circle"/></svg> долг','var(--red)']}[s]||['—','var(--muted)']);
+  const st=(s)=>({sent:['<svg class="ic"><use href="#i-checkbox-circle"/></svg> сдан','var(--green)'],skipped:['<svg class="ic"><use href="#i-skip-forward"/></svg> нет открута','var(--muted)'],excused:['<svg class="ic"><use href="#i-shield-check"/></svg> уважительно','var(--amber)'],debt:['<svg class="ic"><use href="#i-close-circle"/></svg> долг','var(--red)']}[s]||['—','var(--muted)']);
   const projRows=(d.projects||[]).map(p=>{
     const s=st(p.week_status);
     const money=p.days_left!=null?('<span style="color:'+(p.days_left<3?'var(--red)':p.days_left<7?'var(--amber)':'var(--muted)')+'">~'+p.days_left+' дн.</span>'):'<span class="muted">—</span>';
@@ -3353,7 +3358,7 @@ async function checkNotes(){
       '<div style="display:flex;align-items:center;gap:12px">'+
       '<span style="font-size:18px">'+ic+'</span>'+
       '<div style="flex:1;min-width:0"><b>'+esc(n.text)+'</b><span style="opacity:.85;font-size:12px;margin-left:8px">— '+esc(n.from_name||'руководитель')+'</span></div>'+
-      '<button onclick="noteReplyToggle('+n.id+')" style="'+bs+'">↩ Ответить</button>'+
+      '<button onclick="noteReplyToggle('+n.id+')" style="'+bs+'"><svg class="ic"><use href="#i-arrow-go-back"/></svg> Ответить</button>'+
       '<button onclick="ackNote('+n.id+')" style="'+bs+'">✓ Прочитано</button></div>'+
       '<div id="noteReply_'+n.id+'" style="display:none;gap:8px;margin-top:8px;padding-left:30px">'+
         '<input id="noteReplyTx_'+n.id+'" placeholder="Ответ работодателю…" style="flex:1;min-width:0;border-radius:8px;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.15);color:inherit;padding:7px 10px;font:inherit" onkeydown="if(event.key===\'Enter\')noteReplySend('+n.id+')">'+
@@ -3363,7 +3368,7 @@ async function checkNotes(){
 async function ackNote(id){ try{await api('note_ack',id);}catch(e){} checkNotes(); }
 
 /* ---------- центр уведомлений (колокольчик) ---------- */
-const NOTIF_IC={release:'🆕',client:'<svg class="ic"><use href="#i-user-3"/></svg>',chat:'<svg class="ic"><use href="#i-chat-3"/></svg>',budget:'<svg class="ic"><use href="#i-wallet-3"/></svg>',message:'<svg class="ic"><use href="#i-mail"/></svg>',debt:'<svg class="ic"><use href="#i-file-copy-2"/></svg>',system:'<svg class="ic"><use href="#i-settings-3"/></svg>'};
+const NOTIF_IC={release:'<svg class="ic"><use href="#i-sparkling-2"/></svg>',client:'<svg class="ic"><use href="#i-user-3"/></svg>',chat:'<svg class="ic"><use href="#i-chat-3"/></svg>',budget:'<svg class="ic"><use href="#i-wallet-3"/></svg>',message:'<svg class="ic"><use href="#i-mail"/></svg>',debt:'<svg class="ic"><use href="#i-file-copy-2"/></svg>',system:'<svg class="ic"><use href="#i-settings-3"/></svg>'};
 let NOTIF_OPEN=false;
 async function loadNotif(render){
   if(!ME)return;
