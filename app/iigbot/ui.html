@@ -139,6 +139,9 @@
   .c-red{--cc:var(--red);--cc-bg:var(--red-bg)}
   .c-slate{--cc:var(--slate);--cc-bg:var(--slate-bg)}
 
+  /* Remix Fill: залитые значки, цвет наследуют у строки, размер — от кегля */
+  svg.ic{width:1.2em;height:1.2em;flex:0 0 auto;vertical-align:-.2em;fill:currentColor}
+
   /* ---------- panels ---------- */
   .grid2{display:grid;grid-template-columns:1.45fr 1fr;gap:16px}
   .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden}
@@ -478,32 +481,54 @@
 </style>
 </head>
 <body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+<symbol id="i-home" viewBox="0 0 24 24"><path fill="currentColor" d="M21 20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.49a1 1 0 0 1 .386-.79l8-6.223a1 1 0 0 1 1.228 0l8 6.223a1 1 0 0 1 .386.79zm-10-7v6h2v-6z"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><path fill="currentColor" d="M2 22a8 8 0 1 1 16 0zm8-9c-3.315 0-6-2.685-6-6s2.685-6 6-6s6 2.685 6 6s-2.685 6-6 6m7.363 2.233A7.505 7.505 0 0 1 22.983 22H20c0-2.61-1-4.986-2.637-6.767m-2.023-2.276A7.98 7.98 0 0 0 18 7a7.96 7.96 0 0 0-1.015-3.903A5 5 0 0 1 21 8a5 5 0 0 1-5.66 4.957"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path fill="currentColor" d="M7.291 20.824L2 22l1.176-5.291A9.96 9.96 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10s-4.477 10-10 10a9.96 9.96 0 0 1-4.709-1.176"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><path fill="currentColor" d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10s-4.477 10-10 10m1-10V7h-2v7h6v-2z"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path fill="currentColor" d="m13.06 8.111l1.415 1.414a7 7 0 0 1 0 9.9l-.354.353a7 7 0 1 1-9.9-9.9l1.415 1.415a5 5 0 1 0 7.071 7.071l.354-.354a5 5 0 0 0 0-7.07l-1.415-1.415zm6.718 6.01l-1.414-1.414a5 5 0 0 0-7.071-7.07l-.354.353a5 5 0 0 0 0 7.07l1.415 1.415l-1.415 1.414l-1.414-1.414a7 7 0 0 1 0-9.9l.354-.353a7 7 0 1 1 9.9 9.9"/></symbol>
+<symbol id="i-wallet" viewBox="0 0 24 24"><path fill="currentColor" d="M22.005 6h-7a6 6 0 0 0 0 12h7v2a1 1 0 0 1-1 1h-18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1zm-7 2h8v8h-8a4 4 0 1 1 0-8m0 3v2h3v-2z"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path fill="currentColor" d="M1.946 9.315c-.522-.174-.527-.455.01-.634L21.044 2.32c.529-.176.832.12.684.638l-5.454 19.086c-.15.529-.455.547-.679.045L12 14l6-8l-8 6z"/></symbol>
+<symbol id="i-outbox" viewBox="0 0 24 24"><path fill="currentColor" d="M4 19h16v-7h2v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-8h2zM14 9v6h-4V9H5l7-7l7 7z"/></symbol>
+<symbol id="i-sheet" viewBox="0 0 24 24"><path fill="currentColor" d="M15 21H9V10h6zm2 0V10h5v10a1 1 0 0 1-1 1zM7 21H3a1 1 0 0 1-1-1V10h5zM22 8H2V4a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1z"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path fill="currentColor" d="M1.182 12C2.122 6.88 6.608 3 12 3s9.878 3.88 10.819 9c-.94 5.12-5.427 9-10.819 9s-9.878-3.88-10.818-9M12 17a5 5 0 1 0 0-10a5 5 0 0 0 0 10m0-2a3 3 0 1 1 0-6a3 3 0 0 1 0 6"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24"><path fill="currentColor" d="m10.313 11.566l7.94-7.94l2.121 2.12l-1.414 1.415l2.121 2.121l-3.535 3.536l-2.121-2.121l-2.99 2.99a5.002 5.002 0 0 1-7.97 5.849a5 5 0 0 1 5.848-7.97m-.899 5.848a2 2 0 1 0-2.828-2.828a2 2 0 0 0 2.828 2.828"/></symbol>
+<symbol id="i-pulse" viewBox="0 0 24 24"><path fill="currentColor" d="M16.5 3C19.538 3 22 5.5 22 9c0 7-7.5 11-10 12.5c-1.978-1.186-7.084-3.937-9.131-8.5h4.697l.934-1.556l3 5L13.566 13H17v-2h-4.566l-.934 1.556l-3-5L6.434 11H2.21A9.6 9.6 0 0 1 2 9c0-3.5 2.5-6 5.5-6C9.36 3 11 4 12 5c1-1 2.64-2 4.5-2"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><path fill="currentColor" d="M9.954 2.21a10 10 0 0 1 4.09-.002A4 4 0 0 0 16 5.07a4 4 0 0 0 3.457.261A10 10 0 0 1 21.5 8.877a4 4 0 0 0-1.5 3.122c0 1.264.586 2.391 1.501 3.124a10 10 0 0 1-2.045 3.543a4 4 0 0 0-3.456.261a4 4 0 0 0-1.955 2.86a10 10 0 0 1-4.09.004A4 4 0 0 0 8 18.927a4 4 0 0 0-3.457-.26A10 10 0 0 1 2.5 15.121A4 4 0 0 0 4 11.999c0-1.264-.587-2.39-1.502-3.124a10 10 0 0 1 2.045-3.542A4 4 0 0 0 8 5.07a4 4 0 0 0 1.954-2.86M12 15a3 3 0 1 0 0-6a3 3 0 0 0 0 6"/></symbol>
+<symbol id="i-book" viewBox="0 0 24 24"><path fill="currentColor" d="M21 18H6a1 1 0 1 0 0 2h15v2H6a3 3 0 0 1-3-3V4a2 2 0 0 1 2-2h16zm-5-9V7H8v2z"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path fill="currentColor" d="M4 20v-6a8 8 0 1 1 16 0v6h1v2H3v-2zm2-6h2a4 4 0 0 1 4-4V8a6 6 0 0 0-6 6m5-12h2v3h-2zm8.778 2.808l1.414 1.414l-2.12 2.121l-1.415-1.414zM2.808 6.222l1.414-1.414l2.121 2.12L4.93 8.344z"/></symbol>
+<symbol id="i-report" viewBox="0 0 24 24"><path fill="currentColor" d="M19 22H5a3 3 0 0 1-3-3V3a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v12h4v4a3 3 0 0 1-3 3m-1-5v2a1 1 0 1 0 2 0v-2zM6 7v2h8V7zm0 4v2h8v-2zm0 4v2h5v-2z"/></symbol>
+<symbol id="i-contacts" viewBox="0 0 24 24"><path fill="currentColor" d="M20 22H6a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3h14a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1m-1-2v-2H6a1 1 0 1 0 0 2zm-7-10a2 2 0 1 0 0-4a2 2 0 0 0 0 4m-3 4h6a3 3 0 1 0-6 0"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path fill="currentColor" d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10s-4.477 10-10 10m0-11.414L9.172 7.757L7.757 9.172L10.586 12l-2.829 2.828l1.415 1.415L12 13.414l2.828 2.829l1.415-1.415L13.414 12l2.829-2.828l-1.415-1.415z"/></symbol>
+<symbol id="i-warn" viewBox="0 0 24 24"><path fill="currentColor" d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10s-4.477 10-10 10m-1-7v2h2v-2zm0-8v6h2V7z"/></symbol>
+</svg>
+
 <div class="app">
   <aside class="side">
     <div class="brand"><span class="logo"><img src="/favicon.svg" alt="IIG"></span><span class="brand-tx">IIG <b>Reporter</b></span></div>
     <nav class="nav" id="nav">
-      <a data-go="dashboard" class="active"><span class="ic">🏠</span><span>Обзор</span></a>
+      <a data-go="dashboard" class="active"><svg class="ic"><use href="#i-home"/></svg><span>Обзор</span></a>
 
       <div class="nav-cap">Ведение проектов</div>
-      <a data-go="clients"><span class="ic">👥</span><span>Клиенты</span></a>
-      <a data-go="chats"><span class="ic">💬</span><span>Чаты</span></a>
-      <a data-go="dialogs"><span class="ic">⏳</span><span>Ждут ответа</span><span class="badge b-red nav-badge" id="navDialogs" style="display:none">0</span></a>
-      <a data-go="match"><span class="ic">🔗</span><span>Привязки</span><span class="badge b-amber nav-badge" id="navMatch" style="display:none">0</span></a>
-      <a data-go="budgets"><span class="ic">💰</span><span>Бюджеты</span><span class="badge b-red nav-badge" id="navBudgets" style="display:none">0</span></a>
+      <a data-go="clients"><svg class="ic"><use href="#i-users"/></svg><span>Клиенты</span></a>
+      <a data-go="chats"><svg class="ic"><use href="#i-chat"/></svg><span>Чаты</span></a>
+      <a data-go="dialogs"><svg class="ic"><use href="#i-clock"/></svg><span>Ждут ответа</span><span class="badge b-red nav-badge" id="navDialogs" style="display:none">0</span></a>
+      <a data-go="match"><svg class="ic"><use href="#i-link"/></svg><span>Привязки</span><span class="badge b-amber nav-badge" id="navMatch" style="display:none">0</span></a>
+      <a data-go="budgets"><svg class="ic"><use href="#i-wallet"/></svg><span>Бюджеты</span><span class="badge b-red nav-badge" id="navBudgets" style="display:none">0</span></a>
 
       <div class="nav-cap">Отчётность</div>
-      <a data-go="reports"><span class="ic">📨</span><span>Отчёты</span></a>
-      <a data-go="external"><span class="ic">📤</span><span>Сторонние</span></a>
-      <a data-go="gsheets"><span class="ic">📗</span><span>Таблицы</span></a>
+      <a data-go="reports"><svg class="ic"><use href="#i-send"/></svg><span>Отчёты</span></a>
+      <a data-go="external"><svg class="ic"><use href="#i-outbox"/></svg><span>Сторонние</span></a>
+      <a data-go="gsheets"><svg class="ic"><use href="#i-sheet"/></svg><span>Таблицы</span></a>
 
       <div class="nav-cap" id="navCapManage" style="display:none">Управление</div>
-      <a data-go="supervision" id="navSup" style="display:none"><span class="ic">👁</span><span>Контроль</span></a>
-      <a data-go="users" id="navUsers" style="display:none"><span class="ic">🔑</span><span>Пользователи</span></a>
-      <a data-go="errlog" id="navErrlog" style="display:none"><span class="ic">🩺</span><span>Журнал</span></a>
+      <a data-go="supervision" id="navSup" style="display:none"><svg class="ic"><use href="#i-eye"/></svg><span>Контроль</span></a>
+      <a data-go="users" id="navUsers" style="display:none"><svg class="ic"><use href="#i-key"/></svg><span>Пользователи</span></a>
+      <a data-go="errlog" id="navErrlog" style="display:none"><svg class="ic"><use href="#i-pulse"/></svg><span>Журнал</span></a>
 
       <div class="nav-cap">Система</div>
-      <a data-go="settings"><span class="ic">⚙️</span><span>Настройки</span></a>
-      <a data-go="guide"><span class="ic">📖</span><span>Гайд</span></a>
+      <a data-go="settings"><svg class="ic"><use href="#i-gear"/></svg><span>Настройки</span></a>
+      <a data-go="guide"><svg class="ic"><use href="#i-book"/></svg><span>Гайд</span></a>
     </nav>
     <div class="btn-connect" onclick="closeNav();openOnboard()"><span>＋</span><span>Подключить клиента</span></div>
     <div class="spacer"></div>
@@ -1002,19 +1027,19 @@ async function renderDashboard(){
   const covCol=cov==null?'slate':(cov>=100?'green':cov>=50?'amber':'red');
   const dlg=d.dialogs||{waiting:0,overdue:0};
   const cards=[
-    statCardLink((bud.critical?'red':'green'),'🔴','Бюджеты на исходе',(bud.critical||0),'budgets'),
+    statCardLink((bud.critical?'red':'green'),'<svg class="ic"><use href="#i-alert"/></svg>','Бюджеты на исходе',(bud.critical||0),'budgets'),
     statCardLink((dlg.overdue?'red':(dlg.waiting?'amber':'slate')),'⏳','Ждут ответа',(dlg.waiting||0),'dialogs'),
-    statCardLink(covCol,'📋',(isObs?'Покрытие агентства':'Твоя сдача недели'),
+    statCardLink(covCol,'<svg class="ic"><use href="#i-report"/></svg>',(isObs?'Покрытие агентства':'Твоя сдача недели'),
       (cov==null?'—':(cov+'%')),(isObs?'supervision':'reports'),
       (cov==null?'':('отправлено '+wk.sent+' из '+wk.obligations
         +((wk.no_spend||0)?(' · нет открута '+wk.no_spend):'')
         +((wk.excused||0)?(' · закрыто '+wk.excused):'')
         +((wk.debt||0)?(' · <b style="color:var(--red)">долг '+wk.debt+'</b>'):''))),
       'Покрытие = выполненные обязательства: отправленные отчёты + клиенты без открута (авто) + долги, закрытые уважительной причиной'),
-    (!isObs)?statCardLink((d.external_pending?'violet':'slate'),'📤','Сторонние к сбору',(d.external_pending||0),'external'):'',
-    statCardLink('blue','👥',(isObs?'Клиентов (все)':'Клиентов'),d.clients,'clients'),
-    statCardLink((d.clients_no_chat?'amber':'slate'),'📇','Без чата',d.clients_no_chat,'clients'),
-    statCardLink((d.errors?'red':'slate'),'🩺','Ошибок в истории',d.errors,'reports'),
+    (!isObs)?statCardLink((d.external_pending?'violet':'slate'),'<svg class="ic"><use href="#i-outbox"/></svg>','Сторонние к сбору',(d.external_pending||0),'external'):'',
+    statCardLink('blue','<svg class="ic"><use href="#i-users"/></svg>',(isObs?'Клиентов (все)':'Клиентов'),d.clients,'clients'),
+    statCardLink((d.clients_no_chat?'amber':'slate'),'<svg class="ic"><use href="#i-contacts"/></svg>','Без чата',d.clients_no_chat,'clients'),
+    statCardLink((d.errors?'red':'slate'),'<svg class="ic"><use href="#i-pulse"/></svg>','Ошибок в истории',d.errors,'reports'),
   ].filter(Boolean).join('');
   const health=`<div class="dash-health">🔄 автосинк: <b>${hl.autosync?fmtWhen(hl.autosync):'ещё не было'}</b> · 💰 бюджеты: <b>${hl.budgets?fmtWhen(hl.budgets):'ещё не собирали'}</b></div>`;
   host.innerHTML=`
@@ -1037,17 +1062,17 @@ async function renderDashboard(){
   const a=el('dashAlerts');let h='';
   if((bud.critical||0)>0){
     const top=(bud.top||[]).slice(0,3).map(t=>`<div class="mini-2" style="margin-top:2px">🔴 ${esc(t.name)}${t.days_left!=null?(' — ~'+t.days_left+' дн.'):''}${t.balance!=null?(', '+budMoneyShort(t.balance,t.currency)):''}</div>`).join('');
-    h+=`<div class="alert red">💰 <div><b>${bud.critical} клиент(ов): бюджет на исходе</b> <a onclick="go('budgets')">Бюджеты →</a>${top}</div></div>`;
+    h+=`<div class="alert red"><svg class="ic"><use href="#i-wallet"/></svg> <div><b>${bud.critical} клиент(ов): бюджет на исходе</b> <a onclick="go('budgets')">Бюджеты →</a>${top}</div></div>`;
   }
   if((dlg.waiting||0)>0){
     const top=(dlg.top||[]).map(t=>`<div class="mini-2" style="margin-top:2px">⏳ ${esc(t.name||'—')} — ждёт ${t.wait_h>=48?Math.round(t.wait_h/24)+' дн':Math.round(t.wait_h)+' ч'}</div>`).join('');
     h+=`<div class="alert ${dlg.overdue?'red':'amber'}">⏳ <div><b>${dlg.waiting} клиент(ов) ждут ответа</b>${dlg.overdue?(' · дольше суток: '+dlg.overdue):''} <a onclick="go('dialogs')">Открыть →</a>${top}</div></div>`;
   }
-  if((wk.debt||0)>0)h+=`<div class="alert amber">📋 <div><b>${wk.debt} ${isObs?'несданных по агентству':'клиент(ов) без отчёта на этой неделе'}</b>${isObs?(' (покрытие '+cov+'%)'):(' из '+wk.obligations)}. <a onclick="go('${isObs?'supervision':'reports'}')">${isObs?'Контроль':'Отчёты'} →</a></div></div>`;
-  if(!isObs&&(d.external_pending||0)>0)h+=`<div class="alert grey">📤 <div><b>${d.external_pending} сторонн. клиент(ов) ждут сбора</b> отчёта. <a onclick="go('external')">Собрать →</a></div></div>`;
-  if(d.unbound_chats>0)h+=`<div class="alert amber">⚠️ <div><b>${d.unbound_chats} чат(ов) без привязки</b> — бот добавлен, но не знает клиента. <a onclick="go('match')">Сопоставить →</a></div></div>`;
-  if(!isObs&&d.clients_no_chat>0)h+=`<div class="alert grey">📇 <div><b>${d.clients_no_chat} клиент(ов) без чата</b> (не сторонние). <a onclick="openOnboard()">Подключить →</a> или пометь сторонними.</div></div>`;
-  if(d.errors>0)h+=`<div class="alert red">❌ <div><b>${d.errors}</b> ошибок отправки в истории. <a onclick="go('reports')">Открыть →</a></div></div>`;
+  if((wk.debt||0)>0)h+=`<div class="alert amber"><svg class="ic"><use href="#i-report"/></svg> <div><b>${wk.debt} ${isObs?'несданных по агентству':'клиент(ов) без отчёта на этой неделе'}</b>${isObs?(' (покрытие '+cov+'%)'):(' из '+wk.obligations)}. <a onclick="go('${isObs?'supervision':'reports'}')">${isObs?'Контроль':'Отчёты'} →</a></div></div>`;
+  if(!isObs&&(d.external_pending||0)>0)h+=`<div class="alert grey"><svg class="ic"><use href="#i-outbox"/></svg> <div><b>${d.external_pending} сторонн. клиент(ов) ждут сбора</b> отчёта. <a onclick="go('external')">Собрать →</a></div></div>`;
+  if(d.unbound_chats>0)h+=`<div class="alert amber"><svg class="ic"><use href="#i-warn"/></svg> <div><b>${d.unbound_chats} чат(ов) без привязки</b> — бот добавлен, но не знает клиента. <a onclick="go('match')">Сопоставить →</a></div></div>`;
+  if(!isObs&&d.clients_no_chat>0)h+=`<div class="alert grey"><svg class="ic"><use href="#i-contacts"/></svg> <div><b>${d.clients_no_chat} клиент(ов) без чата</b> (не сторонние). <a onclick="openOnboard()">Подключить →</a> или пометь сторонними.</div></div>`;
+  if(d.errors>0)h+=`<div class="alert red"><svg class="ic"><use href="#i-x"/></svg> <div><b>${d.errors}</b> ошибок отправки в истории. <a onclick="go('reports')">Открыть →</a></div></div>`;
   a.innerHTML=h||'<div class="ok-empty">Всё в порядке ✅</div>';
 }
 
