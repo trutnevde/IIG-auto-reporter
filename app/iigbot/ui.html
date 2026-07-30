@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#0171B0">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&family=Inter:wght@600;700&display=swap" rel="stylesheet">
-<script>/* тема до отрисовки — без мигания */(function(){try{var t=localStorage.getItem('iig-theme');if(!t)t=(window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
+<script>/* тема до отрисовки — без мигания */(function(){try{var t=localStorage.getItem('iig-theme');if(!t)t=(window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-theme',t);}catch(e){errToast(e);}})();</script>
 <style>
   :root{
     --bg:#eef5fc; --surface:#ffffff; --surface-2:#f3f9fe; --surface-3:#e7f2fb;
@@ -186,6 +186,9 @@
   .btn:active{transform:translateY(0)}
   .btn.primary{background:var(--grad);border-color:transparent;color:#fff;box-shadow:0 6px 16px rgba(42,159,224,.34)}
   .btn.primary:hover{filter:brightness(1.05)}
+  /* необратимое действие: кнопка красная, чтобы палец притормозил */
+  .btn.danger{background:var(--red);border-color:transparent;color:#fff;box-shadow:0 6px 16px rgba(210,59,50,.3)}
+  .btn.danger:hover{filter:brightness(1.06)}
   .btn.sm{padding:6px 11px;font-size:12.5px;border-radius:9px}
   .btn:disabled{opacity:.5;cursor:default;transform:none}
   .r-ic{display:inline-block}
@@ -369,9 +372,13 @@
     .gm-wrap{right:10px;bottom:10px;width:calc(100vw - 20px)}
     .gm-fab{right:12px;bottom:12px}
     .gm-t{font-size:8vw}.gm-t.d4{font-size:6.4vw}
-    #toast{right:12px;bottom:76px}}
+    /* тост шире экрана вылезал за левый край: 380px при ширине 375 */
+    #toast{right:12px;left:12px;bottom:76px;align-items:stretch}
+    #toast .toast{max-width:none}}
+  /* forwards: без него при отключённых анимациях (prefers-reduced-motion) элемент
+     оставался в стартовом состоянии и уезжал на 24px вправо, за край экрана */
   .toast{background:#10202b;color:#fff;padding:12px 16px;border-radius:11px;box-shadow:var(--shadow-md);font-size:13.5px;max-width:380px;
-    animation:slidein .25s cubic-bezier(.22,1,.36,1);border-left:3px solid var(--brand)}
+    animation:slidein .25s cubic-bezier(.22,1,.36,1) forwards;border-left:3px solid var(--brand)}
   @keyframes slidein{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
   .toast.err{background:#7a1a14;border-left-color:#ffb4ad}.toast.ok{background:#0f6d3b;border-left-color:#7ff0b6}
 
@@ -379,6 +386,60 @@
     border-top-color:var(--brand);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
   @keyframes sp{to{transform:rotate(360deg)}}
   .empty{color:var(--muted);padding:26px;text-align:center}
+
+  /* ---------- дружелюбный UX: тост с действием, скелетоны, пустые экраны ---------- */
+  .toast-row{display:flex;align-items:center;gap:12px}
+  .toast-act{background:rgba(255,255,255,.16);border:0;color:#fff;font:inherit;font-weight:600;
+    padding:5px 11px;border-radius:8px;cursor:pointer;white-space:nowrap;flex:0 0 auto}
+  .toast-act:hover{background:rgba(255,255,255,.28)}
+  /* «пусто» — не констатация, а следующий шаг */
+  .es{display:flex;flex-direction:column;align-items:center;gap:9px;padding:34px 22px;text-align:center}
+  .es-ic{font-size:34px;line-height:1;opacity:.85}
+  .es-t{font-size:15px;font-weight:650;color:var(--ink)}
+  .es-h{font-size:13px;color:var(--muted);max-width:430px;line-height:1.5}
+  .es .btn{margin-top:3px}
+  /* скелетоны: экран не прыгает, пока едут данные */
+  .sk{background:linear-gradient(90deg,var(--surface-3) 25%,var(--surface-2) 37%,var(--surface-3) 63%);
+    background-size:400% 100%;animation:skwave 1.3s ease-in-out infinite;border-radius:7px;height:13px}
+  @keyframes skwave{0%{background-position:100% 50%}100%{background-position:0 50%}}
+  .sk-row{display:flex;gap:12px;align-items:center;padding:11px 2px;border-bottom:1px solid var(--line-soft)}
+  .sk-row:last-child{border-bottom:0}
+  .sk-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+  .sk-card{height:74px;border-radius:14px}
+  /* вспышка строки, которая только что изменилась */
+  @keyframes flashrow{0%{background:var(--amber-bg)}100%{background:transparent}}
+  .flash{animation:flashrow 1.15s ease-out}
+  /* кому анимации мешают — выключаем всё лишнее */
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+      transition-duration:.001ms!important;scroll-behavior:auto!important}}
+  /* видимый фокус с клавиатуры (мышью не мозолит) */
+  :focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
+
+  /* ---------- палитра команд (Ctrl+K) ---------- */
+  .cmdk-bg{position:fixed;inset:0;background:rgba(11,17,32,.5);backdrop-filter:blur(3px);display:none;z-index:80}
+  .cmdk-bg.on{display:block}
+  .cmdk{position:fixed;z-index:81;left:50%;top:14vh;transform:translateX(-50%) scale(.98);opacity:0;
+    pointer-events:none;width:min(620px,calc(100vw - 28px));background:var(--surface);
+    border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden;
+    transition:opacity .16s,transform .16s}
+  .cmdk.on{opacity:1;transform:translateX(-50%) scale(1);pointer-events:auto}
+  .cmdk input{width:100%;border:0;border-bottom:1px solid var(--line-soft);background:transparent;
+    color:var(--ink);font:inherit;font-size:15.5px;padding:16px 18px;outline:none}
+  .cmdk-list{max-height:min(52vh,420px);overflow:auto;padding:6px}
+  .cmdk-item{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:10px;cursor:pointer;font-size:13.5px}
+  .cmdk-item .ic{width:20px;text-align:center;flex:0 0 auto}
+  .cmdk-item .sub{margin-left:auto;font-size:11.5px;color:var(--muted);flex:0 0 auto}
+  .cmdk-item.sel{background:var(--surface-3)}
+  .cmdk-item:hover{background:var(--surface-2)}
+  .cmdk-cap{padding:9px 12px 4px;font-size:10.5px;font-weight:700;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--muted);opacity:.8}
+  .cmdk-foot{display:flex;gap:16px;padding:9px 16px;border-top:1px solid var(--line-soft);
+    background:var(--surface-2);font-size:11.5px;color:var(--muted)}
+  .cmdk-foot b{color:var(--ink-soft);font-weight:650}
+  .keys-tbl{width:100%;font-size:13px}.keys-tbl td{padding:5px 4px}
+  .keys-tbl kbd{background:var(--surface-3);border:1px solid var(--line);border-bottom-width:2px;
+    border-radius:6px;padding:2px 7px;font-family:ui-monospace,Menlo,monospace;font-size:12px}
 
   /* ---------- scrollbars ---------- */
   ::-webkit-scrollbar{width:11px;height:11px}
@@ -504,6 +565,24 @@
 </div>
 
 <!-- MODAL: onboarding -->
+<!-- Палитра команд: Ctrl+K — прыжок в раздел, к клиенту или к действию, не отрывая рук от клавиатуры -->
+<div class="cmdk-bg" id="cmdkBg" onclick="cmdkClose()"></div>
+<div class="cmdk" id="cmdk" role="dialog" aria-modal="true" aria-label="Палитра команд">
+  <input id="cmdkInput" placeholder="Раздел, клиент или действие…  (Esc — закрыть)" autocomplete="off">
+  <div class="cmdk-list" id="cmdkList"></div>
+  <div class="cmdk-foot"><span><b>↑↓</b> выбрать</span><span><b>Enter</b> открыть</span><span><b>?</b> все клавиши</span></div>
+</div>
+
+<!-- Свой диалог вместо окон браузера: confirm/prompt выглядят чужеродно и на телефоне уродливы -->
+<div class="modal-bg" id="askBg" onclick="askClose(null)"></div>
+<div class="modal" id="askModal" role="dialog" aria-modal="true">
+  <header><h3 id="askTitle">Подтверждение</h3><span class="x" onclick="askClose(null)">×</span></header>
+  <div class="body"><div id="askText" style="font-size:13.5px;line-height:1.55;white-space:pre-line"></div>
+    <input id="askInput" style="display:none;margin-top:12px;width:100%"></div>
+  <footer><button class="btn" onclick="askClose(null)">Отмена</button>
+    <button class="btn primary" id="askOk" onclick="askSubmit()">Продолжить</button></footer>
+</div>
+
 <div class="modal-bg" id="modalBg" onclick="closeOnboard()"></div>
 <div class="modal" id="modal">
   <header><h3>Подключить клиента</h3><span class="x" onclick="closeOnboard()">×</span></header>
@@ -577,7 +656,281 @@
 /* ---------- инфраструктура ---------- */
 let READY=false, CLIENTS=[], CHATS=[], ME=null, GS_CLIENTS=[];
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
-function toast(msg,kind){const w=document.getElementById('toast');const d=document.createElement('div');d.className='toast'+(kind?(' '+kind):'');d.textContent=msg;w.appendChild(d);setTimeout(()=>d.remove(),kind==='err'?6000:3500);}
+/* Тост. act={label,fn} — кнопка прямо в тосте: так вместо допроса «ты уверен?»
+   действие выполняется сразу, а человек получает «Отменить» на несколько секунд. */
+function toast(msg,kind,act){
+  const w=document.getElementById('toast');
+  const d=document.createElement('div');
+  d.className='toast'+(kind?(' '+kind):'');
+  const row=document.createElement('div');row.className='toast-row';
+  const tx=document.createElement('span');tx.textContent=msg;row.appendChild(tx);
+  let ttl=(kind==='err'?6000:3500);
+  if(act&&act.label&&act.fn){
+    const b=document.createElement('button');
+    b.className='toast-act';b.type='button';b.textContent=act.label;
+    b.onclick=()=>{d.remove();try{act.fn();}catch(e){}};
+    row.appendChild(b);
+    ttl=7000;                      // на отмену нужно время подумать
+  }
+  d.appendChild(row);w.appendChild(d);
+  const t=setTimeout(()=>d.remove(),ttl);
+  d.onmouseenter=()=>clearTimeout(t);   // не исчезает из-под курсора
+  return d;
+}
+
+/* ---------- пустые экраны: иконка + почему пусто + следующий шаг ---------- */
+const ES_SEQ={n:0};
+function emptyState(ic,title,hint,btn){
+  let b='';
+  if(btn&&btn.label&&btn.onclick){
+    const id='esb'+(++ES_SEQ.n);
+    window['__'+id]=btn.onclick;
+    b=`<button class="btn ${btn.primary===false?'':'primary'}" onclick="window.__${id}()">${esc(btn.label)}</button>`;
+  }
+  return `<div class="es"><div class="es-ic">${ic||'📭'}</div><div class="es-t">${esc(title)}</div>`+
+         (hint?`<div class="es-h">${hint}</div>`:'')+b+'</div>';
+}
+
+/* ---------- скелетоны вместо прыгающих спиннеров ---------- */
+function skeleton(kind,rows){
+  const n=rows||5;
+  if(kind==='cards'){
+    return '<div class="sk-cards">'+Array.from({length:n},()=>'<div class="sk sk-card"></div>').join('')+'</div>';
+  }
+  const w=[38,17,25,14];
+  return '<div class="panel"><div class="body" style="padding:6px 14px">'+
+    Array.from({length:n},()=>'<div class="sk-row">'+
+      w.map(x=>`<div class="sk" style="width:${x}%"></div>`).join('')+'</div>').join('')+
+    '</div></div>';
+}
+
+/* ---------- ошибки на человеческом ----------
+   Сырой текст сервера («Reports API 400: Элемент массива AttributionModels…») ничего
+   не говорит специалисту. Переводим известное, а техническую строку прячем под «Подробности». */
+const ERR_MAP=[
+  [/не найден клиент|Клиент .* не найден/i,'Клиента нет в базе. Подтяни клиентов из Директа в разделе «Клиенты».'],
+  [/Reports API 4\d\d/i,'Директ не принял запрос. Чаще всего — несовместимое сочетание разреза и срезов: убери один срез или смени разрез.'],
+  [/Отчёт не готов за отведённое время/i,'Директ не отдал отчёт за отведённое время — он под нагрузкой. Попробуй через пару минут.'],
+  [/timed? ?out|timeout|Read timed out/i,'Директ или Telegram не ответили вовремя. Попробуй ещё раз.'],
+  [/Наблюдатель — режим просмотра/i,'В режиме наблюдателя изменения недоступны — только просмотр.'],
+  [/Доступно только наблюдателю или администратору|только администратору/i,'Не хватает прав на это действие.'],
+  [/sa_key\.json|ключ сервисного аккаунта/i,'Нет ключа Google (sa_key.json) — выгрузка в таблицы недоступна. Нужен админ.'],
+  [/Не нашёл Google-таблицу/i,'Не нашёл Google-таблицу этого клиента. Проверь имя клиента — по нему ищется таблица «Auto-Reporter ОТЧЕТ <домен>».'],
+  [/chat not found|chat_id|бот не может писать|bot was kicked|Forbidden/i,'Бот не может писать в этот чат: его удалили из чата или чат недоступен.'],
+  [/не найден|not found/i,'Не нашёл то, что запрашивали.'],
+  [/network|Failed to fetch|NetworkError/i,'Нет связи с сервером. Проверь интернет и обнови страницу.'],
+];
+function humanError(e){
+  const raw=(e&&e.message)?String(e.message):String(e||'Неизвестная ошибка');
+  for(const [re,msg] of ERR_MAP){if(re.test(raw))return {msg,raw};}
+  return {msg:raw.length>150?(raw.slice(0,150)+'…'):raw, raw};
+}
+/* Показать ошибку тостом. Раньше 63 места делали catch(e){errToast(e);} — человек жал кнопку,
+   ничего не происходило и никто не объяснял почему. */
+function errToast(e,where){
+  const h=humanError(e);
+  const same=(h.msg===h.raw);
+  toast((where?where+': ':'')+h.msg,'err',same?null:{label:'Подробности',fn:()=>toast(h.raw,'err')});
+  return h;
+}
+function errBlock(e,retry){
+  const h=humanError(e);
+  return emptyState('⚠️','Не получилось загрузить',esc(h.msg),
+    retry?{label:'Повторить',onclick:retry}:null);
+}
+
+/* ---------- относительное время: «2 часа назад» вместо «29.07 13:17» ---------- */
+function fmtAgo(iso){
+  if(!iso)return '';
+  let t;try{t=new Date(iso.length<=10?iso+'T00:00:00':iso);}catch(e){return iso;}
+  if(isNaN(t))return iso;
+  const s=(Date.now()-t.getTime())/1000;
+  if(s<0)return 'только что';
+  if(s<60)return 'только что';
+  const m=Math.floor(s/60);if(m<60)return m+' мин назад';
+  const h=Math.floor(m/60);if(h<24)return h+' ч назад';
+  const d=Math.floor(h/24);
+  if(d===1)return 'вчера';
+  if(d<7)return d+' дн назад';
+  if(d<31)return Math.floor(d/7)+' нед назад';
+  return t.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit'});
+}
+/* короткая вспышка строки, которая только что изменилась */
+function flash(node){
+  if(!node)return;node.classList.remove('flash');void node.offsetWidth;node.classList.add('flash');
+}
+
+/* ---------- свои диалоги вместо confirm()/prompt() ----------
+   Окна браузера выглядят чужеродно, на телефоне уродливы и не дают назвать кнопку
+   по действию («Отправить клиентам» понятнее, чем «OK»). */
+let ASK_RESOLVE=null;
+function askClose(val){
+  const m=el('askModal'),b=el('askBg');
+  if(m)m.classList.remove('on');if(b)b.classList.remove('on');
+  const r=ASK_RESOLVE;ASK_RESOLVE=null;
+  if(r)r(val);
+}
+function askSubmit(){
+  const inp=el('askInput');
+  askClose(inp.style.display==='none'?true:inp.value);
+}
+function _ask(opts){
+  return new Promise(res=>{
+    ASK_RESOLVE=res;
+    el('askTitle').textContent=opts.title||'Подтверждение';
+    el('askText').textContent=opts.text||'';
+    const ok=el('askOk');
+    ok.style.display='';                 // askChoice его прячет — возвращаем
+    ok.textContent=opts.ok||'Продолжить';
+    ok.classList.toggle('danger',!!opts.danger);
+    const inp=el('askInput');
+    if(opts.input!==undefined){
+      inp.style.display='';inp.value=opts.input||'';inp.placeholder=opts.placeholder||'';
+    }else{inp.style.display='none';}
+    el('askBg').classList.add('on');el('askModal').classList.add('on');
+    setTimeout(()=>{try{(opts.input!==undefined?inp:ok).focus();}catch(e){}},60);
+  });
+}
+/* «Точно отправляем клиентам?» — только для необратимого и уходящего наружу */
+function askConfirm(text,opts){return _ask(Object.assign({text},opts||{}));}
+/* Выбор из вариантов кнопками. Раньше тут был prompt «введите 1, 2 или 3» —
+   человек должен был угадать цифру вместо того, чтобы просто ткнуть в нужное. */
+function askChoice(text,options,opts){
+  return new Promise(res=>{
+    ASK_RESOLVE=res;
+    const o=opts||{};
+    el('askTitle').textContent=o.title||'Выбери вариант';
+    el('askInput').style.display='none';
+    const body=el('askText');
+    body.textContent=text||'';
+    const wrap=document.createElement('div');
+    wrap.style.cssText='display:flex;flex-direction:column;gap:8px;margin-top:14px';
+    options.forEach(op=>{
+      const b=document.createElement('button');
+      b.className='btn';b.type='button';
+      b.style.cssText='justify-content:flex-start;text-align:left;padding:11px 13px;height:auto';
+      b.innerHTML='<b>'+esc(op.label)+'</b>'+(op.hint?'<span class="muted" style="font-weight:400"> — '+esc(op.hint)+'</span>':'');
+      b.onclick=()=>askClose(op.key);
+      wrap.appendChild(b);
+    });
+    body.appendChild(wrap);
+    el('askOk').style.display='none';
+    el('askBg').classList.add('on');el('askModal').classList.add('on');
+    setTimeout(()=>{try{wrap.firstChild.focus();}catch(e){}},60);
+  });
+}
+/* замена prompt(): текстовый ввод в том же стиле */
+function askText(text,def,opts){return _ask(Object.assign({text,input:def||''},opts||{}));}
+document.addEventListener('keydown',e=>{
+  if(!ASK_RESOLVE)return;
+  if(e.key==='Escape'){e.preventDefault();askClose(null);}
+  else if(e.key==='Enter'&&el('askInput').style.display==='none'){e.preventDefault();askSubmit();}
+  else if(e.key==='Enter'&&document.activeElement===el('askInput')){e.preventDefault();askSubmit();}
+});
+
+/* ================= ПАЛИТРА КОМАНД (Ctrl+K) =================
+   Для тех, кто в программе каждый день: набрал «kst» — открыл клиента, набрал
+   «долг» — прыгнул в Контроль. Мышь не нужна. */
+let CMDK_ON=false, CMDK_SEL=0, CMDK_ITEMS=[];
+function cmdkSources(){
+  const boss=ME&&(ME.role==='admin'||ME.role==='observer');
+  const secs=[
+    ['dashboard','🏠'],['clients','👥'],['chats','💬'],['dialogs','⏳'],['match','🔗'],
+    ['reports','📨'],['budgets','💰'],['external','📤'],['gsheets','📗'],
+    ...(boss?[['supervision','👁'],['users','🔑']]:[]),
+    ...(ME&&ME.role==='admin'?[['errlog','🩺']]:[]),
+    ['settings','⚙️'],['guide','📖'],['changelog','🆕'],
+  ].map(([k,ic])=>({group:'Разделы',ic,label:NAMES[k]||k,run:()=>go(k)}));
+  const acts=[
+    {ic:'📨',label:'Запустить рассылку',hint:'отчёты клиентам',run:()=>{go('dashboard');setTimeout(()=>{const b=[...document.querySelectorAll('#v_dashboard button')].find(x=>/Запустить рассылку/.test(x.textContent));if(b)b.click();},250)}},
+    {ic:'🧪',label:'Проба — собрать без отправки',run:()=>{go('dashboard');setTimeout(()=>{const b=[...document.querySelectorAll('#v_dashboard button')].find(x=>/Проба|НЕ отправлять/i.test(x.textContent+(x.title||'')));if(b)b.click();},250)}},
+    {ic:'💰',label:'Обновить бюджеты',run:()=>{go('budgets');setTimeout(()=>doBudgetsRefresh(),250)}},
+    {ic:'➕',label:'Подключить клиента',run:()=>openOnboard()},
+    {ic:'🌗',label:'Светлая / тёмная тема',run:()=>toggleTheme()},
+    {ic:'🎮',label:'Перерыв — игра',run:()=>{if(!document.getElementById('gmWrap').classList.contains('on'))gmToggle();}},
+    {ic:'⌨️',label:'Горячие клавиши',run:()=>showKeys()},
+  ].map(a=>Object.assign({group:'Действия'},a));
+  const cls=(CLIENTS||[]).map(c=>({group:'Клиенты',ic:'👥',label:c.name||c.login,
+    hint:c.login,run:()=>{go('clients');setTimeout(()=>openClient(c.login),220);}}));
+  return secs.concat(acts,cls);
+}
+function cmdkScore(q,it){
+  const s=(it.label+' '+(it.hint||'')).toLowerCase();
+  if(!q)return it.group==='Разделы'?2:1;
+  const i=s.indexOf(q);
+  if(i<0)return 0;
+  return i===0?100:(s.includes(' '+q)?60:30);
+}
+function cmdkRender(){
+  const q=el('cmdkInput').value.trim().toLowerCase();
+  CMDK_ITEMS=cmdkSources().map(it=>({it,sc:cmdkScore(q,it)})).filter(x=>x.sc>0)
+    .sort((a,b)=>b.sc-a.sc).slice(0,40).map(x=>x.it);
+  if(CMDK_SEL>=CMDK_ITEMS.length)CMDK_SEL=0;
+  let html='',last='';
+  CMDK_ITEMS.forEach((it,i)=>{
+    if(it.group!==last){html+=`<div class="cmdk-cap">${esc(it.group)}</div>`;last=it.group;}
+    html+=`<div class="cmdk-item ${i===CMDK_SEL?'sel':''}" data-i="${i}" onclick="cmdkRun(${i})">
+      <span class="ic">${it.ic}</span><span>${esc(it.label)}</span>${it.hint?`<span class="sub">${esc(it.hint)}</span>`:''}</div>`;
+  });
+  el('cmdkList').innerHTML=html||emptyState('🔍','Ничего не нашлось','Попробуй другое слово — ищу по разделам, клиентам и действиям.',null);
+}
+function cmdkOpen(){
+  CMDK_ON=true;CMDK_SEL=0;
+  el('cmdkBg').classList.add('on');el('cmdk').classList.add('on');
+  el('cmdkInput').value='';cmdkRender();
+  setTimeout(()=>{try{el('cmdkInput').focus();}catch(e){}},40);
+}
+function cmdkClose(){
+  CMDK_ON=false;el('cmdkBg').classList.remove('on');el('cmdk').classList.remove('on');
+  // снимаем фокус с поля палитры: иначе _typing() считает, что человек печатает,
+  // и одиночные клавиши («/», «?») после закрытия перестают работать
+  try{el('cmdkInput').blur();}catch(e){}
+}
+function cmdkRun(i){
+  const it=CMDK_ITEMS[i!==undefined?i:CMDK_SEL];
+  cmdkClose();
+  if(it&&it.run)setTimeout(()=>{try{it.run();}catch(e){errToast(e);}},30);
+}
+function cmdkMove(d){
+  if(!CMDK_ITEMS.length)return;
+  CMDK_SEL=(CMDK_SEL+d+CMDK_ITEMS.length)%CMDK_ITEMS.length;
+  cmdkRender();
+  const n=el('cmdkList').querySelector('.cmdk-item.sel');
+  if(n&&n.scrollIntoView)n.scrollIntoView({block:'nearest'});
+}
+function showKeys(){
+  el('askTitle').textContent='Горячие клавиши';
+  const rows=[['Ctrl','K','Палитра команд — разделы, клиенты, действия'],
+    ['','/','То же самое, одной клавишей'],
+    ['','?','Эта шпаргалка'],
+    ['','Esc','Закрыть окно или палитру'],
+    ['','↑ ↓','Выбор в палитре, Enter — открыть'],
+    ['','G','Игра-перерыв в правом нижнем углу']];
+  el('askText').innerHTML='<table class="keys-tbl">'+rows.map(r=>
+    `<tr><td style="width:130px;white-space:nowrap">${r[0]?`<kbd>${r[0]}</kbd> + `:''}<kbd>${r[1]}</kbd></td><td>${esc(r[2])}</td></tr>`).join('')+'</table>';
+  el('askInput').style.display='none';
+  const ok=el('askOk');ok.style.display='';ok.textContent='Понятно';ok.classList.remove('danger');
+  ASK_RESOLVE=()=>{};
+  el('askBg').classList.add('on');el('askModal').classList.add('on');
+}
+function _typing(){
+  const a=document.activeElement,t=a?a.tagName:'';
+  return t==='INPUT'||t==='TEXTAREA'||t==='SELECT'||(a&&a.isContentEditable);
+}
+document.addEventListener('keydown',e=>{
+  if(CMDK_ON){
+    if(e.key==='Escape'){e.preventDefault();cmdkClose();return;}
+    if(e.key==='ArrowDown'){e.preventDefault();cmdkMove(1);return;}
+    if(e.key==='ArrowUp'){e.preventDefault();cmdkMove(-1);return;}
+    if(e.key==='Enter'){e.preventDefault();cmdkRun();return;}
+    setTimeout(()=>{CMDK_SEL=0;cmdkRender();},0);
+    return;
+  }
+  if((e.ctrlKey||e.metaKey)&&(e.key==='k'||e.key==='K'||e.key==='л'||e.key==='Л')){e.preventDefault();cmdkOpen();return;}
+  if(_typing()||ASK_RESOLVE)return;          // не мешаем печатать и не спорим с диалогом
+  if(e.key==='/'){e.preventDefault();cmdkOpen();}
+  else if(e.key==='?'){e.preventDefault();showKeys();}
+});
 async function callBackend(method,args){
   // Десктоп: pywebview.api.<method>(...args).  Веб: POST /api/<method> с JSON-массивом аргументов.
   if(window.pywebview&&window.pywebview.api){return await window.pywebview.api[method](...args);}
@@ -585,12 +938,15 @@ async function callBackend(method,args){
   return await resp.json();
 }
 async function api(method,...args){
+  // Единственная точка, где ошибка превращается в сообщение человеку: переводим на
+  // человеческий, технический текст прячем под «Подробности». Поэтому в местах вызова
+  // повторно ошибку показывать НЕ надо — будет два тоста об одном и том же.
   let r;
   try{r=await callBackend(method,args);}
-  catch(e){toast('Нет связи с backend: '+e.message,'err');throw e;}
+  catch(e){errToast(e);throw e;}
   if(!r||r.ok!==true){const e=(r&&r.error)||'Неизвестная ошибка';
     if(e==='not_authenticated'){ME=null;applyUser();showLogin(false);throw new Error(e);}
-    toast(e,'err');throw new Error(e);}
+    errToast(new Error(e));throw new Error(e);}
   return r.data;
 }
 function el(id){return document.getElementById(id);}
@@ -638,8 +994,8 @@ function statCardLink(color,ic,label,val,dest,sub,tip){
 }
 function budMoneyShort(v,cur){return v==null?'':(Math.round(v).toLocaleString('ru-RU')+' '+(cur==='RUB'?'₽':(cur||'')));}
 async function renderDashboard(){
-  const host=el('v_dashboard');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
-  let d;try{d=await api('dashboard');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const host=el('v_dashboard');host.innerHTML=skeleton('cards',6);
+  let d;try{d=await api('dashboard');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   const isObs=(d.role==='observer')||(ME&&ME.role==='observer');
   const bud=d.budgets||{},wk=d.week||{},hl=d.health||{};
   const cov=wk.coverage;
@@ -697,8 +1053,8 @@ async function renderDashboard(){
 
 /* ---------- CLIENTS ---------- */
 async function renderClients(){
-  const host=el('v_clients');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
-  try{CLIENTS=await api('clients');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const host=el('v_clients');host.innerHTML=skeleton('rows',7);
+  try{CLIENTS=await api('clients');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   host.innerHTML=`
     <h2 class="title">Клиенты</h2><p class="sub">Клик по строке — настройки клиента (цели, атрибуция, чат).</p>
     <div class="toolbar">
@@ -741,7 +1097,7 @@ function clSortVal(c,key){
     default:return (c.name||'').toLowerCase();
   }
 }
-function clDate(iso){if(!iso)return '<span class="muted">—</span>';try{const d=new Date(iso);return '<span class="muted" style="font-size:12px">'+d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit'})+'</span>';}catch(e){return '<span class="muted">—</span>';}}
+function clDate(iso){if(!iso)return '<span class="muted">—</span>';try{const d=new Date(iso);return '<span class="muted" style="font-size:12px">'+d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit'})+'</span>';}catch(e){errToast(e);return '<span class="muted">—</span>';}}
 function clGoalsCell(c){
   const gs=c.goals||[];
   if(!gs.length)return '<span class="muted">— нет</span>';
@@ -784,7 +1140,7 @@ async function doSync(){
 }
 async function doImport(){try{const r=await api('import_config');toast('Импорт: клиентов '+r.clients+', привязок '+r.bindings,'ok');refresh();}catch(e){}}
 async function doBulkGoals(){
-  if(!confirm('Подтянуть цели из Метрики для ВСЕХ привязанных клиентов?\nКлючевые включатся для отчётов, остальные сохранятся выключенными. Уже настроенные вручную галки не сбросятся.'))return;
+  if(!(await askConfirm('Подтянуть цели из Метрики для ВСЕХ привязанных клиентов?\nКлючевые включатся для отчётов, остальные сохранятся выключенными. Уже настроенные вручную галки не сбросятся.',{ok:'Подтянуть',title:'Цели из Метрики'})))return;
   toast('Подтягиваю цели из Метрики всем привязанным… это может занять время');
   try{const r=await api('metrika_goals_bulk');
     toast('Готово: с целями '+r.with_goals+', без счётчика '+r.no_counter+', ошибок '+r.errors+' (из '+r.clients+' привязанных)','ok');
@@ -835,11 +1191,11 @@ async function doImportHistory(){
       (r.details&&r.details.length?('<br>'+r.details.slice(0,8).map(d=>'• '+esc(d.chat||'?')+' — '+esc(d.status)).join('<br>')):'');
     toast('История импортирована: чатов '+r.matched,'ok');
     setTimeout(renderDialogs,1200);
-  }catch(e){res.textContent='Ошибка: '+e.message;}
+  }catch(e){errToast(e);res.textContent='Ошибка: '+e.message;}
 }
 async function renderDialogs(){
-  const host=el('v_dialogs');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
-  let d;try{d=await api('dialogs');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const host=el('v_dialogs');host.innerHTML=skeleton('rows',5);
+  let d;try{d=await api('dialogs');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   const w=d.waiting||[], s=d.silent||[], hid=d.hidden||[];
   const nb=el('navDialogs');if(nb){const n=d.counts.waiting;nb.textContent=n;nb.style.display=n?'':'none';}
   const rowCls=h=>h>=d.crit_h?'dlg-crit':(h>=d.warn_h?'dlg-warn':'');
@@ -884,7 +1240,7 @@ async function renderDialogs(){
       <div class="scrollx"><table>
         <thead><tr><th>Клиент</th><th>Ждёт</th><th>Последнее сообщение клиента</th><th>Ведёт</th><th>Наш ответ</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table></div></div>`
-      :'<div class="empty">Всем ответили 🎉</div>'}
+      :emptyState('🎉','Всем ответили','Никто из клиентов не ждёт нашего ответа. Как только кто-то напишет в чат, он появится здесь.',null)}
     ${hid.length?`<details style="margin-top:16px"><summary class="muted" style="cursor:pointer;font-size:13px">🙈 Снятые с ожидания (${hid.length}) — вернутся сами, когда клиент напишет снова</summary>
       <div class="panel" style="margin-top:8px"><div class="scrollx"><table>
         <thead><tr><th>Клиент</th><th>Сообщение, на котором сняли</th><th></th></tr></thead>
@@ -897,8 +1253,8 @@ async function renderDialogs(){
 /* ---------- CHATS ---------- */
 let CHAT_FILTER='mine';   // mine = мои привязанные; free = свободные (можно забрать); all = все видимые
 async function renderChats(){
-  const host=el('v_chats');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
-  let chats,cls;try{chats=await api('chats');cls=await api('clients');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const host=el('v_chats');host.innerHTML=skeleton('rows',6);
+  let chats,cls;try{chats=await api('chats');cls=await api('clients');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   CHATS=chats;
   const opts=cls.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
   const mineN=chats.filter(c=>c.login).length, freeN=chats.filter(c=>!c.login).length;
@@ -931,7 +1287,9 @@ async function renderChats(){
           <td>${c.status==='active'?'<span class="badge b-green">активен</span>':'<span class="badge b-grey">удалён</span>'}</td>
           <td><select id="bind_${c.chat_id}"><option value="">— не привязан —</option>${opts}</select></td>
           <td class="right"><button class="btn sm primary" onclick="doBind(${c.chat_id})">Сохранить</button> <button class="btn sm" onclick="doDeleteChat(${c.chat_id})" title="Удалить чат из базы">🗑</button></td>
-        </tr>`).join(''):'<tr><td colspan="6" class="empty">'+(F==='mine'?'У тебя пока нет привязанных чатов — загляни во вкладку «Свободные».':'Пусто.')+'</td></tr>'}
+        </tr>`).join(''):'<tr><td colspan="6">'+(F==='mine'
+      ? emptyState('🗂','У тебя пока нет проектов','Чаты, которые ещё никому не принадлежат, лежат во вкладке «Свободные» — привяжи оттуда, и клиент станет твоим.',{label:'Смотреть свободные',onclick:()=>{CHAT_FILTER='free';renderChats();}})
+      : emptyState('💬','Здесь пока пусто','Бот видит чат сразу, как его добавят в группу клиента. Нет чата — добавь бота в группу и напиши там любое сообщение.',{label:'Как подключить клиента',onclick:()=>openOnboard(),primary:false}))+'</td></tr>'}
       </tbody></table></div></div>`;
   shown.forEach(c=>{if(c.login){const s=el('bind_'+c.chat_id);if(s)s.value=c.login;}});
 }
@@ -948,19 +1306,19 @@ async function doBind(chatId){
       toast(sel.value?'Привязано':'Привязка снята','ok');
     }
     refresh();
-  }catch(e){}
+  }catch(e){errToast(e);}
 }
 async function doDeleteChat(chatId){
-  if(!confirm('Удалить чат '+chatId+' из базы? Привязка к клиенту тоже снимется.\n(Сам чат в Telegram это не трогает — бот просто забудет о нём.)'))return;
+  if(!(await askConfirm('Удалить чат '+chatId+' из базы? Привязка к клиенту тоже снимется.\n(Сам чат в Telegram это не трогает — бот просто забудет о нём.)',{ok:'Удалить чат',title:'Удаление чата',danger:true})))return;
   try{await api('delete_chat',chatId);toast('Чат удалён из базы','ok');refresh();}catch(e){}
 }
 
 /* ---------- MATCH ---------- */
 async function renderMatch(){
-  const host=el('v_match');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
+  const host=el('v_match');host.innerHTML=skeleton('rows',5);
   let cloud=null;try{cloud=await api('cloud_status');}catch(e){}
   if(cloud&&cloud.configured){try{await api('cloud_pull');}catch(e){}}   // тянем общее состояние из облака
-  let d;try{d=await api('suggestions');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  let d;try{d=await api('suggestions');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   let cloudPanel='';
   if(cloud&&cloud.available&&!cloud.configured){
     cloudPanel=`<div class="note" style="margin-bottom:12px">☁ <b>Общая база (все устройства)</b>: не настроена. ${esc(cloud.note||'')}${cloud.sa_email?(' <code>'+esc(cloud.sa_email)+'</code>'):''}</div>`;
@@ -1010,7 +1368,7 @@ async function renderMatch(){
     ${cloudPanel}${supPanel}
     <div class="panel"><div class="body">
       ${bulk}
-      ${d.matches.length?rows:'<div class="empty">Нет чатов без привязки 🎉</div>'}
+      ${d.matches.length?rows:emptyState('🎉','Все чаты привязаны','Каждый чат, где сидит бот, сопоставлен с клиентом Директа. Новые появятся здесь сами.',{label:'К клиентам',onclick:()=>go('clients'),primary:false})}
       <div class="note" style="margin-top:6px">🔒 В Telegram привязку командой /bind подтверждает только администратор (защита от ошибочной привязки чужого чата).</div>
     </div></div>`;
 }
@@ -1019,7 +1377,7 @@ async function doBindBulk(){
   const owner=bindOwnerSel();
   const who=(SUP_USERS||[]).find(u=>String(u.id)===String(owner));
   const tail=owner?('\n\nВсе привязанные проекты будут закреплены за: '+(who?who.name:'выбранным специалистом')+'.'):'';
-  if(!confirm('Привязать все чаты с уверенным совпадением (≥75%) разом? Спорные останутся, их поправишь вручную.'+tail))return;
+  if(!(await askConfirm('Привязать все чаты с уверенным совпадением (≥75%) разом? Спорные останутся, их поправишь вручную.'+tail,{ok:'Привязать',title:'Массовая привязка'})))return;
   try{const r=await api('bind_bulk',75,owner||null);
     toast('Привязано разом: '+r.bound+(owner&&who?(' → '+who.name):''),'ok');refresh();}catch(e){}
 }
@@ -1036,8 +1394,8 @@ async function bindSmart(chatId,login){
   }
   const r=await api('bind',chatId,login);toast('Привязано','ok');return r;
 }
-async function doBind2(chatId,login){try{await bindSmart(chatId,login);refresh();}catch(e){}}
-async function doBindManual(chatId){const s=el('mansel_'+chatId);if(!s.value){toast('Выбери клиента','err');return;}try{await bindSmart(chatId,s.value);refresh();}catch(e){}}
+async function doBind2(chatId,login){try{await bindSmart(chatId,login);refresh();}catch(e){errToast(e);}}
+async function doBindManual(chatId){const s=el('mansel_'+chatId);if(!s.value){toast('Выбери клиента','err');return;}try{await bindSmart(chatId,s.value);refresh();}catch(e){errToast(e);}}
 
 /* ---------- GUIDE ---------- */
 /* ---------- ГАЙД: вкладки + поиск ---------- */
@@ -1091,7 +1449,20 @@ const GUIDE=[
   <div class="note">Если ты специалист, блок «Управление» просто не показывается — лишних пунктов в меню нет.</div>`},
 {tab:'Начало',icon:'🌗',title:'Тема и обновление',kw:'тема светлая тёмная обновить refresh',html:`
   <p>Вверху справа: <b>🌙/☀️</b> — переключить светлую/тёмную тему (запоминается), <b>⟳ Обновить</b> — перечитать данные с сервера.</p>`},
-{tab:'Начало',icon:'🎮',title:'Перерыв — игра в углу',kw:'перерыв игра отдых 2048 залипалка развлечение пауза устал',html:`
+{tab:'Начало',icon:'⌨️',title:'Горячие клавиши и палитра команд',kw:'горячие клавиши ctrl+k палитра команд поиск быстро слэш вопрос shortcuts',html:`
+  <p>Если сидишь в кабинете каждый день, мышь можно почти не трогать.</p>
+  <ul>
+    <li><span class="gkbd">Ctrl</span> + <span class="gkbd">K</span> (или просто <span class="gkbd">/</span>) — <b>палитра команд</b>. Начни печатать: «kst» — откроет клиента, «бюдж» — прыгнет в Бюджеты, «рассылка» — запустит её. Ищет по разделам, клиентам и действиям сразу.</li>
+    <li><span class="gkbd">↑</span> <span class="gkbd">↓</span> — выбор в палитре, <span class="gkbd">Enter</span> — открыть.</li>
+    <li><span class="gkbd">?</span> — шпаргалка со всеми клавишами.</li>
+    <li><span class="gkbd">Esc</span> — закрыть палитру, окно или панель.</li>
+  </ul>
+  <div class="note">Клавиши не срабатывают, пока курсор стоит в поле ввода — печатать они не мешают.</div>`},
+{tab:'Начало',icon:'↩️',title:'Отмена вместо «вы уверены?»',kw:'отмена undo подтверждение уверены confirm обратимо',html:`
+  <p>Раньше почти каждое действие спрашивало «вы уверены?». На такие вопросы жмут «да» не глядя, поэтому они и не защищали.</p>
+  <p>Теперь по-другому: <b>обратимое действие выполняется сразу</b>, а внизу появляется плашка с кнопкой <b>«Отменить»</b> — несколько секунд, чтобы передумать. Так работают: закрытие долга, возврат долга, снятие клиента с ожидания ответа, передача проектов между специалистами.</p>
+  <p>Подтверждение осталось только там, где отменить нельзя или что-то уходит наружу: рассылка клиентам, тестовый отчёт, удаление чата, очистка журнала, запись в Google-таблицы. У таких кнопок красный цвет и понятное название — не «OK», а «Отправить клиентам».</p>
+  <div class="note">Если в карточке клиента остались несохранённые правки, программа спросит перед закрытием — раньше можно было потерять полчаса работы одним кликом мимо.</div>`},{tab:'Начало',icon:'🎮',title:'Перерыв — игра в углу',kw:'перерыв игра отдых 2048 залипалка развлечение пауза устал',html:`
   <p>В правом нижнем углу есть круглая кнопка <b>🎮</b> — это перерыв. Голова кипит от отчётов, надо на пару минут переключиться — открывай.</p>
   <p>Внутри <b>2048</b>: складывай одинаковые плитки, чтобы получались вдвое большие. Управление — <b>стрелки</b> или <b>WASD</b>, на телефоне <b>свайп</b>. <span class="gkbd">Esc</span> сворачивает.</p>
   <ul>
@@ -1406,7 +1777,7 @@ function renderGuide(){
 function guideHighlight(html,q){
   if(!q)return html;
   try{const re=new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi');
-    return html.replace(/>([^<]+)</g,(m,txt)=>'>'+txt.replace(re,'<mark>$1</mark>')+'<');}catch(e){return html;}
+    return html.replace(/>([^<]+)</g,(m,txt)=>'>'+txt.replace(re,'<mark>$1</mark>')+'<');}catch(e){errToast(e);return html;}
 }
 function renderGuideContent(){
   const q=(GQ||'').trim().toLowerCase();
@@ -1422,6 +1793,16 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-07-30',tag:'ui',title:'Кабинет стал дружелюбнее: 7 изменений',
+ sum:'Пустые экраны, отмена, скелетоны, Ctrl+K и понятные ошибки',items:[
+  '<b>Пустые экраны теперь подсказывают.</b> Было 49 мест, где написано просто «Пусто.» — человек не понимал, поломка это или так задумано. Стало: иконка, объяснение и кнопка следующего шага. «У тебя пока нет проектов → Смотреть свободные», «Бюджеты ещё не собирали → Обновить сейчас».',
+  '<b>Отмена вместо допроса.</b> Обратимые действия (закрыть долг, вернуть долг, снять с ожидания, передать проекты) выполняются сразу, а в плашке появляется «Отменить». Подтверждение осталось только для необратимого и уходящего клиентам — и кнопки там красные, с понятным названием вместо «OK».',
+  '<b>Свои окна вместо браузерных.</b> 16 confirm() и 6 prompt() заменены на диалоги в стиле кабинета: работают с клавиатуры (Enter/Esc) и нормально выглядят на телефоне. Выбор причины закрытия долга больше не требует печатать «1, 2 или 3» — просто кнопки.',
+  '<b>Скелетоны вместо спиннеров.</b> 23 места «⟳ загрузка…» заменены на серые заготовки в форме будущей таблицы: экран больше не прыгает, когда приезжают данные.',
+  '<b>Ошибки на человеческом.</b> Вместо «Reports API 400: Элемент массива AttributionModels содержит неверное значение перечисления» — «Директ не принял запрос: убери один срез или смени разрез», а технический текст под кнопкой «Подробности». Плюс 65 мест, где ошибка проглатывалась молча (жмёшь — ничего не происходит, и никто не объясняет), теперь озвучены. Сообщение показывается ровно один раз.',
+  '<b>Палитра команд Ctrl+K</b> (или просто «/»): начни печатать — «kst» откроет клиента, «бюдж» прыгнет в Бюджеты, «рассылка» запустит её. Клавиша «?» — шпаргалка. В полях ввода клавиши не перехватываются.',
+  '<b>Прогресс рассылки стал видимым:</b> полоса заполнения, «7 из 24 · осталось 17» и имя клиента, на котором стоим прямо сейчас. Сбор сторонних отчётов тоже показывает очередь поимённо, а не безликое «собираю…».',
+  '<b>Мелочи:</b> «✓ Скопировано» появляется прямо на кнопке, а не тостом в углу; время пишется как «2 часа назад» (точная дата — в подсказке); строка, которая только что изменилась, коротко подсвечивается; при уходе из карточки с несохранёнными правками программа предупредит; появились фокус-кольца для клавиатуры и уважение к системной настройке «меньше анимаций».']},
 {date:'2026-07-29',tag:'fix',title:'Единая атрибуция на всю программу — LSCCD',
  sum:'Одна модель для отчётов, конструктора и таблиц',items:[
   'Раньше моделей было три разных: недельные отчёты считали по <b>LSC</b>, Google-таблицы — по зашитому в код <b>LYDC</b>, конструктор — по LSC. Цифры по одному клиенту за один период между собой не сходились, и никто не мог сказать, какая «правильная».',
@@ -1670,7 +2051,7 @@ function clAll(open){CHANGELOG.forEach((e,i)=>CL_OPEN[i]=open);renderChangelog()
 let RTAB='prev';
 async function renderReports(){
   const host=el('v_reports');
-  let cls;try{cls=await api('clients');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  let cls;try{cls=await api('clients');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   RB_BOUND=new Set(cls.filter(c=>c.chat_id).map(c=>c.login));   // у кого есть привязанный чат
   const opts=cls.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})${c.chat_id?'':' • без чата'}</option>`).join('');
   host.innerHTML=`
@@ -1695,8 +2076,8 @@ async function renderReports(){
   }else if(RTAB==='build'){
     await renderBuilder(opts);
   }else{
-    el('rpane').innerHTML='<div class="panel"><div id="histBody" class="empty"><span class="spin"></span> загрузка…</div></div>';
-    try{const h=await api('history');el('histBody').outerHTML=histTable(h);}catch(e){el('histBody').innerHTML='Ошибка: '+esc(e.message);}
+    el('rpane').innerHTML='<div id="histBody">'+skeleton('rows',6)+'</div>';
+    try{const h=await api('history');el('histBody').outerHTML=histTable(h);}catch(e){el('histBody').innerHTML=errBlock(e);}
   }
 }
 async function loadSheetLinks(){
@@ -1709,14 +2090,14 @@ async function loadSheetLinks(){
       '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:13px">📗 Таблицы клиентов:</b>'+
       '<div class="gs-links">'+cs.map(c=>'<a class="gs-link" href="'+esc(c.url)+'" target="_blank" rel="noopener" title="Открыть «'+esc(c.sheet)+'»">'+esc(c.name||c.login)+' <span class="muted">↗</span></a>').join('')+
       '</div></div></div></div>';
-  }catch(e){host.innerHTML='';}
+  }catch(e){errToast(e);host.innerHTML='';}
 }
 function setRtab(t){RTAB=t;renderReports();}
 function histTable(h){
   const head='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">'+
     '<a class="btn sm" href="/download/export/history.csv" title="Выгрузить историю в CSV (Excel)">⬇ Экспорт CSV</a>'+
     '<span class="muted" style="font-size:12.5px">«Отправить снова» — повторно шлёт недельный отчёт клиенту в чат.</span></div>';
-  if(!h.length)return head+'<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th><th></th></tr></thead><tbody><tr><td colspan="6" class="empty">Пока нет отправок.</td></tr></tbody></table></div>';
+  if(!h.length)return head+'<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th><th></th></tr></thead><tbody><tr><td colspan="6">'+emptyState('📭','Отчёты ещё не отправлялись','Здесь появится история: кому, когда и с каким результатом ушёл отчёт. Отсюда же можно переотправить или выгрузить в CSV.',{label:'Собрать пробный отчёт',onclick:()=>setRtab('prev')})+'</td></tr></tbody></table></div>';
   const badge=s=>s==='sent'?'<span class="badge b-green">отправлено</span>':(s==='error'?'<span class="badge b-red">ошибка</span>':'<span class="badge b-grey">'+esc(s)+'</span>');
   const canSend=!(ME&&ME.role==='observer');
   return head+'<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th><th></th></tr></thead><tbody>'+
@@ -1725,7 +2106,7 @@ function histTable(h){
     '</tbody></table></div>';
 }
 async function doResend(login,name){
-  if(!confirm('Отправить недельный отчёт по «'+name+'» заново?\nУйдёт в привязанный чат клиента — реальным людям.'))return;
+  if(!(await askConfirm('Отправить недельный отчёт по «'+name+'» заново?\nУйдёт в привязанный чат клиента — реальным людям.',{ok:'Отправить клиенту',title:'Повторная отправка',danger:true})))return;
   toast('Собираю и отправляю…');
   try{const r=await api('resend_report',login);
     toast(r.status==='sent'?('Отправлено в чатов: '+r.chats):('Статус: '+(r.reason||r.status)),r.status==='sent'?'ok':'err');
@@ -1738,11 +2119,11 @@ async function doPreview(){
   try{const r=await api('preview',login);
     if(r.text===null){el('rpBubble').innerHTML='<span class="muted">'+esc(r.reason)+'</span>';}
     else{el('rpBubble').textContent=r.text;el('rpMeta').textContent='кампаний: '+r.campaigns+' · предпросмотр, не отправлено';}
-  }catch(e){el('rpBubble').innerHTML='<span class="muted">Ошибка: '+esc(e.message)+'</span>';}
+  }catch(e){el('rpBubble').innerHTML='<span class="muted">'+esc(humanError(e).msg)+'</span>';}
 }
 async function doSendTest(){
   const login=el('rpClient').value;if(!login)return;
-  if(!confirm('Отправить тестовый отчёт в привязанный чат клиента?'))return;
+  if(!(await askConfirm('Отправить тестовый отчёт в привязанный чат клиента?',{ok:'Отправить',title:'Тестовый отчёт',danger:true})))return;
   try{const r=await api('send_test',login);
     if(r.status==='sent')toast('Отправлено в чатов: '+r.chats,'ok');
     else if(r.status==='no_chat')toast('У клиента нет привязанного чата','err');
@@ -1751,7 +2132,7 @@ async function doSendTest(){
   }catch(e){}
 }
 async function runWeekly(){
-  if(!confirm('Запустить рассылку по вашим клиентам за прошлую неделю? Отчёты уйдут в чаты клиентов.'))return;
+  if(!(await askConfirm('Запустить рассылку по вашим клиентам за прошлую неделю? Отчёты уйдут в чаты клиентов.',{ok:'Запустить рассылку',title:'Рассылка клиентам',danger:true})))return;
   try{await api('run_weekly_start');}catch(e){toast('Ошибка старта: '+esc(e.message),'err');return;}
   openRunModal();
 }
@@ -1782,7 +2163,18 @@ async function pollRun(){
   const rows=(p.details||[]).slice().reverse().map(d=>{
     const ex=d.status==='sent'?('отправлено в чатов: '+(d.chats||0)):d.status==='dry'?('проба: отчёт собран (чатов '+(d.chats||0)+')'):esc(d.reason||d.status||'');
     return '<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(150,150,170,.12)"><span>'+ic(d.status)+'</span><div style="flex:1;min-width:0"><b>'+esc(d.name||d.login)+'</b><div class="muted" style="font-size:12px;word-break:break-word">'+ex+'</div></div></div>';}).join('');
-  el('runBody').innerHTML=rows||'<div class="muted" style="padding:14px 0"><span class="spin"></span> запускаю…</div>';
+  // полоса прогресса + на ком стоим сейчас: видно, что работа идёт и где именно
+  const pct=p.total?Math.round(p.done/p.total*100):0;
+  const bar=p.total?`<div style="margin:4px 0 10px">
+      <div style="height:7px;border-radius:4px;background:var(--surface-3);overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:var(--grad);transition:width .3s"></div></div>
+      <div class="muted" style="font-size:12px;margin-top:5px">${p.done} из ${p.total} · осталось ${Math.max(0,p.total-p.done)}</div>
+    </div>`:'';
+  const cur=(p.running&&p.current)
+    ?`<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(150,150,170,.12)">
+        <span class="spin"></span><div style="flex:1;min-width:0"><b>${esc(p.current.name||p.current.login)}</b>
+        <div class="muted" style="font-size:12px">запрашиваю данные из Директа…</div></div></div>`:'';
+  el('runBody').innerHTML=bar+cur+rows||bar+'<div class="muted" style="padding:14px 0"><span class="spin"></span> запускаю…</div>';
   const F=el('runFoot');
   if(p.running){F.innerHTML='<span class="muted" style="margin-right:auto;font-size:12.5px"><span class="spin"></span> идёт рассылка…</span>';setTimeout(pollRun,1200);}
   else{
@@ -1812,7 +2204,7 @@ const RB_MET=[
 ];
 const RB_CHK='display:inline-flex;align-items:center;gap:6px;margin:3px 14px 3px 0;font-weight:500;font-size:13px';
 async function renderBuilder(clientOpts){
-  if(!RBOPT){try{RBOPT=await api('report_options');}catch(e){el('rpane').innerHTML='<div class="panel"><div class="empty">Ошибка: '+esc(e.message)+'</div></div>';return;}}
+  if(!RBOPT){try{RBOPT=await api('report_options');}catch(e){el('rpane').innerHTML=errBlock(e,()=>renderReports());return;}}
   const lv=RBOPT.levels.map(l=>`<option value="${l.key}"${l.key==='campaign'?' selected':''}>${esc(l.label)}</option>`).join('');
   const at=attrOptions(ATTR_ALL[0],RBOPT.attributions);   // черновик подставится ниже через set('rbAttr')
   const segs=(RBOPT.segments||[]).map(s=>`<label style="${RB_CHK}"><input type="checkbox" id="rbSeg_${s.key}" onchange="rbSegChanged()"> ${esc(s.label)}</label>`).join('');
@@ -1847,7 +2239,7 @@ async function renderBuilder(clientOpts){
       </div>
       <div class="note" style="margin-top:12px">💾 Настройки конструктора <b>сохраняются автоматически</b> (черновик) — выйдешь и вернёшься, всё на месте; «↩ Сброс» очищает. Конверсии/CR/CPA — для любого клиента (поле Conversions Директа; если есть цели — по ним под атрибуцией). «Группировка даты → За весь период» сворачивает выбранный период в одну строку. В таблице результата: заголовки кликабельны (сортировка ▲▼), есть поиск.</div>
     </div></div>
-    <div class="panel" style="margin-top:14px"><div class="body" id="rbResult"><div class="empty">Задай параметры и нажми «Сформировать».</div></div></div>`;
+    <div class="panel" style="margin-top:14px"><div class="body" id="rbResult">${emptyState('🛠','Отчёт ещё не собран','Выбери клиента, разрез и период — покажу таблицу, которую можно отправить клиенту или выгрузить в xlsx.',null)}</div></div>`;
   const pane=el('rpane');if(pane&&!pane._draftHooked){pane._draftHooked=true;pane.addEventListener('change',rbSaveDraft);}
   if(rbLoadDraft()){rbApplyDraft();}else{rbLoadCampaigns();rbLoadGoals();rbUpdateSend();}
 }
@@ -1861,7 +2253,7 @@ function rbSaveDraft(){
       metsOff:(RBOPT.metrics||[]).filter(m=>el('rbMet_'+m.key)&&!el('rbMet_'+m.key).checked).map(m=>m.key),
       goals:[...document.querySelectorAll('#rbGoals .rbg')].map(c=>({id:c.value,on:c.checked})),saved:Date.now()};
     localStorage.setItem(RB_DRAFT_KEY,JSON.stringify(d));
-  }catch(e){}
+  }catch(e){errToast(e);}
 }
 function rbLoadDraft(){try{return JSON.parse(localStorage.getItem(RB_DRAFT_KEY)||'null');}catch(e){return null;}}
 function rbClearDraft(){try{localStorage.removeItem(RB_DRAFT_KEY);}catch(e){}renderReports();toast('Черновик сброшен','ok');}
@@ -1906,7 +2298,7 @@ async function rbLoadGoals(){
       return;
     }
     host.innerHTML=gs.map(g=>`<label style="${RB_CHK}"><input type="checkbox" class="rbg" value="${esc(g.id)}" ${g.active!==false?'checked':''}> ${esc(g.name)}</label>`).join('');
-  }catch(e){host.innerHTML='<span class="muted" style="font-size:12.5px">не удалось загрузить цели</span>';}
+  }catch(e){errToast(e);host.innerHTML='<span class="muted" style="font-size:12.5px">не удалось загрузить цели</span>';}
 }
 async function rbPullGoals(){
   const login=el('rbClient')?el('rbClient').value:'';if(!login)return;
@@ -1915,7 +2307,7 @@ async function rbPullGoals(){
     if(!r.goals||!r.goals.length){host.innerHTML='<span class="muted" style="font-size:12.5px">'+esc(r.note||'Цели не найдены')+'</span>';toast(r.note||'Цели не найдены','err');return;}
     host.innerHTML=r.goals.map(g=>`<label style="${RB_CHK}"><input type="checkbox" class="rbg" value="${esc(g.id)}" ${g.active!==false?'checked':''}> ${esc(g.name)}</label>`).join('');
     toast(r.note||'Цели подтянуты','ok');
-  }catch(e){host.innerHTML='<span class="muted" style="font-size:12.5px">не удалось подтянуть цели</span>';}
+  }catch(e){errToast(e);host.innerHTML='<span class="muted" style="font-size:12.5px">не удалось подтянуть цели</span>';}
 }
 function rbGoalIds(){return [...document.querySelectorAll('#rbGoals .rbg:checked')].map(c=>c.value);}
 function rbSegChanged(){const dt=el('rbSeg_date');const w=el('rbGrainWrap');if(w)w.style.display=(dt&&dt.checked)?'block':'none';}
@@ -1925,9 +2317,9 @@ function rbCols(r){const sel=rbMetricsSel();return RB_MET.filter(c=>sel.has(c.ke
 function rbParams(){return [el('rbClient').value, el('rbLevel').value, el('rbFrom').value, el('rbTo').value, el('rbAttr').value, parseInt(el('rbLimit').value||'100',10), rbSegments(), (el('rbGrain')?el('rbGrain').value:'day'), (el('rbCampaign')?el('rbCampaign').value:''), rbGoalIds()];}
 async function doReportQuery(){
   const p=rbParams();if(!p[0])return;
-  el('rbResult').innerHTML='<div class="empty"><span class="spin"></span> запрашиваю данные из Директа…</div>';
+  el('rbResult').innerHTML=skeleton('rows',4);
   try{const r=await api('report_query',...p);RB_LAST=r;RB_SORT={key:'cost',dir:-1};el('rbResult').innerHTML=rbShell(r);rbDrawTable();}
-  catch(e){el('rbResult').innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';}
+  catch(e){el('rbResult').innerHTML=errBlock(e);}
 }
 function rbShell(r){
   let head=`<div style="margin-bottom:8px"><b>${esc(r.client_name)}</b> · ${esc(r.level_label)}`;
@@ -1992,12 +2384,12 @@ async function doReportXlsx(){
       toast('Скачиваю: '+r.filename+' ('+r.n_rows+' строк)','ok');
       window.location.href='/download/xlsx/'+encodeURIComponent(r.filename);
     }
-  }catch(e){}
+  }catch(e){errToast(e);}
 }
 async function doReportSend(){
   const p=rbParams();if(!p[0])return;
   if(!RB_BOUND.has(p[0])){toast('Клиент не привязан к чату — отправка недоступна','err');return;}
-  if(!confirm('Отправить этот отчёт в привязанный чат клиента? Уйдёт реальным людям в чате.'))return;
+  if(!(await askConfirm('Отправить этот отчёт в привязанный чат клиента? Уйдёт реальным людям в чате.',{ok:'Отправить клиенту',title:'Отправка отчёта',danger:true})))return;
   try{const r=await api('report_send',...p);toast('Отправлено в чатов: '+r.sent,'ok');}catch(e){}
 }
 
@@ -2015,8 +2407,8 @@ function budDays(d){
 const BUD_ST={critical:['🔴 критично','b-red'],warning:['🟡 внимание','b-amber'],ok:['🟢 ок','b-green'],inactive:['💤 не тратил','b-grey'],error:['⚠ ошибка','b-red']};
 let BUD_SCOPE='mine';   // mine | all (админ/наблюдатель: у админа может не быть своих проектов)
 async function renderBudgets(){
-  const host=el('v_budgets');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
-  let d;try{d=await api('budgets',BUD_SCOPE);}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const host=el('v_budgets');host.innerHTML=skeleton('cards',4);
+  let d;try{d=await api('budgets',BUD_SCOPE);}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   const rows=d.rows||[], run=d.run||{};
   const crit=rows.filter(r=>r.status==='critical').length;
   const warn=rows.filter(r=>r.status==='warning').length;
@@ -2062,7 +2454,9 @@ async function renderBudgets(){
     ${shown.length?`<div class="panel"><div class="scrollx"><table>
       <thead><tr><th>Клиент</th><th>Остаток</th><th>Темп (7д)</th><th>Дней осталось</th><th>Кампании</th><th>Днев. бюджет</th><th>Статус</th></tr></thead>
       <tbody>${trs}</tbody></table></div></div>`
-    :`<div class="empty">${rows.length?'В этом фильтре пусто.':'Пока пусто: либо ещё не собирали (нажми «Обновить сейчас» — соберёт по твоим клиентам), либо у тебя нет клиентов в рабочем пуле (владелец или привязка). Полный агентский сбор идёт сам раз в 12 часов.'}</div>`}`;
+    :(rows.length
+      ? emptyState('🔍','В этом фильтре пусто','Смени фильтр сверху — например, на «Активные».',null)
+      : emptyState('💰','Бюджеты ещё не собирали','Нажми «Обновить сейчас» — соберу остатки по твоим клиентам. Полный сбор по агентству идёт сам раз в 12 часов. Если пусто и после сбора — значит на тебе пока нет проектов.',{label:'Обновить сейчас',onclick:()=>doBudgetsRefresh()}))}`;
   if(run.running)budPoll();
 }
 function budPoll(){
@@ -2089,16 +2483,25 @@ async function doBudgetsRefresh(){
 
 /* ---------- СТОРОННИЙ МЕССЕНДЖЕР (копипаст) ---------- */
 let EXT_BOUND=new Set(), EXT_LAST=[];
-async function copyToClip(text,okmsg){
-  try{await navigator.clipboard.writeText(text);toast(okmsg||'Скопировано','ok');}
+async function copyToClip(text,okmsg,btn){
+  // Подтверждение показываем НА КНОПКЕ — глаз уже там, тост в углу можно и не заметить.
+  const done=()=>{
+    const b=btn||(window.event&&window.event.currentTarget);
+    if(b&&b.tagName==='BUTTON'){
+      if(b.dataset.orig===undefined)b.dataset.orig=b.innerHTML;
+      b.innerHTML='✓ Скопировано';b.disabled=true;
+      setTimeout(()=>{b.innerHTML=b.dataset.orig;b.disabled=false;},1600);
+    }else{toast(okmsg||'Скопировано','ok');}
+  };
+  try{await navigator.clipboard.writeText(text);done();}
   catch(e){const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();
-    try{document.execCommand('copy');toast(okmsg||'Скопировано','ok');}catch(_){toast('Не удалось скопировать','err');}ta.remove();}
+    try{document.execCommand('copy');done();}catch(_){toast('Не удалось скопировать','err');}ta.remove();}
 }
 let EXT_SHOWALL=false;
 async function renderExternal(){
-  const host=el('v_external');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
+  const host=el('v_external');host.innerHTML=skeleton('rows',5);
   let cls;
-  try{cls=await api('clients');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  try{cls=await api('clients');CLIENTS=cls;}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   const ext=cls.filter(c=>c.delivery==='external');
   const shownCls=EXT_SHOWALL?cls:ext;
   const canEdit=ME&&ME.role!=='observer';
@@ -2143,9 +2546,17 @@ async function doCollectExternal(){
   const logins=[...document.querySelectorAll('.extchk:checked')].map(c=>c.value);
   if(!logins.length){toast('Отметь хотя бы одного клиента','err');return;}
   const box=el('extResults');
-  box.innerHTML='<div class="empty"><span class="spin"></span> собираю отчёты ('+logins.length+')… для каждого клиента идёт запрос в Директ, это может занять время</div>';
+  // показываем очередь поимённо: видно, что именно собирается, а не безликое «загрузка…»
+  const nameOfLogin=lg=>{const c=(CLIENTS||[]).find(x=>x.login===lg);return (c&&c.name)||lg;};
+  box.innerHTML=`<div class="panel"><div class="body">
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px">
+      <span class="spin"></span><b>Собираю отчёты (${logins.length})</b></div>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">По каждому клиенту идёт запрос в Директ — обычно 2–3 секунды на клиента.</div>
+    ${logins.map(lg=>`<div style="display:flex;gap:8px;padding:5px 0;font-size:13px">
+      <span class="muted">⏳</span><span>${esc(nameOfLogin(lg))}</span></div>`).join('')}
+  </div></div>`;
   let res;
-  try{res=await api('copy_reports',logins);}catch(e){box.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  try{res=await api('copy_reports',logins);}catch(e){box.innerHTML=errBlock(e,()=>refresh());return;}
   EXT_LAST=res;
   const ok=res.filter(r=>r.status==='ok');
   let html='';
@@ -2188,9 +2599,9 @@ function extCopyAll(){
 /* ---------- ЖУРНАЛ ОШИБОК (админ) ---------- */
 async function renderErrlog(){
   const host=el('v_errlog');
-  if(!ME||ME.role!=='admin'){host.innerHTML='<div class="empty">Раздел доступен только администратору.</div>';return;}
-  host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
-  let d;try{d=await api('error_log',300);}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  if(!ME||ME.role!=='admin'){host.innerHTML=emptyState('🔒','Раздел только для администратора','Если доступ нужен по работе — попроси администратора выдать роль.',null);return;}
+  host.innerHTML=skeleton('rows',6);
+  let d;try{d=await api('error_log',300);}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   const entries=d.entries||[];
   const rows=entries.map(r=>`<tr>
     <td class="nowrap muted" style="font-size:12.5px">${esc(r.ts)}</td>
@@ -2208,19 +2619,19 @@ async function renderErrlog(){
     ${entries.length?`<div class="panel"><div class="scrollx"><table>
       <thead><tr><th style="width:150px">Когда</th><th style="width:200px">Где</th><th>Что случилось</th></tr></thead>
       <tbody>${rows}</tbody></table></div></div>`
-    :'<div class="empty">Ошибок нет — красота ✨</div>'}`;
+    :emptyState('✨','Ошибок нет','Сервер работает без сбоев. Сюда попадают отказы Директа, Telegram и фоновых задач.',null)}`;
 }
 async function doClearErrlog(){
-  if(!confirm('Очистить журнал ошибок? Записи удалятся безвозвратно.'))return;
+  if(!(await askConfirm('Очистить журнал ошибок? Записи удалятся безвозвратно.',{ok:'Очистить',title:'Очистка журнала',danger:true})))return;
   try{await api('error_log_clear');toast('Журнал очищен','ok');renderErrlog();}catch(e){}
 }
 
 /* ---------- GOOGLE-ТАБЛИЦЫ ---------- */
 async function renderGSheets(){
-  const host=el('v_gsheets');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
+  const host=el('v_gsheets');host.innerHTML=skeleton('rows',5);
   let st,clients;
   try{st=await api('gsheets_status');}
-  catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   if(!st.available){
     host.innerHTML='<h2 class="title">Google-таблицы</h2><div class="note" style="margin-top:12px">⚠️ '+esc(st.note||'Ключ сервисного аккаунта не найден.')+'</div>';return;
   }
@@ -2257,7 +2668,7 @@ function gsSyncLink(){
 function gsShow(t){const r=el('gsResult');r.style.display='block';r.textContent=t;}
 async function gsPush(){
   const login=el('gsClient').value;if(!login){toast('Выбери клиента','err');return;}
-  if(!confirm('Заполнить ленты Google-таблицы клиента свежими данными (неделя + месяц, до сегодня)? Изменит реальную таблицу.'))return;
+  if(!(await askConfirm('Заполнить ленты Google-таблицы клиента свежими данными (неделя + месяц, до сегодня)? Изменит реальную таблицу.',{ok:'Заполнить',title:'Запись в таблицу',danger:true})))return;
   gsShow('Пишу в таблицу…');
   try{const r=await api('gsheets_push',login);
     gsShow('Готово ('+r.domain+'):\n'+r.results.map(x=>'• '+x.tab+': '+x.status).join('\n'));toast('Готово','ok');
@@ -2265,7 +2676,7 @@ async function gsPush(){
 }
 async function gsBreak(){
   const login=el('gsClient').value;if(!login){toast('Выбери клиента','err');return;}
-  if(!confirm('Создать листы-разрезы (По РК/группам/ключам/поисковым фразам/регионам) за текущий месяц?'))return;
+  if(!(await askConfirm('Создать листы-разрезы (По РК/группам/ключам/поисковым фразам/регионам) за текущий месяц?',{ok:'Создать листы',title:'Запись в таблицу',danger:true})))return;
   gsShow('Строю разрезы…');
   try{const r=await api('gsheets_breakdowns',login);
     gsShow('Разрезы ('+r.domain+'):\n'+r.results.map(x=>'• '+x.which+': '+x.status).join('\n'));toast('Готово','ok');
@@ -2274,8 +2685,8 @@ async function gsBreak(){
 
 /* ---------- SETTINGS ---------- */
 async function renderSettings(){
-  const host=el('v_settings');host.innerHTML='<div class="empty"><span class="spin"></span> загрузка…</div>';
-  let s;try{s=await api('settings');}catch(e){host.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  const host=el('v_settings');host.innerHTML=skeleton('rows',6);
+  let s;try{s=await api('settings');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   const tgOk=s.telegram.status==='ок';
   host.innerHTML=`
     <h2 class="title">Настройки</h2><p class="sub">Токены, доступы, тексты и расписание.</p>
@@ -2363,7 +2774,7 @@ async function loadBackups(){
         '<td class="right nowrap">'+b.size_kb+' КБ</td>'+
         '<td class="right"><a class="btn sm" href="/download/backup/'+encodeURIComponent(b.file)+'">⬇</a></td></tr>').join('')+
       '</tbody></table></div>'):'<span class="muted">Копий пока нет — нажми «Сделать копию сейчас».</span>';
-  }catch(e){host.innerHTML='<span class="muted">не удалось загрузить</span>';}
+  }catch(e){errToast(e);host.innerHTML='<span class="muted">не удалось загрузить</span>';}
 }
 async function doBackupNow(){
   toast('Делаю копию базы…');
@@ -2377,7 +2788,7 @@ async function loadAlert(){
     if(ub)ub.style.display=al.linked?'':'none';
     if(sw)sw.style.display=al.can_all?'':'none';
     if(sc)sc.value=al.scope||'mine';
-  }catch(e){}
+  }catch(e){errToast(e);}
 }
 async function saveMyAlertScope(){
   try{const r=await api('set_my_alert_scope',el('alScope').value);
@@ -2418,8 +2829,8 @@ async function saveTokens(){
 let DR_LOGIN=null;
 async function openClient(login){
   DR_LOGIN=login;el('drawerBg').classList.add('on');el('drawer').classList.add('on');
-  el('drTitle').textContent=login;el('drBody').innerHTML='<div class="empty"><span class="spin"></span></div>';
-  let c;try{c=await api('client',login);}catch(e){el('drBody').innerHTML='Ошибка';return;}
+  el('drTitle').textContent=login;el('drBody').innerHTML=skeleton('rows',6);
+  let c;try{c=await api('client',login);}catch(e){el('drBody').innerHTML=errBlock(e);return;}
   el('drTitle').innerHTML=esc(c.name)+' <span class="muted" style="font-weight:400">· '+esc(c.login)+'</span>';
   el('drBody').innerHTML=`
     <div class="field"><label>Название</label><input id="dName" value="${esc(c.name)}"></div>
@@ -2440,6 +2851,7 @@ async function openClient(login){
       </div>
       <div class="hint">«Подтянуть из Метрики» сам находит счётчик клиента (кампании Директа и/или домен) и грузит ВСЕ его цели. Галка «в отчёт» = цель показывается в отчётах; ключевые (покупка/заявка/звонок) отмечаются сами, остальные лежат выключенными — довключи нужные и «Сохранить».</div></div>`;
   const g=el('dGoals');g.innerHTML='';(c.goals||[]).forEach(x=>addGoal(x.id,x.name,x.active));
+  DR_SNAP=drawerSnapshot();   // с этого момента считаем правки несохранёнными
 }
 async function pullGoals(){
   if(!DR_LOGIN)return;
@@ -2450,7 +2862,7 @@ async function pullGoals(){
     r.goals.forEach(g=>addGoal(g.id,g.name,g.active));
     const act=r.goals.filter(g=>g.active!==false).length;
     toast('Подтянуто целей: '+r.goals.length+' (ключевых вкл.: '+act+(r.counters&&r.counters.length?(', счётчик '+r.counters.join(', ')):'')+'). Проверь и «Сохранить».','ok');
-  }catch(e){}
+  }catch(e){errToast(e);}
 }
 function addGoal(id,name,active){
   const row=document.createElement('div');row.className='goalrow';
@@ -2461,19 +2873,41 @@ function addGoal(id,name,active){
 function collectGoals(){return [...document.querySelectorAll('#dGoals .goalrow:not(.head)')].map(r=>{const t=r.querySelectorAll('input[placeholder]');const chk=r.querySelector('.ga');return {id:(t[0]?t[0].value.trim():''),name:(t[1]?t[1].value.trim():''),active:chk?chk.checked:true};}).filter(g=>g.id);}
 async function drawerSave(){
   const dv=el('dDelivery');
-  try{await api('save_client',DR_LOGIN,el('dName').value,collectGoals(),el('dAttr').value,dv?dv.value:null);toast('Сохранено','ok');closeDrawer();if(CURRENT==='clients')renderClients();}catch(e){}
+  try{await api('save_client',DR_LOGIN,el('dName').value,collectGoals(),el('dAttr').value,dv?dv.value:null);toast('Сохранено','ok');DR_SNAP=null;closeDrawer(true);if(CURRENT==='clients')renderClients();}catch(e){}
 }
 async function drawerTest(){
-  if(!confirm('Отправить тестовый отчёт в чат клиента?'))return;
+  if(!(await askConfirm('Отправить тестовый отчёт в чат клиента?',{ok:'Отправить',title:'Тестовый отчёт',danger:true})))return;
   try{const r=await api('send_test',DR_LOGIN);toast(r.status==='sent'?('Отправлено: '+r.chats):('Статус: '+(r.reason||r.status)),r.status==='sent'?'ok':'err');}catch(e){}
 }
-function closeDrawer(){el('drawerBg').classList.remove('on');el('drawer').classList.remove('on');}
+/* Слепок карточки клиента — чтобы поймать уход с несохранёнными правками.
+   Раньше можно было полчаса расставлять галочки целей и закрыть панель одним кликом мимо. */
+let DR_SNAP=null;
+function drawerSnapshot(){
+  const b=el('drBody');if(!b)return null;
+  const goals=[...b.querySelectorAll('input[type=checkbox]')].map(c=>c.checked?1:0).join('');
+  const name=(el('dName')||{}).value||'', attr=(el('dAttr')||{}).value||'', dv=(el('dDelivery')||{}).value||'';
+  return name+'|'+attr+'|'+dv+'|'+goals;
+}
+function drawerDirty(){return DR_SNAP!==null&&drawerSnapshot()!==DR_SNAP;}
+async function closeDrawer(force){
+  if(!force&&drawerDirty()){
+    const go=await askConfirm('В карточке есть несохранённые изменения. Закрыть и потерять их?',
+      {ok:'Закрыть без сохранения',title:'Несохранённые изменения',danger:true});
+    if(!go)return;
+  }
+  DR_SNAP=null;
+  el('drawerBg').classList.remove('on');el('drawer').classList.remove('on');
+}
+// уход со страницы с несохранёнными правками — предупреждаем силами браузера
+window.addEventListener('beforeunload',e=>{
+  if(drawerDirty()){e.preventDefault();e.returnValue='';}
+});
 
 /* ---------- ONBOARDING ---------- */
 async function openOnboard(){
   el('modalBg').classList.add('on');el('modal').classList.add('on');
-  el('obBody').innerHTML='<div class="empty"><span class="spin"></span></div>';
-  let cls;try{cls=await api('clients');}catch(e){el('obBody').innerHTML='Ошибка';return;}
+  el('obBody').innerHTML=skeleton('rows',6);
+  let cls;try{cls=await api('clients');}catch(e){el('obBody').innerHTML=errBlock(e);return;}
   const free=cls.filter(c=>!c.chat_id);
   const opts=(free.length?free:cls).map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
   el('obBody').innerHTML=`
@@ -2517,14 +2951,22 @@ function applyUser(){
 /* ---------- КОНТРОЛЬ: наблюдатель/админ ---------- */
 const SUP_ST={ok:{t:'✅ всё сдал',c:'var(--green)',bg:'var(--green-bg)'},partial:{t:'⚠️ частично',c:'var(--amber)',bg:'var(--amber-bg)'},miss:{t:'❌ не сдал',c:'var(--red)',c2:1,bg:'var(--red-bg)'},none:{t:'— нет клиентов',c:'var(--muted)',bg:'var(--surface-3)'}};
 function covBar(p){if(p==null)return '<span class="muted">—</span>';const col=p>=100?'var(--green)':p>=50?'var(--amber)':'var(--red)';return '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:8px;border-radius:99px;background:var(--surface-3);overflow:hidden;min-width:70px"><div style="height:100%;width:'+p+'%;background:'+col+'"></div></div><b style="font-size:12.5px">'+p+'%</b></div>';}
-function fmtWhen(iso){if(!iso)return 'нет отправок';try{const d=new Date(iso);return d.toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});}catch(e){return iso;}}
+function fmtWhen(iso){
+  // «2 часа назад» читается мгновенно; точная дата — в подсказке при наведении
+  if(!iso)return 'нет отправок';
+  try{
+    const d=new Date(iso);
+    const exact=d.toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});
+    return '<span title="'+exact+'">'+esc(fmtAgo(iso))+'</span>';
+  }catch(e){return iso;}
+}
 async function renderSupervision(){
   const box=el('v_supervision');
-  if(!ME||(ME.role!=='admin'&&ME.role!=='observer')){box.innerHTML='<div class="empty">Раздел доступен наблюдателю и администратору.</div>';return;}
-  box.innerHTML='<div class="empty">Загрузка…</div>';
+  if(!ME||(ME.role!=='admin'&&ME.role!=='observer')){box.innerHTML=emptyState('🔒','Раздел для руководителя','Контроль сдачи виден администратору и работодателю.',null);return;}
+  box.innerHTML=skeleton('cards',4);
   let sup,notes;
   try{sup=await api('supervision');notes=await api('notes_list');}
-  catch(e){box.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>';return;}
+  catch(e){box.innerHTML=errBlock(e,()=>refresh());return;}
   SUP_LAST=sup;   // для массового закрытия долгов
   // раздача проектов (наблюдатель тоже может выставлять проекты + доставку)
   try{POOL=await api('pool_clients');SUP_USERS=await api('assignable_users');}catch(e){POOL=[];SUP_USERS=[];}
@@ -2641,35 +3083,59 @@ function supNudge(uid,btn){
   const sel=el('noTo');if(sel)sel.value=String(uid);
   const t=el('noText');if(t){t.value=(name?name.split(' ')[0]+', ':'')+'напоминаю: отправь недельные отчёты по всем своим клиентам.';el('noKind').value='warn';t.focus();t.scrollIntoView({behavior:'smooth',block:'center'});}
 }
-async function supDelNote(id){ if(!confirm('Удалить сообщение?'))return; try{await api('note_delete',id);renderSupervision();}catch(e){} }
+async function supDelNote(id){ if(!(await askConfirm('Удалить сообщение?',{ok:'Удалить',title:'Удаление сообщения',danger:true})))return; try{await api('note_delete',id);renderSupervision();}catch(e){} }
+const EXCUSE_KINDS=[
+  {key:'nospend',label:'Нет открута',hint:'деньги не крутятся, закрыть на эту неделю'},
+  {key:'churned',label:'Проект отвалился',hint:'клиент ушёл, закрыть бессрочно'},
+  {key:'other',   label:'Другое',        hint:'напишу причину сам'}];
 async function supExcuse(loginEnc,btn){
   const login=decodeURIComponent(loginEnc);
   const name=btn?btn.getAttribute('data-name'):login;
-  const ch=prompt('Закрыть долг по «'+name+'».\nПричина, почему отчёт не отправлен:\n  1 — проект отвалился (закрыть бессрочно)\n  2 — нет открута / деньги не крутятся (на эту неделю)\n  3 — другое\n\nВведите 1, 2 или 3:','2');
-  if(ch===null)return;
-  const c=(ch||'').trim();
-  const kind = c==='1'?'churned':c==='3'?'other':'nospend';
+  const kind=await askChoice('Закрыть долг по «'+name+'». Почему отчёт не отправлен?',EXCUSE_KINDS,{title:'Закрыть долг'});
+  if(!kind)return;
   let reason=null;
-  if(kind==='other'){ reason=prompt('Укажите причину:',''); if(reason===null)return; if(!reason.trim()){toast('Пустая причина','err');return;} }
-  try{ await api('excuse_add', login, kind, reason); toast('Долг закрыт: '+name); renderSupervision(); }catch(e){}
+  if(kind==='other'){
+    reason=await askText('Почему отчёт не отправлен? Причина попадёт в Контроль.','',
+      {ok:'Закрыть долг',title:'Уважительная причина',placeholder:'например: клиент на паузе'});
+    if(reason===null)return;
+    if(!reason.trim()){toast('Без причины закрыть нельзя','err');return;}
+  }
+  try{
+    await api('excuse_add',login,kind,reason);
+    // обратимо: вместо допроса «уверен?» даём отмену
+    toast('Долг закрыт: '+name,'ok',{label:'Отменить',fn:async()=>{
+      try{const l=await api('supervision');const ex=(l.excused||[]).find(x=>x.login===login);
+        if(ex)await api('excuse_remove',ex.id);}catch(e){}
+      renderSupervision();}});
+    renderSupervision();
+  }catch(e){}
 }
 async function supExcuseAll(userId){
   const row=(SUP_LAST&&SUP_LAST.rows||[]).find(r=>r.user_id===userId);
   if(!row||!row.missing.length){toast('Долгов нет','err');return;}
   const logins=row.missing.map(m=>m.login);
-  const ch=prompt('Закрыть ВСЕ долги сотрудника «'+row.name+'» ('+logins.length+' шт.) одной причиной:\n  1 — проект отвалился (бессрочно)\n  2 — нет открута / деньги не крутятся (на эту неделю)\n  3 — другое\n\nВведите 1, 2 или 3:','2');
-  if(ch===null)return;
-  const c=(ch||'').trim();
-  const kind=c==='1'?'churned':c==='3'?'other':'nospend';
+  const list=row.missing.map(m=>'• '+(m.name||m.login)).join('\n');
+  const kind=await askChoice('Закрыть все долги сотрудника «'+row.name+'» ('+logins.length+' шт.) одной причиной:\n\n'+list,
+    EXCUSE_KINDS,{title:'Закрыть все долги'});
+  if(!kind)return;
   let reason=null;
-  if(kind==='other'){reason=prompt('Укажите причину (одна на все '+logins.length+'):','');if(reason===null)return;if(!reason.trim()){toast('Пустая причина','err');return;}}
-  if(!confirm('Закрыть '+logins.length+' долг(ов) сотрудника «'+row.name+'»?\n\n'+row.missing.map(m=>'• '+(m.name||m.login)).join('\n')))return;
-  try{const r=await api('excuse_add_bulk',logins,kind,reason);
+  if(kind==='other'){
+    reason=await askText('Причина — одна на все '+logins.length+':','',
+      {ok:'Закрыть долги',title:'Уважительная причина'});
+    if(reason===null)return;
+    if(!reason.trim()){toast('Без причины закрыть нельзя','err');return;}
+  }
+  try{
+    const r=await api('excuse_add_bulk',logins,kind,reason);
     toast('Закрыто долгов: '+r.closed+(r.errors.length?(', ошибок '+r.errors.length):''),'ok');
     renderSupervision();
   }catch(e){}
 }
-async function supUnexcuse(id){ if(!confirm('Вернуть долг — снять уважительную причину?'))return; try{ await api('excuse_remove', id); renderSupervision(); }catch(e){} }
+async function supUnexcuse(id){
+  // обратимо в один клик — не спрашиваем, а даём отменить
+  try{ await api('excuse_remove',id); toast('Долг возвращён в список','ok'); renderSupervision(); }
+  catch(e){ errToast(e,'Не вернул долг'); }
+}
 
 /* --- тренд сдачи + баланс нагрузки --- */
 function spark(series,w=132,h=30){
@@ -2717,7 +3183,7 @@ async function loadAudit(){
   const act=(el('auAction')||{}).value||'';
   let d;try{d=await api('audit_log',200,act||null);}catch(e){host.innerHTML='<span class="muted">не удалось загрузить</span>';return;}
   const ic={bind:'🔗',assign:'🎛',reassign:'🔁',excuse:'🛡',delivery:'📤',note:'📝',user:'👤',digest:'📨'};
-  const rows=(d.entries||[]).map(e=>'<tr><td class="nowrap muted" style="font-size:12px">'+esc(fmtWhen(e.created_at))+'</td>'+
+  const rows=(d.entries||[]).map(e=>'<tr><td class="nowrap muted" style="font-size:12px">'+fmtWhen(e.created_at)+'</td>'+
     '<td class="nowrap">'+(ic[e.action]||'•')+' '+esc(e.user_name||'—')+'</td>'+
     '<td>'+esc(e.target||'')+'</td><td class="muted" style="font-size:12.5px">'+esc(e.detail||'')+'</td></tr>').join('');
   host.innerHTML=(d.entries||[]).length?('<div class="scrollx" style="max-height:340px;overflow:auto"><table><thead><tr><th>Когда</th><th>Кто</th><th>Что</th><th>Детали</th></tr></thead><tbody>'+rows+'</tbody></table></div>')
@@ -2729,7 +3195,7 @@ async function digestPreview(){
   try{const r=await api('digest_preview');const b=el('digestBox');b.style.display='block';b.textContent=r.text;}catch(e){}
 }
 async function digestSend(){
-  if(!confirm('Отправить сводку сейчас всем, у кого включён режим «По всему агентству»?'))return;
+  if(!(await askConfirm('Отправить сводку сейчас всем, у кого включён режим «По всему агентству»?',{ok:'Отправить сводку',title:'Сводка руководителю',danger:true})))return;
   try{const r=await api('digest_send');
     toast('Сводка отправлена: '+r.sent+(r.missing.length?(' · без привязки Telegram: '+r.missing.join(', ')):''),r.sent?'ok':'err');
   }catch(e){}
@@ -2738,8 +3204,8 @@ async function digestSend(){
 /* --- карточка специалиста (досье) --- */
 async function openSpecCard(uid){
   el('drawerBg').classList.add('on');el('drawer').classList.add('on');
-  el('drTitle').textContent='Досье специалиста';el('drBody').innerHTML='<div class="empty"><span class="spin"></span></div>';
-  let d;try{d=await api('specialist_card',uid);}catch(e){el('drBody').innerHTML='Ошибка';return;}
+  el('drTitle').textContent='Досье специалиста';el('drBody').innerHTML=skeleton('cards',4);
+  let d;try{d=await api('specialist_card',uid);}catch(e){el('drBody').innerHTML=errBlock(e);return;}
   el('drTitle').innerHTML='👤 '+esc(d.user.name)+' <span class="muted" style="font-weight:400">· '+esc(d.user.role==='admin'?'админ':'специалист')+'</span>';
   const w=d.week, cov=w.coverage;
   const st=(s)=>({sent:['✅ сдан','var(--green)'],skipped:['⏭ нет открута','var(--muted)'],excused:['🛡 уважительно','var(--amber)'],debt:['❌ долг','var(--red)']}[s]||['—','var(--muted)']);
@@ -2772,12 +3238,12 @@ async function openSpecCard(uid){
     </div>`;
 }
 async function cardNote(login,cur){
-  const t=prompt('Заметка по проекту «'+login+'» (видна всем причастным). Пусто — удалить:',cur||'');
+  const t=await askText('Заметка по проекту «'+login+'». Её видят все причастные. Оставь пустым, чтобы удалить.',cur||'',{ok:'Сохранить',title:'Заметка по проекту'});
   if(t===null)return;
   try{await api('set_client_note',login,t);toast(t.trim()?'Заметка сохранена':'Заметка удалена','ok');}catch(e){}
 }
-function supNudgeDirect(uid,name){
-  const t=prompt('Сообщение для «'+name+'» (появится ярким баннером):','');
+async function supNudgeDirect(uid,name){
+  const t=await askText('Сообщение для «'+name+'». Появится у него ярким баннером в кабинете.','',{ok:'Отправить',title:'Сообщение сотруднику',placeholder:'коротко и по делу'});
   if(!t||!t.trim())return;
   api('note_create',String(uid),t.trim(),'info').then(()=>{toast('Отправлено','ok');renderSupervision();}).catch(()=>{});
 }
@@ -2823,9 +3289,9 @@ async function loadNotif(render){
         '<div style="flex:1;min-width:0"><div class="notif-t">'+esc(n.title)+'</div>'+
         (n.text?'<div class="notif-x">'+esc(n.text)+'</div>':'')+
         '<div class="notif-d">'+fmtWhen(n.created_at)+'</div></div></div>').join('')
-        :'<div class="empty" style="padding:20px">Пока пусто ✨</div>';
+        :emptyState('🔔','Уведомлений нет','Здесь появятся долги по отчётам, клиенты без ответа и бюджеты на исходе.',null);
     }
-  }catch(e){}
+  }catch(e){errToast(e);}
 }
 function toggleNotif(){
   NOTIF_OPEN=!NOTIF_OPEN;
@@ -2859,21 +3325,21 @@ async function doLogin(ev){
   el('lgErr').textContent=''; el('lgBtn').disabled=true;
   let r;
   try{ r=await callBackend('login',[email,pass]); }
-  catch(e){ el('lgErr').textContent='Нет связи с сервером'; el('lgBtn').disabled=false; return; }
+  catch(e){errToast(e); el('lgErr').textContent='Нет связи с сервером'; el('lgBtn').disabled=false; return; }
   el('lgBtn').disabled=false;
   if(r&&r.ok&&r.user){ ME=r.user; el('lgPass').value=''; hideLogin(); applyUser();
     if(!READY){ init(); } else { refresh(); } }
   else { el('lgErr').textContent=(r&&r.error)||'Не удалось войти'; }
 }
 async function logout(){
-  try{ await callBackend('logout',[]); }catch(e){}
+  try{ await callBackend('logout',[]); }catch(e){errToast(e);}
   ME=null; location.reload();
 }
 async function bootWeb(){
   if(READY) return;
   let me;
   try{ me=await callBackend('me',[]); }
-  catch(e){ return; }                       // нет связи — сработает нижний fallback
+  catch(e){errToast(e); return; }                       // нет связи — сработает нижний fallback
   if(me&&me.ok&&me.user){ ME=me.user; applyUser(); init(); }
   else { showLogin(me&&me.setup); }
 }
@@ -2882,11 +3348,11 @@ async function bootWeb(){
 let POOL=[], SUP_USERS=[], SUP_LAST=null;
 async function renderUsers(){
   const box=el('v_users');
-  if(!ME||(ME.role!=='admin'&&ME.role!=='observer')){box.innerHTML='<div class="empty">Раздел доступен администратору и работодателю.</div>';return;}
-  box.innerHTML='<div class="empty">Загрузка…</div>';
+  if(!ME||(ME.role!=='admin'&&ME.role!=='observer')){box.innerHTML=emptyState('🔒','Раздел для руководителя','Управление сотрудниками доступно администратору и работодателю.',null);return;}
+  box.innerHTML=skeleton('cards',4);
   let users;
   try{ users=await api('users_list'); POOL=await api('pool_clients'); }
-  catch(e){ box.innerHTML='<div class="empty">Ошибка: '+esc(e.message)+'</div>'; return; }
+  catch(e){box.innerHTML=errBlock(e,()=>refresh());return;}
   const opts=users.map(u=>'<option value="'+u.id+'">'+esc(u.name||u.email)+'</option>').join('');
   const rows=users.map(u=>`<tr>
       <td><b>${esc(u.name||'—')}</b><div class="mini-2">${esc(u.email)}</div></td>
@@ -2956,21 +3422,19 @@ async function userCreate(){
   const email=el('nuEmail').value.trim(), name=el('nuName').value.trim(),
         pass=el('nuPass').value, role=el('nuRole').value;
   if(!email||!pass){toast('Нужны email и пароль','err');return;}
-  try{ await api('user_create',email,pass,name,role); toast('Пользователь создан'); renderUsers(); }
-  catch(e){}
+  try{ await api('user_create',email,pass,name,role); toast('Пользователь создан'); renderUsers(); }catch(e){}
 }
 async function userToggle(id,active){ try{ await api('user_set_active',id,!!active); renderUsers(); }catch(e){} }
 async function userSetRole(id,role){ try{ await api('user_set_role',id,role); toast(role==='observer'?'Выдана роль «Наблюдатель»':'Роль изменена'); renderUsers(); }catch(e){ renderUsers(); } }
 async function userPass(id){
-  const p=prompt('Новый пароль для пользователя:');
+  const p=await askText('Новый пароль для пользователя','',{ok:'Сменить пароль',title:'Смена пароля',placeholder:'минимум 6 символов'});
   if(!p)return;
   try{ await api('user_set_password',id,p); toast('Пароль обновлён'); }catch(e){}
 }
 async function assignClient(login,uid){
   try{ await api('assign_client',login,uid||null);
     const c=POOL.find(x=>x.login===login); if(c)c.owner=uid?parseInt(uid):null;
-    toast('Владелец сохранён'); }
-  catch(e){ render(CURRENT); }
+    toast('Владелец сохранён'); }catch(e){ render(CURRENT); }
 }
 async function doReassignAll(){
   const from=el('reFrom').value, to=el('reTo').value;
@@ -2978,14 +3442,23 @@ async function doReassignAll(){
   const nameOf=v=>v==='none'?'общий пул':((SUP_USERS||[]).find(u=>String(u.id)===String(v))||{}).name||'?';
   const n=from==='none'?(POOL||[]).filter(c=>!c.owner).length:(POOL||[]).filter(c=>String(c.owner)===String(from)).length;
   if(!n){toast('Нечего передавать','err');return;}
-  if(!confirm('Передать ВСЕ проекты ('+n+' шт.) от «'+nameOf(from)+'» к «'+nameOf(to)+'»?'))return;
-  try{const r=await api('reassign_all',from,to);toast('Передано проектов: '+r.moved,'ok');renderSupervision();}catch(e){}
+  // Передача обратима — делаем сразу и даём вернуть. Возвращаем ИМЕННО перемещённые
+  // проекты (r.logins), а не всё скопом: у получателя могли быть свои, их трогать нельзя.
+  try{
+    const r=await api('reassign_all',from,to);
+    const exact=(r.logins||[]).length===r.moved;   // список обрезается на 50 — тогда отмену не предлагаем
+    toast('Передано проектов: '+r.moved+' → '+nameOf(to),'ok',
+      exact&&r.moved?{label:'Вернуть обратно',fn:async()=>{
+        let back=0;
+        for(const lg of r.logins){try{await api('assign_client',lg,from==='none'?null:from);back++;}catch(e){}}
+        toast('Вернул проектов: '+back,'ok');renderSupervision();}}:null);
+    renderSupervision();
+  }catch(e){}
 }
 async function assignDelivery(login,delivery){
   try{ await api('set_delivery_super',login,delivery);
     const c=POOL.find(x=>x.login===login); if(c)c.delivery=delivery;
-    toast(delivery==='external'?'Проект помечен сторонним':'Проект — в Telegram-рассылке'); }
-  catch(e){}
+    toast(delivery==='external'?'Проект помечен сторонним':'Проект — в Telegram-рассылке'); }catch(e){}
 }
 
 /* ---------- init ---------- */
@@ -3006,7 +3479,7 @@ function init(){
 window.addEventListener('pywebviewready',init);                                     // десктоп (без входа)
 setTimeout(()=>{if(!READY&&location.protocol.indexOf('http')===0)bootWeb();},120);  // веб: сперва проверка входа
 setTimeout(()=>{if(!READY&&window.pywebview&&window.pywebview.api)init();},600);    // десктоп (запас)
-setTimeout(()=>{if(!READY&&!el('loginBg').classList.contains('on'))el('v_dashboard').innerHTML='<div class="empty">Нет связи с backend.<br>Десктоп: запусти IIGReporter.exe. Веб: открой адрес веб-версии в браузере.</div>';},2500);
+setTimeout(()=>{if(!READY&&!el('loginBg').classList.contains('on'))el('v_dashboard').innerHTML=emptyState('🔌','Нет связи с сервером','Страница загрузилась, но сервер не отвечает. Обнови страницу — если не поможет, скажи администратору.',{label:'Обновить страницу',onclick:()=>location.reload()});},2500);
 
 /* ================= ПЕРЕРЫВ: игра «2048» =================
    Замкнута в IIFE: наружу торчат только gmToggle/gmNew/gmUndo/gmOverAct и gmShowFab.

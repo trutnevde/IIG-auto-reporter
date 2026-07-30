@@ -452,6 +452,11 @@ def run_weekly(token, tg, db, intro, note, default_attr="LSCCD", on_progress=Non
 
     for i, login in enumerate(logins, 1):
         detail = {"login": login, "name": _name(login)}
+        if on_progress:            # «взял в работу» — чтобы в окне было видно, на ком сейчас стоим
+            try:
+                on_progress(i - 1, total, dict(detail, status="running"))
+            except Exception:      # noqa: BLE001 — прогресс не должен ронять рассылку
+                pass
         try:
             res = send_for_login(token, tg, db, login, intro, note, default_attr, dry_run=dry_run)
             detail.update(res)

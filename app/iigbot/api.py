@@ -794,6 +794,10 @@ class Api:
             def prog(done, total, detail):
                 self._run["done"] = done
                 self._run["total"] = total
+                if (detail or {}).get("status") == "running":
+                    self._run["current"] = detail   # на ком стоим прямо сейчас
+                    return
+                self._run["current"] = None
                 self._run["details"].append(detail)
 
             res = report.run_weekly(token, tg, self.db, intro, note, attr,
@@ -824,7 +828,7 @@ class Api:
         if self.user and not logins:
             raise RuntimeError("У вас нет назначенных клиентов для рассылки.")
         self._run = {"running": True, "done": 0, "total": (len(logins) if logins else 0),
-                     "details": [], "summary": None, "error": None,
+                     "details": [], "summary": None, "error": None, "current": None,
                      "only_failed": only_failed, "dry": bool(dry_run)}
         import threading
         threading.Thread(target=self._run_weekly_worker, args=(logins, bool(dry_run)),
@@ -837,6 +841,7 @@ class Api:
         return {"running": r.get("running", False), "done": r.get("done", 0),
                 "total": r.get("total", 0), "details": r.get("details", []),
                 "summary": r.get("summary"), "error": r.get("error"),
+                "current": r.get("current"),
                 "only_failed": r.get("only_failed", False), "dry": r.get("dry", False)}
 
     @safe
