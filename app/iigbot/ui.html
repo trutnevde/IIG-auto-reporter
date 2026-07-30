@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#0171B0">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&family=Inter:wght@600;700&display=swap" rel="stylesheet">
-<script>/* тема до отрисовки — без мигания */(function(){try{var t=localStorage.getItem('iig-theme');if(!t)t=(window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-theme',t);}catch(e){errToast(e);}})();</script>
+<script>/* тема до отрисовки — без мигания */(function(){try{var t=localStorage.getItem('iig-theme');if(!t)t=(window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-theme',t);}catch(e){/* тут ещё нет ни toast, ни DOM — молчим */}})();</script>
 <style>
   :root{
     --bg:#eef5fc; --surface:#ffffff; --surface-2:#f3f9fe; --surface-3:#e7f2fb;
