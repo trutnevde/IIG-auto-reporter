@@ -33,7 +33,10 @@ SCOPES_RW = ["https://www.googleapis.com/auth/spreadsheets",
 
 TITLE_RE = re.compile(r"Auto-?Reporter\s+ОТЧЕ?Т\s+(.+)$", re.IGNORECASE)
 GOALS_PER_REQUEST = 10
-DEFAULT_ATTR = "LYDC"   # атрибуция, на которой построены таблицы (см. модульную доку)
+# Атрибуция берётся из общей настройки (settings.default_attribution) — одна на отчёты,
+# конструктор и таблицы. Раньше здесь был свой хардкод LYDC, из-за чего цифры в таблице
+# не сходились с недельным отчётом (тот считал по LSC). None = «спросить настройку».
+DEFAULT_ATTR = None
 
 
 # ---- путь к ключу сервисного аккаунта (зеркалит settings._secrets_candidates) ----
@@ -179,6 +182,7 @@ def account_period(token, login, date_from, date_to, goal_defs,
     Возвращает {'imp','clicks','cost','pos_imp','pos_clk','by_goal':{gid:val}}.
     Конверсии тянутся батчами по <=10 целей (ограничение Reports API).
     """
+    attribution = attribution or settings.default_attribution()
     base_fields = ["Impressions", "Clicks", "Cost"]
     if want_positions:
         base_fields += ["AvgImpressionPosition", "AvgClickPosition"]
@@ -353,6 +357,7 @@ def fill_weekly(ws, token, login, all_goals, date_from, date_to, query_to=None,
         Клики/Расход/цели), не трогая формулы и внешние столбцы (Callibri/Ticketscloud).
         Если строки нет — дописывает (формулы продлеваются), вставляя перед футером-итогом.
     """
+    attribution = attribution or settings.default_attribution()
     query_to = query_to or date_to
     values = ws.get_all_values()
     formulas = ws.get_all_values(value_render_option="FORMULA")
@@ -480,6 +485,7 @@ def push_breakdown(gc, sid, token, login, which, date_from, date_to,
     «тотал кампании» сходился с недельными. Если целей нет — «голое» Conversions (запас).
     Если лист с таким именем уже есть: replace=True пересоздаёт.
     """
+    attribution = attribution or settings.default_attribution()
     if which not in BREAKDOWNS:
         raise RuntimeError("Неизвестный разрез: {}".format(which))
     name, level, segments = BREAKDOWNS[which]
@@ -504,6 +510,7 @@ def push_breakdown(gc, sid, token, login, which, date_from, date_to,
 # ---- составные помесячные листы («Июнь 26»): блок по кампаниям + под-блок по неделям ----
 def _campaign_period(token, login, date_from, date_to, goal_defs, attribution=DEFAULT_ATTR):
     """{имя_кампании: {imp,clicks,cost,pos_imp,pos_clk,by_goal}} за период (CAMPAIGN-отчёт)."""
+    attribution = attribution or settings.default_attribution()
     base = R.fetch_report(token, login, date_from, date_to,
                           ["CampaignName", "Impressions", "Clicks", "Cost",
                            "AvgImpressionPosition", "AvgClickPosition"],
@@ -635,6 +642,7 @@ def fill_month_detail(ws, token, login, all_goals, month_from, query_to, weeks=N
     weeks — недели (date_from, date_to_подписи, query_to); None → текущая (или все недели месяца
     при reset). reset=True — ПЕРЕПИСАТЬ недельный блок с нуля (для только что клонированного листа
     прошлого месяца): недели месяца по порядку, лишние строки очистить."""
+    attribution = attribution or settings.default_attribution()
     from datetime import date as _d
     from gspread.utils import rowcol_to_a1
     values = ws.get_all_values()

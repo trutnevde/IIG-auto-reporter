@@ -6,7 +6,7 @@
 """
 import sys
 
-from .settings import load_secrets, load_app_config, load_report_config
+from .settings import load_secrets, load_app_config, load_report_config, default_attribution
 from .storage import Storage
 from .telegram_api import Telegram
 from . import report
@@ -30,7 +30,7 @@ def main():
     db = Storage(cfg["db_path"])
     intro = rep.get("intro") or "Отчёт за прошлую неделю."
     note = rep.get("specialist_note") or ""   # приписка опциональна (пусто = не добавлять)
-    attr = rep.get("attribution_model") or "LSC"
+    attr = rep.get("attribution_model") or default_attribution()
     if dry:
         print("=== DRY-RUN: строю отчёты, клиентам НЕ отправляю ===")
     res = report.run_weekly(token, tg, db, intro, note, attr, dry_run=dry)

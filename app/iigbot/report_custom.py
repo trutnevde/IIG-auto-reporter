@@ -14,6 +14,7 @@
 from datetime import date as _date, timedelta as _td
 
 from . import report as R
+from . import settings
 
 # базовый уровень -> (тип отчёта Директа, поля-измерения сущности, заголовки)
 LEVELS = {
@@ -116,7 +117,7 @@ def _metrics(imp, clk, cost, conv):
     }
 
 
-def build(token, login, level, date_from, date_to, attribution="LSC", goal_defs=None,
+def build(token, login, level, date_from, date_to, attribution=None, goal_defs=None,
           segments=None, date_grain="day", campaign=None, limit=100, _post=None, _sleep=None):
     if level not in LEVELS:
         raise RuntimeError("Неизвестный разрез: {}".format(level))
@@ -131,7 +132,7 @@ def build(token, login, level, date_from, date_to, attribution="LSC", goal_defs=
     conv_capable = level in CONV_LEVELS
     use_goals = bool(goal_defs) and conv_capable
     goal_ids = [g["id"] for g in goal_defs] if use_goals else None
-    attribution = attribution if attribution in ATTRIBUTION_MODELS else "LSC"
+    attribution = attribution if attribution in ATTRIBUTION_MODELS else settings.default_attribution()
     has_date = "date" in segs
 
     fields = list(dim_fields) + ["Impressions", "Clicks", "Cost"]

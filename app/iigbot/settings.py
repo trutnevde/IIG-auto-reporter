@@ -147,6 +147,22 @@ def load_report_config():
     return _load(path) if path else {}
 
 
+# Единая модель атрибуции на всю программу: недельные отчёты, конструктор, Google-таблицы.
+# LSCD = «последний значимый переход, кросс-девайс» — рекомендация Мари (29.07.2026):
+# считает Директу конверсию, даже если человек потом зашёл напрямую, и сшивает
+# телефон с компьютером по Яндекс ID. Раньше отчёты жили на LSC, а таблицы на LYDC,
+# из-за чего цифры по одному клиенту не сходились между собой.
+DEFAULT_ATTRIBUTION = "LSCD"
+
+
+def default_attribution():
+    """Модель атрибуции по умолчанию — из Настроек, иначе LSCD."""
+    try:
+        return (load_report_config().get("attribution_model") or DEFAULT_ATTRIBUTION)
+    except Exception:  # noqa: BLE001 — настройки недоступны: работаем на дефолте
+        return DEFAULT_ATTRIBUTION
+
+
 def _save(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)

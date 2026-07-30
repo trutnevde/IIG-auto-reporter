@@ -14,7 +14,7 @@ from . import yandex, report, listener
 from .storage import Storage
 from .telegram_api import Telegram, TelegramError
 from .settings import (
-    load_secrets, load_app_config, load_report_config,
+    load_secrets, load_app_config, load_report_config, default_attribution,
     save_app_config, save_report_config, save_secrets as _save_secrets,
     log_error,
 )
@@ -196,7 +196,7 @@ class Api:
         rep = load_report_config()
         intro = rep.get("intro") or "Отчёт за прошлую неделю."
         note = rep.get("specialist_note") or ""   # приписка опциональна (пусто = не добавлять)
-        attr = rep.get("attribution_model") or "LSC"
+        attr = rep.get("attribution_model") or default_attribution()
         return intro, note, attr
 
     def _notify(self, to_user, kind, title, text=None, link=None, dedup=False):
@@ -352,7 +352,10 @@ class Api:
         binds = self.db.bindings_for_login(login)
         return {
             "login": c["login"], "name": c["name"], "source": c["source"],
-            "attribution": c["attribution"] or "LSC", "goals": goals,
+            # пусто = «как в Настройках»; подставлять дефолт нельзя, иначе он запишется
+            # клиенту явно и перестанет следовать за общей настройкой агентства
+            "attribution": c["attribution"] or "", "attribution_default": default_attribution(),
+            "goals": goals,
             "delivery": (c["delivery"] if "delivery" in c.keys() else None) or "telegram",
             "chats": [{"chat_id": b["chat_id"], "title": self._chat_title(b["chat_id"])} for b in binds],
         }
@@ -913,13 +916,13 @@ class Api:
             date_from = date_from or per["date_from"]
             date_to = date_to or per["date_to"]
         res = RC.build(token, login, level or "campaign", date_from, date_to,
-                       attribution or "LSC", goal_defs, segments, date_grain or "day", campaign, limit or 100)
+                       attribution or default_attribution(), goal_defs, segments, date_grain or "day", campaign, limit or 100)
         res["client_name"] = c["name"] or login
         res["text"] = RC.to_text(login, c["name"] or login, res)
         return res
 
     @safe
-    def report_query(self, login, level="campaign", date_from=None, date_to=None, attribution="LSC",
+    def report_query(self, login, level="campaign", date_from=None, date_to=None, attribution=None,
                      limit=100, segments=None, date_grain="day", campaign=None, goal_ids=None):
         res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain, campaign, goal_ids)
         res["chats"] = [{"chat_id": b["chat_id"], "title": self._chat_title(b["chat_id"])}
@@ -927,7 +930,7 @@ class Api:
         return res
 
     @safe
-    def report_send(self, login, level="campaign", date_from=None, date_to=None, attribution="LSC",
+    def report_send(self, login, level="campaign", date_from=None, date_to=None, attribution=None,
                     limit=100, segments=None, date_grain="day", campaign=None, goal_ids=None):
         self._require_write()
         res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain, campaign, goal_ids)
@@ -943,7 +946,7 @@ class Api:
         return {"sent": sent}
 
     @safe
-    def report_export_xlsx(self, login, level="campaign", date_from=None, date_to=None, attribution="LSC",
+    def report_export_xlsx(self, login, level="campaign", date_from=None, date_to=None, attribution=None,
                            limit=1000, segments=None, date_grain="day", campaign=None, goal_ids=None):
         """Строит отчёт и сохраняет .xlsx в подпапку reports/ рядом с программой. Ничего не отправляет."""
         import os
@@ -1539,8 +1542,8 @@ class Api:
     def dialog_dismiss(self, chat_id):
         """«Ответ не нужен»: убрать чат из ожидающих (клиент написал «Отлично» — и всё).
 
-        Снимаем именно текущее сообщение клиента: напишет новое — чат вернётся сам."""
-        self._require_write()
+        Снимаем именно текущее сообщение клиента: напишет новое — чат вернётся сам.
+        Работодателю тоже можно: он ведёт этот список наравне со специалистами."""
         self._require_chat_visible(chat_id)
         a = next((x for x in self.db.list_chat_activity() if x["chat_id"] == int(chat_id)), None)
         mark = (a["last_client_at"] if a else None)
@@ -1552,8 +1555,7 @@ class Api:
 
     @safe
     def dialog_restore(self, chat_id):
-        """Вернуть чат в «Ждут ответа» (отмена «ответ не нужен»)."""
-        self._require_write()
+        """Вернуть чат в «Ждут ответа» (отмена «ответ не нужен»). Работодателю тоже можно."""
         self._require_chat_visible(chat_id)
         self.db.restore_chat_wait(chat_id)
         self._audit("dialog", self._chat_title(chat_id), "возвращён в ожидающие ответа")
@@ -2230,7 +2232,7 @@ class Api:
         return {
             "intro": rep.get("intro", ""),
             "specialist_note": rep.get("specialist_note", ""),
-            "attribution_model": rep.get("attribution_model", "LSC"),
+            "attribution_model": rep.get("attribution_model") or default_attribution(),
             "admin_user_ids": app.get("admin_user_ids", []),
             "report_day": app.get("report_day", "Понедельник"),
             "report_time": app.get("report_time", "09:00"),

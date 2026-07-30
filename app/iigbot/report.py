@@ -63,7 +63,7 @@ def period(today=None):
 
 
 # ---------- запрос отчёта (CAMPAIGN_PERFORMANCE_REPORT, TSV) ----------
-def fetch_report(token, login, date_from, date_to, fields, goal_ids=None, attribution="LSC",
+def fetch_report(token, login, date_from, date_to, fields, goal_ids=None, attribution="LSCD",
                  report_type="CAMPAIGN_PERFORMANCE_REPORT", filters=None, _post=None, _sleep=None):
     """Возвращает список строк-словарей (имя_столбца -> значение). _post/_sleep — для тестов.
 
@@ -374,7 +374,7 @@ def goal_defs_from_client(client_row, only_active=True, only_ids=None):
              "key": True if key_ids is None else (g["id"] in key_ids)} for g in sel]
 
 
-def build_for_login(token, db, login, intro, note, default_attr="LSC", _post=None, _sleep=None):
+def build_for_login(token, db, login, intro, note, default_attr="LSCD", _post=None, _sleep=None):
     """Возвращает (text|None, camps, period) для одного клиента."""
     c = db.get_client(login)
     if not c:
@@ -391,14 +391,14 @@ def build_for_login(token, db, login, intro, note, default_attr="LSC", _post=Non
                 note = u["note"]
         except Exception:  # noqa: BLE001 — нет таблицы users (старая база) — остаётся общая
             pass
-    attr = (c["attribution"] if c["attribution"] else None) or default_attr or "LSC"
+    attr = (c["attribution"] if c["attribution"] else None) or default_attr or "LSCD"
     per = period()
     camps = build_campaign_data(token, login, goal_defs, attr, per, _post=_post, _sleep=_sleep)
     text = build_message(c["name"] or login, goal_defs, camps, per, intro, note)
     return text, camps, per
 
 
-def send_for_login(token, tg, db, login, intro, note, default_attr="LSC", dry_run=False):
+def send_for_login(token, tg, db, login, intro, note, default_attr="LSCD", dry_run=False):
     """Строит отчёт и отправляет во все привязанные к клиенту чаты. Пишет в send_log.
     dry_run=True — только строит отчёт, НЕ отправляет клиентам и НЕ пишет в лог (безопасный тест)."""
     text, camps, per = build_for_login(token, db, login, intro, note, default_attr)
@@ -427,7 +427,7 @@ def send_for_login(token, tg, db, login, intro, note, default_attr="LSC", dry_ru
     return {"status": "sent", "chats": sent, "campaigns": len(camps)}
 
 
-def run_weekly(token, tg, db, intro, note, default_attr="LSC", on_progress=None, logins=None, dry_run=False):
+def run_weekly(token, tg, db, intro, note, default_attr="LSCD", on_progress=None, logins=None, dry_run=False):
     """Прогон по всем привязанным клиентам (для планировщика/кнопки «Запустить рассылку»).
 
     on_progress(done, total, detail) — колбэк после каждого клиента (для окна прогресса).
