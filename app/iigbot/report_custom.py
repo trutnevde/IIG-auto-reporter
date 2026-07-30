@@ -42,8 +42,9 @@ SEGMENTS = {
 SEGMENT_ORDER = ["date", "device", "gender", "age", "geo", "network"]
 DATE_GRAINS = {"day": "По дням", "week": "По неделям", "month": "По месяцам", "period": "За весь период"}
 
-# модели атрибуции Директа (максимум): обычные + кросс-девайс (…D) + авто
-ATTRIBUTION_MODELS = ["LSC", "LC", "FC", "LYDC", "LSCD", "LCD", "FCD", "LYDCD", "AUTO"]
+# Модели атрибуции, которые Reports API реально принимает (проверено запросами вживую).
+# Кросс-девайс — через два C. LSCD/LCD/FCD/LYDCD/LCCD не существуют: Директ отвечает 400.
+ATTRIBUTION_MODELS = ["LSCCD", "LSC", "LC", "FC", "FCCD", "LYDC", "LYDCCD", "AUTO"]
 CONV_LEVELS = {"account", "campaign", "adgroup", "ad", "keyword"}   # где доступны конверсии
 
 # колонки-метрики, которые можно выбрать к показу
