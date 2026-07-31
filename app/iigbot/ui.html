@@ -2,7 +2,10 @@
 <html lang="ru" data-theme="light">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- viewport-fit=cover — чтобы контент уходил под вырез и шторку, а отступы мы задали сами через safe-area -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>IIG Reporter — кабинет</title>
 <link rel="icon" href="/favicon.svg">
 <link rel="apple-touch-icon" href="/favicon.svg">
@@ -478,6 +481,190 @@
     .goalrow{grid-template-columns:38px 90px 1fr 30px}
     .cards{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
   }
+
+  /* ══════════════════════════════════════════════════════════════════
+     МОБИЛЬНЫЙ СЛОЙ — не ужатый десктоп, а свои решения под телефон.
+     Ориентир: Директ, Google Ads, YouTube, ВК — там мобильная версия
+     повторяет суть, но управляется большим пальцем, а не курсором.
+     ══════════════════════════════════════════════════════════════════ */
+
+  /* --- 1. Среда: вырез, шторка, инерция, никакого зума при фокусе --- */
+  :root{
+    --safe-t:env(safe-area-inset-top,0px);
+    --safe-b:env(safe-area-inset-bottom,0px);
+    --safe-l:env(safe-area-inset-left,0px);
+    --safe-r:env(safe-area-inset-right,0px);
+    --tabbar-h:58px;              /* высота нижней навигации без safe-area */
+    --tap:44px;                   /* минимальная тач-цель */
+  }
+  @media (max-width:640px){
+    /* iOS зумит страницу, если поле мельче 16px. Это самая частая причина
+       «поехавшей» вёрстки на айфоне при вводе. */
+    input,select,textarea{font-size:16px!important}
+    /* серый прямоугольник при тапе выглядит как баг — гасим, свой отклик даём сами */
+    *{-webkit-tap-highlight-color:transparent}
+    .btn,.icon-btn,.nav a,.cmdk-item,.notif-item,td button{touch-action:manipulation}
+    .btn:active,.icon-btn:active{transform:scale(.97)}
+    /* инерционная прокрутка и никакого «оттягивания» всей страницы */
+    .content{-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
+    /* тач-цели: мелкие кнопки в строках пальцем не попадаются */
+    .btn.sm{min-height:38px;padding:9px 13px}
+    .icon-btn{width:var(--tap);height:var(--tap)}
+    /* поля и кнопки во всю ширину — под большой палец */
+    .field input,.field select,.field textarea{min-height:46px}
+  }
+
+  /* --- 2. Нижняя навигация: главное под большим пальцем --- */
+  .tabbar{display:none}
+  @media (max-width:640px){
+    .tabbar{
+      display:grid;grid-template-columns:repeat(5,1fr);
+      position:fixed;left:0;right:0;bottom:0;z-index:70;
+      background:color-mix(in srgb,var(--surface) 92%,transparent);
+      backdrop-filter:saturate(1.5) blur(12px);
+      border-top:1px solid var(--line);
+      padding-bottom:var(--safe-b);            /* над шторкой iPhone */
+      padding-left:var(--safe-l);padding-right:var(--safe-r);
+    }
+    .tabbar button{
+      background:none;border:0;cursor:pointer;font:inherit;color:var(--muted);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+      height:var(--tabbar-h);position:relative;padding:0;
+      transition:color .14s;
+    }
+    .tabbar button svg{width:23px;height:23px;fill:currentColor}
+    .tabbar button span{font-size:10.5px;font-weight:500;line-height:1}
+    .tabbar button.on{color:var(--brand)}
+    .tabbar button.on svg{transform:translateY(-1px)}
+    .tabbar button:active{background:var(--surface-2)}
+    /* счётчик на вкладке */
+    .tb-dot{position:absolute;top:6px;left:calc(50% + 6px);min-width:16px;height:16px;padding:0 4px;
+      border-radius:99px;background:var(--red);color:#fff;font-size:9.5px;font-weight:700;
+      display:grid;place-items:center;box-shadow:0 0 0 2px var(--surface)}
+    /* контенту нужно место, иначе низ списка уезжает под панель */
+    .content{padding-bottom:calc(var(--tabbar-h) + var(--safe-b) + 18px)}
+    /* боковое меню на телефоне не нужно вовсе — его роль взяли вкладки и «Ещё» */
+    .side,.side-bg,.burger{display:none!important}
+    body.nav-open .side{left:-105vw}
+    .app{grid-template-columns:1fr}
+    /* кнопка игры и тосты — выше панели */
+    .gm-fab{bottom:calc(var(--tabbar-h) + var(--safe-b) + 12px)}
+    .gm-wrap{bottom:calc(var(--tabbar-h) + var(--safe-b) + 10px)}
+    #toast{bottom:calc(var(--tabbar-h) + var(--safe-b) + 12px)}
+  }
+
+  /* --- 3. Компактная шапка, уезжающая при прокрутке вниз --- */
+  @media (max-width:640px){
+    .top{
+      height:52px;padding:0 12px;padding-top:var(--safe-t);
+      height:calc(52px + var(--safe-t));
+      position:sticky;top:0;z-index:30;
+      transition:transform .22s var(--ease-out,ease);
+    }
+    body.hdr-hide .top{transform:translateY(calc(-52px - var(--safe-t)))}
+    .top h1{font-size:16px;font-weight:700}
+    /* в шапке оставляем только заголовок, уведомления и профиль */
+    #botPill,.user-meta,#themeBtn,.top .btn.sm{display:none}
+    .top .notif-wrap,.top .userbox{display:inline-flex}
+  }
+
+  /* --- 4. Шторка снизу: родная форма диалога для телефона --- */
+  .sheet-bg{position:fixed;inset:0;background:rgba(11,17,32,.5);backdrop-filter:blur(2px);
+    opacity:0;pointer-events:none;transition:opacity .22s;z-index:88}
+  .sheet-bg.on{opacity:1;pointer-events:auto}
+  .sheet{position:fixed;left:0;right:0;bottom:0;z-index:89;
+    background:var(--surface);border-radius:20px 20px 0 0;box-shadow:0 -12px 40px rgba(1,66,129,.22);
+    transform:translateY(100%);transition:transform .26s cubic-bezier(.22,1,.36,1);
+    max-height:88dvh;display:flex;flex-direction:column;
+    padding-bottom:var(--safe-b)}
+  .sheet.on{transform:none}
+  .sheet.drag{transition:none}
+  .sheet-grip{flex:0 0 auto;padding:9px 0 4px;display:grid;place-items:center;cursor:grab;touch-action:none}
+  .sheet-grip::before{content:"";width:38px;height:4px;border-radius:99px;background:var(--line);display:block}
+  .sheet-head{flex:0 0 auto;padding:2px 18px 10px;font-size:16px;font-weight:700;color:var(--ink)}
+  .sheet-body{overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 12px 14px}
+  /* пункты списка в шторке — крупные, под палец */
+  .sheet-item{display:flex;align-items:center;gap:13px;width:100%;border:0;background:none;font:inherit;
+    color:var(--ink);text-align:left;padding:13px 12px;border-radius:13px;cursor:pointer;min-height:var(--tap)}
+  .sheet-item:active{background:var(--surface-2)}
+  .sheet-item svg{width:21px;height:21px;fill:var(--muted);flex:0 0 auto}
+  .sheet-item .s-badge{margin-left:auto;background:var(--red);color:#fff;font-size:10.5px;font-weight:700;
+    min-width:19px;height:19px;border-radius:99px;display:grid;place-items:center;padding:0 5px}
+  .sheet-cap{padding:14px 12px 5px;font-size:10.5px;font-weight:700;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--muted);opacity:.7}
+  @media (min-width:641px){.sheet,.sheet-bg{display:none}}
+
+  /* --- 5. Таблицы -> карточки. Горизонтальная прокрутка на телефоне —
+     главный грех: половина данных за краем экрана. Каждая строка становится
+     карточкой: сверху название, ниже «подпись — значение», внизу действия.
+     Подписи берутся из шапки таблицы автоматически (см. mobilizeTables). --- */
+  @media (max-width:640px){
+    .scrollx{overflow-x:visible}
+    table.m-cards{display:block;width:100%;border:0}
+    table.m-cards thead{display:none}
+    table.m-cards tbody{display:flex;flex-direction:column;gap:10px}
+    table.m-cards tr{display:block;background:var(--surface);border:1px solid var(--line);
+      border-radius:15px;padding:12px 14px;box-shadow:var(--shadow-sm)}
+    table.m-cards tr.dlg-crit{border-color:color-mix(in srgb,var(--red) 40%,var(--line))}
+    table.m-cards tr.dlg-warn{border-color:color-mix(in srgb,var(--amber) 45%,var(--line))}
+    table.m-cards td{display:flex;align-items:baseline;justify-content:space-between;gap:14px;
+      padding:6px 0;border:0;text-align:right;white-space:normal}
+    table.m-cards td::before{content:attr(data-l);color:var(--muted);font-size:12px;font-weight:500;
+      text-align:left;flex:0 0 auto;max-width:46%}
+    table.m-cards td:empty{display:none}
+    /* первая ячейка — заголовок карточки, без подписи и на всю ширину */
+    table.m-cards td:first-child{display:block;text-align:left;font-size:15px;
+      padding:0 0 8px;border-bottom:1px solid var(--line-soft);margin-bottom:4px}
+    table.m-cards td:first-child::before{display:none}
+    /* ячейка с кнопками — в строку, кнопки во всю ширину */
+    table.m-cards td.right,table.m-cards td:last-child{display:flex;flex-wrap:wrap;gap:8px;
+      justify-content:stretch;padding-top:10px}
+    table.m-cards td.right::before,table.m-cards td:last-child::before{display:none}
+    table.m-cards td.right .btn,table.m-cards td:last-child .btn{flex:1 1 auto;justify-content:center}
+    /* пустое состояние внутри таблицы не должно выглядеть карточкой */
+    table.m-cards tr:has(td[colspan]){background:none;border:0;box-shadow:none;padding:0}
+    table.m-cards td[colspan]{display:block;text-align:center;padding:0}
+    table.m-cards td[colspan]::before{display:none}
+  }
+
+  /* --- 6. Вкладки разделов — горизонтальная лента, а не перенос в 2 строки --- */
+  @media (max-width:640px){
+    .tabs{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto;gap:8px;
+      -webkit-overflow-scrolling:touch;scrollbar-width:none;
+      padding:2px 12px;margin:0 -12px 12px;scroll-snap-type:x proximity}
+    .tabs::-webkit-scrollbar{display:none}
+    .tabs .t{flex:0 0 auto;scroll-snap-align:start;min-height:38px;display:flex;align-items:center;
+      border-radius:99px;padding:8px 15px;background:var(--surface-2);border:1px solid var(--line)}
+    .tabs .t.on{background:var(--grad);border-color:transparent;color:#fff}
+  }
+
+  /* --- 7. Потянуть-обновить --- */
+  .ptr{position:absolute;left:0;right:0;top:0;display:grid;place-items:center;height:0;
+    overflow:hidden;color:var(--muted);font-size:12.5px;pointer-events:none;z-index:2}
+  .ptr .spin{margin-right:7px}
+  @media (min-width:641px){.ptr{display:none}}
+
+  /* --- 8. Диалоги на телефоне приходят снизу, а не висят по центру.
+     Меняем только подачу — вся логика окон остаётся прежней. --- */
+  @media (max-width:640px){
+    .modal{
+      left:0;right:0;top:auto;bottom:0;width:100%;max-width:none;
+      transform:translateY(100%);border-radius:20px 20px 0 0;
+      max-height:88dvh;display:flex;flex-direction:column;
+      padding-bottom:var(--safe-b);
+      transition:transform .26s cubic-bezier(.22,1,.36,1),opacity .2s;
+    }
+    .modal.on{transform:none}
+    /* ручка сверху — сигнал «это шторка, её можно смахнуть» */
+    .modal header{position:relative;padding-top:18px}
+    .modal header::before{content:"";position:absolute;top:7px;left:50%;transform:translateX(-50%);
+      width:38px;height:4px;border-radius:99px;background:var(--line)}
+    .modal .body{overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+    .modal footer{flex:0 0 auto;padding:12px 16px;gap:10px}
+    .modal footer .btn{flex:1 1 auto;justify-content:center;min-height:46px}
+    /* выдвижная карточка клиента — на весь экран, как детальный экран в приложении */
+    .drawer{width:100vw;max-width:100vw;border-radius:0;padding-top:var(--safe-t);padding-bottom:var(--safe-b)}
+  }
 </style>
 </head>
 <body>
@@ -719,6 +906,15 @@
   </form>
 </div>
 
+<!-- МОБИЛЬНОЕ: нижняя навигация и универсальная шторка (на десктопе скрыты стилями) -->
+<nav class="tabbar" id="tabbar" aria-label="Основные разделы"></nav>
+<div class="sheet-bg" id="sheetBg" onclick="sheetClose()"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true">
+  <div class="sheet-grip" id="sheetGrip"></div>
+  <div class="sheet-head" id="sheetHead"></div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
 <div id="toast"></div>
 
 <!-- ПЕРЕРЫВ: игра-залипалка. Кнопка появляется только после входа (см. paintUser). -->
@@ -924,6 +1120,206 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='Enter'&&document.activeElement===el('askInput')){e.preventDefault();askSubmit();}
 });
 
+/* ══════════════════════════════════════════════════════════════════
+   МОБИЛЬНЫЙ СЛОЙ: нижняя навигация, шторки, жесты.
+   Телефон — не уменьшенный десктоп: главное лежит под большим пальцем,
+   диалоги приходят снизу, шапка не занимает место при чтении.
+   ══════════════════════════════════════════════════════════════════ */
+const isPhone = () => matchMedia('(max-width:640px)').matches;
+
+/* --- шторка: одна на все случаи (меню «Ещё», диалоги, карточки) --- */
+let SHEET_CLOSE = null;
+function sheetOpen(title, bodyHTML, onClose){
+  el('sheetHead').textContent = title || '';
+  el('sheetBody').innerHTML = bodyHTML || '';
+  el('sheetBg').classList.add('on');
+  el('sheet').classList.add('on');
+  SHEET_CLOSE = onClose || null;
+  document.body.style.overflow = 'hidden';       // фон под шторкой не должен ехать
+}
+function sheetClose(){
+  el('sheetBg').classList.remove('on');
+  el('sheet').classList.remove('on');
+  document.body.style.overflow = '';
+  const f = SHEET_CLOSE; SHEET_CLOSE = null;
+  if (f) try{ f(); }catch(e){}
+}
+/* смахивание вниз — как в родных приложениях */
+(function(){
+  const sh = () => el('sheet');
+  let y0 = null, dy = 0;
+  const start = e => { if(!sh().classList.contains('on'))return;
+    y0 = e.touches[0].clientY; dy = 0; sh().classList.add('drag'); };
+  const move = e => { if(y0===null)return;
+    dy = Math.max(0, e.touches[0].clientY - y0);
+    sh().style.transform = 'translateY(' + dy + 'px)'; };
+  const end = () => { if(y0===null)return;
+    sh().classList.remove('drag'); sh().style.transform = '';
+    if (dy > 90) sheetClose();                    // утянул достаточно — закрываем
+    y0 = null; dy = 0; };
+  document.addEventListener('DOMContentLoaded', () => {
+    const g = el('sheetGrip'), s = el('sheet');
+    [g, s].forEach(n => { if(!n)return;
+      n.addEventListener('touchstart', start, {passive:true});
+      n.addEventListener('touchmove', move, {passive:true});
+      n.addEventListener('touchend', end); });
+  });
+})();
+
+/* --- нижняя навигация: 4 главных раздела + «Ещё» --- */
+const TABS = [
+  {v:'dashboard', ic:'home-5',    label:'Обзор'},
+  {v:'clients',   ic:'group',     label:'Клиенты'},
+  {v:'chats',     ic:'chat-3',    label:'Чаты'},
+  {v:'reports',   ic:'send-plane',label:'Отчёты'},
+];
+/* всё остальное живёт в «Ещё» — списком, а не мелкими иконками */
+function moreItems(){
+  const boss = ME && (ME.role==='admin' || ME.role==='observer');
+  const nav = k => ({run:()=>{sheetClose();go(k);}});
+  return [
+    {cap:'Ведение проектов'},
+    {ic:'time',    label:'Ждут ответа', badge:'navDialogs', ...nav('dialogs')},
+    {ic:'links',   label:'Привязки',    badge:'navMatch',   ...nav('match')},
+    {ic:'wallet-3',label:'Бюджеты',     badge:'navBudgets', ...nav('budgets')},
+    {cap:'Отчётность'},
+    {ic:'upload-2',label:'Сторонние', ...nav('external')},
+    {ic:'table',   label:'Таблицы',   ...nav('gsheets')},
+    ...(boss ? [{cap:'Управление'},
+                {ic:'eye',   label:'Контроль',     ...nav('supervision')},
+                {ic:'key-2', label:'Пользователи', ...nav('users')}] : []),
+    ...(ME && ME.role==='admin' ? [{ic:'heart-pulse', label:'Журнал', ...nav('errlog')}] : []),
+    {cap:'Система'},
+    {ic:'add-circle',  label:'Подключить клиента', run:()=>{sheetClose();openOnboard();}},
+    {ic:'settings-3',  label:'Настройки', ...nav('settings')},
+    {ic:'book-2',      label:'Гайд',      ...nav('guide')},
+    {ic:'sparkling-2', label:'Что нового',...nav('changelog')},
+    {ic:'contrast-2',  label:'Светлая / тёмная тема', run:()=>{toggleTheme();}},
+    {ic:'gamepad',     label:'Перерыв — игра', run:()=>{sheetClose();if(!el('gmWrap').classList.contains('on'))gmToggle();}},
+    {ic:'logout-box-r',label:'Выйти', run:()=>{sheetClose();logout();}},
+  ];
+}
+function openMore(){
+  const items = moreItems();
+  let n = 0;
+  const html = items.map(it => {
+    if (it.cap) return '<div class="sheet-cap">'+esc(it.cap)+'</div>';
+    const b = el(it.badge||'');
+    const cnt = (b && b.style.display!=='none' && b.textContent) ? b.textContent : '';
+    return '<button class="sheet-item" onclick="MORE_RUN('+(n++)+')">'
+         + '<svg><use href="#i-'+it.ic+'"/></svg><span>'+esc(it.label)+'</span>'
+         + (cnt?'<span class="s-badge">'+esc(cnt)+'</span>':'') + '</button>';
+  }).join('');
+  window.MORE_RUN = i => { const acts = items.filter(x=>!x.cap); const a = acts[i]; if(a&&a.run)a.run(); };
+  sheetOpen('Ещё', html);
+  tabbarSync('more');
+}
+function tabbarRender(){
+  const bar = el('tabbar'); if(!bar) return;
+  bar.innerHTML = TABS.map(t =>
+      '<button data-tab="'+t.v+'" onclick="go(\''+t.v+'\')">'
+    + '<svg><use href="#i-'+t.ic+'"/></svg><span>'+t.label+'</span>'
+    + '<span class="tb-dot" data-dot="'+t.v+'" style="display:none">0</span></button>').join('')
+    + '<button data-tab="more" onclick="openMore()">'
+    + '<svg><use href="#i-menu"/></svg><span>Ещё</span>'
+    + '<span class="tb-dot" data-dot="more" style="display:none">0</span></button>';
+  tabbarSync(CURRENT);
+}
+function tabbarSync(view){
+  const bar = el('tabbar'); if(!bar) return;
+  const known = TABS.some(t => t.v === view);
+  bar.querySelectorAll('button').forEach(b =>
+    b.classList.toggle('on', b.dataset.tab === (known ? view : 'more')));
+  // счётчик на «Ещё» = сумма спрятанных туда бейджей
+  let more = 0;
+  ['navDialogs','navMatch','navBudgets'].forEach(id => {
+    const e = el(id);
+    if (e && e.style.display !== 'none') more += parseInt(e.textContent||'0',10) || 0;
+  });
+  const dot = bar.querySelector('[data-dot="more"]');
+  if (dot){ dot.textContent = more > 99 ? '99+' : more; dot.style.display = more ? '' : 'none'; }
+}
+
+/* --- потянуть-обновить: на телефоне это ожидаемый жест, кнопку «Обновить»
+   из шапки мы убрали именно поэтому --- */
+(function(){
+  let y0=null, pull=0, busy=false, bar=null;
+  const MAX=88, TRIG=62;
+  function ensure(){
+    const c=document.querySelector('.content'); if(!c)return null;
+    if(getComputedStyle(c).position==='static')c.style.position='relative';
+    if(!bar){ bar=document.createElement('div'); bar.className='ptr'; c.prepend(bar); }
+    return c;
+  }
+  function start(e){
+    if(!isPhone()||busy)return;
+    const c=ensure(); if(!c||c.scrollTop>0)return;      // тянем только с самого верха
+    y0=e.touches[0].clientY; pull=0;
+  }
+  function move(e){
+    if(y0===null)return;
+    const d=e.touches[0].clientY-y0;
+    if(d<=0){y0=null;return;}
+    pull=Math.min(MAX, d*.55);
+    bar.style.height=pull+'px';
+    bar.textContent=pull>=TRIG?'Отпусти — обновлю':'Потяни вниз';
+  }
+  async function end(){
+    if(y0===null)return;
+    const go_=pull>=TRIG; y0=null;
+    if(!go_){ bar.style.height='0'; pull=0; return; }
+    busy=true;
+    bar.style.height='34px';
+    bar.innerHTML='<span class="spin"></span> Обновляю…';
+    try{ await refresh(); }catch(e){}
+    setTimeout(()=>{ bar.style.height='0'; bar.textContent=''; busy=false; pull=0; }, 250);
+  }
+  document.addEventListener('DOMContentLoaded',()=>{
+    const c=document.querySelector('.content'); if(!c)return;
+    c.addEventListener('touchstart',start,{passive:true});
+    c.addEventListener('touchmove',move,{passive:true});
+    c.addEventListener('touchend',end);
+  });
+})();
+
+/* --- таблицы -> карточки: подписи берём из шапки, чтобы не переписывать
+   17 отрисовщиков. На каждой ячейке появляется data-l, дальше работает CSS. --- */
+function mobilizeTables(root){
+  if(!isPhone())return;
+  (root||document).querySelectorAll('table').forEach(t=>{
+    const heads=[...t.querySelectorAll('thead th')].map(th=>(th.textContent||'').trim());
+    if(!heads.length)return;
+    t.querySelectorAll('tbody tr').forEach(tr=>{
+      [...tr.children].forEach((td,i)=>{
+        if(td.hasAttribute('colspan'))return;
+        const l=heads[i];
+        if(l&&!td.hasAttribute('data-l'))td.setAttribute('data-l',l);
+      });
+    });
+    t.classList.add('m-cards');
+  });
+}
+
+/* --- шапка уезжает при прокрутке вниз, возвращается при прокрутке вверх --- */
+(function(){
+  let last = 0, ticking = false;
+  function onScroll(){
+    const c = document.querySelector('.content'); if(!c || !isPhone()) return;
+    const y = c.scrollTop;
+    if (Math.abs(y - last) > 8){
+      document.body.classList.toggle('hdr-hide', y > last && y > 60);
+      last = y;
+    }
+    ticking = false;
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    const c = document.querySelector('.content');
+    if (c) c.addEventListener('scroll', () => {
+      if (!ticking){ ticking = true; requestAnimationFrame(onScroll); }
+    }, {passive:true});
+  });
+})();
+
 /* ================= ПАЛИТРА КОМАНД (Ctrl+K) =================
    Для тех, кто в программе каждый день: набрал «kst» — открыл клиента, набрал
    «долг» — прыгнул в Контроль. Мышь не нужна. */
@@ -1064,21 +1460,26 @@ function attrOptions(cur,extra){
   return (extra||ATTR_ALL).map(a=>`<option value="${a}"${a===cur?' selected':''}>${a} — ${esc(ATTR_RU[a]||a)}</option>`).join('');
 }
 function go(v){
+  if(typeof sheetClose==='function'&&el('sheet')&&el('sheet').classList.contains('on'))sheetClose();
   document.querySelectorAll('section[data-view]').forEach(s=>s.classList.toggle('on',s.dataset.view===v));
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active',a.dataset.go===v));
   el('crumb').textContent=NAMES[v]||'';
   render(v);
+  if(typeof tabbarSync==='function')tabbarSync(v);
+  const c=document.querySelector('.content'); if(c)c.scrollTop=0;      // новый раздел — с начала
+  document.body.classList.remove('hdr-hide');
 }
 document.getElementById('nav').addEventListener('click',e=>{const a=e.target.closest('a');if(a){go(a.dataset.go);closeNav();}});
 function toggleNav(){document.body.classList.toggle('nav-open');}   // мобильный бургер
 function closeNav(){document.body.classList.remove('nav-open');}
 let CURRENT='dashboard';
-function render(v){CURRENT=v;({dashboard:renderDashboard,clients:renderClients,chats:renderChats,dialogs:renderDialogs,match:renderMatch,reports:renderReports,budgets:renderBudgets,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,guide:renderGuide,changelog:renderChangelog}[v]||(()=>{}))();}
+function render(v){CURRENT=v;setTimeout(()=>mobilizeTables(document.querySelector('section[data-view="'+v+'"]')),60);({dashboard:renderDashboard,clients:renderClients,chats:renderChats,dialogs:renderDialogs,match:renderMatch,reports:renderReports,budgets:renderBudgets,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,guide:renderGuide,changelog:renderChangelog}[v]||(()=>{}))();}
 function refresh(){render(CURRENT);loadBadges();}
 
 /* ---------- бейджи/статус ---------- */
 async function loadBadges(){
   try{const d=await api('dashboard');const b=el('navMatch');if(d.unbound_chats>0){b.style.display='inline-block';b.textContent=d.unbound_chats;}else{b.style.display='none';}}catch(e){}
+  if(typeof tabbarSync==='function')tabbarSync(CURRENT);
 }
 
 /* ---------- DASHBOARD ---------- */
@@ -3561,6 +3962,7 @@ function init(){
   const t=document.documentElement.getAttribute('data-theme')||'light';const tb=el('themeBtn');if(tb)tb.innerHTML=(t==='dark'?'<svg class="ic"><use href="#i-sun"/></svg>':'<svg class="ic"><use href="#i-moon"/></svg>');
   el('botInfo').textContent='Готово';
   applyUser();
+  if(typeof tabbarRender==='function')tabbarRender();   // нижняя навигация зависит от роли
   if(window.gmShowFab)gmShowFab(true);    // вошли — можно и передохнуть
   go('dashboard');loadBadges();
   if(ME){checkNotes();if(!window._noteTimer)window._noteTimer=setInterval(checkNotes,45000);}  // яркие сообщения руководителя
