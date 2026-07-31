@@ -2290,6 +2290,13 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-07-30',tag:'fix',title:'Контроль: нашлись «ничьи» проекты',
+ sum:'Долг был виден цифрой, но не именем',items:[
+  'Работодатель видел на «Обзоре» долг, а в «Контроле» его не было ни у кого: сумма по строкам давала 40 обязательств против 41 на «Обзоре», долгов 0 против 1.',
+  'Причина: строки «Контроля» строятся по специалистам, а клиент с привязанным чатом, но <b>без владельца</b>, не попадает ни в одну строку — его обязательство висит на агентстве и нигде не показано. Это оказался проект «Проекты Елены Стельмах».',
+  'Теперь такие проекты собираются в отдельную строку <b>«Без владельца»</b> с пометкой «не раздано». Она встаёт первой, потому что это не чья-то недоработка, а дыра в раздаче. Вместо «Написать» и «Досье» у неё кнопка <b>«Раздать»</b> — сразу к назначению.',
+  'Попутно выяснилось, что карточка «Покрытие агентства» в «Контроле» тоже врала: она суммировала строки, поэтому показывала 100% и ноль долгов, пока «Обзор» показывал долг. Теперь обе цифры считаются от одного набора и сходятся.',
+  'Специалиста эта строка не касается: он по-прежнему видит только своих клиентов.']},
 {date:'2026-07-30',tag:'ui',title:'Кабинет стал дружелюбнее: 7 изменений',
  sum:'Пустые экраны, отмена, скелетоны, Ctrl+K и понятные ошибки',items:[
   '<b>Пустые экраны теперь подсказывают.</b> Было 49 мест, где написано просто «Пусто.» — человек не понимал, поломка это или так задумано. Стало: иконка, объяснение и кнопка следующего шага. «У тебя пока нет проектов → Смотреть свободные», «Бюджеты ещё не собирали → Обновить сейчас».',
@@ -3472,17 +3479,19 @@ async function renderSupervision(){
   const rows=sup.rows.map(r=>{
     const st=SUP_ST[r.status]||SUP_ST.none;
     const debtHtml=r.missing.length?('<div style="margin-top:6px">'+r.missing.map(m=>'<span class="debtchip">'+esc(m.name||m.login)+' <button onclick="supExcuse(\''+encodeURIComponent(m.login)+'\',this)" data-name="'+esc(m.name||m.login)+'" title="Закрыть долг — уважительная причина">закрыть долг</button></span>').join('')+
-      (r.missing.length>1?('<button class="btn sm" style="margin-top:6px;border-color:var(--red);color:var(--red)" onclick="supExcuseAll('+r.user_id+')" title="Закрыть все долги этого сотрудника одной причиной"><svg class="ic"><use href="#i-brush-2"/></svg> Закрыть все долги ('+r.missing.length+')</button>'):'')+
+      ((r.missing.length>1&&!r.unassigned)?('<button class="btn sm" style="margin-top:6px;border-color:var(--red);color:var(--red)" onclick="supExcuseAll('+r.user_id+')" title="Закрыть все долги этого сотрудника одной причиной"><svg class="ic"><use href="#i-brush-2"/></svg> Закрыть все долги ('+r.missing.length+')</button>'):'')+
       '</div>'):'';
     const excHtml=r.excused.length?('<details style="margin-top:5px"><summary class="muted" style="cursor:pointer;font-size:12px">уважительно закрыто: '+r.excused.length+'</summary>'+r.excused.map(x=>'<div class="mini-2" style="margin-top:3px">✓ '+esc(x.name)+' — '+esc(x.reason)+(x.excuse_id?(' · <a href="#" onclick="supUnexcuse('+x.excuse_id+');return false" style="color:var(--muted)">вернуть долг</a>'):'')+'</div>').join('')+'</details>'):'';
     return '<tr>'+
-      '<td><b>'+esc(r.name)+'</b>'+(r.role==='admin'?' <span class="badge b-grey">админ</span>':'')+(!r.active?' <span class="badge b-grey">заблокирован</span>':'')+'<div class="mini-2">'+esc(r.email)+'</div></td>'+
+      '<td><b>'+esc(r.name)+'</b>'+(r.unassigned?' <span class="badge b-amber">не раздано</span>':'')+(r.role==='admin'?' <span class="badge b-grey">админ</span>':'')+(!r.active?' <span class="badge b-grey">заблокирован</span>':'')+'<div class="mini-2">'+(r.unassigned?'проекты без владельца — их обязательства висят на агентстве':esc(r.email))+'</div></td>'+
       '<td class="right">'+r.bound+'</td>'+
       '<td style="min-width:200px">'+covBar(r.coverage)+'<div class="mini-2">сдано '+r.sent+' · уважит. '+r.excused.length+' · <b style="color:'+(r.debt?'var(--red)':'var(--muted)')+'">долг '+r.debt+'</b> · на пн '+r.on_monday+' · пред.нед. '+(r.prev_coverage==null?'—':r.prev_coverage+'%')+'</div>'+debtHtml+excHtml+'</td>'+
       '<td class="nowrap mini-2">'+fmtWhen(r.last_activity)+'</td>'+
       '<td><span class="badge" style="color:'+st.c+';background:'+st.bg+'">'+st.t+'</span></td>'+
-      '<td class="right"><button class="btn sm" onclick="event.stopPropagation();supNudge('+r.user_id+',this)" data-name="'+esc(r.name)+'" title="Написать сотруднику"><svg class="ic"><use href="#i-mail"/></svg></button> '+
-        '<button class="btn sm primary" onclick="event.stopPropagation();openSpecCard('+r.user_id+')" title="Карточка специалиста: проекты, тренд, деньги"><svg class="ic"><use href="#i-user-3"/></svg> Досье</button></td>'+
+      '<td class="right">'+(r.unassigned
+        ? '<button class="btn sm primary" onclick="event.stopPropagation();go(&quot;users&quot;)" title="Назначить эти проекты специалисту"><svg class="ic"><use href="#i-user-3"/></svg> Раздать</button>'
+        : '<button class="btn sm" onclick="event.stopPropagation();supNudge('+r.user_id+',this)" data-name="'+esc(r.name)+'" title="Написать сотруднику"><svg class="ic"><use href="#i-mail"/></svg></button> '+
+          '<button class="btn sm primary" onclick="event.stopPropagation();openSpecCard('+r.user_id+')" title="Карточка специалиста: проекты, тренд, деньги"><svg class="ic"><use href="#i-user-3"/></svg> Досье</button>')+'</td>'+
     '</tr>';}).join('');
   const notesHtml=notes.length?notes.map(n=>{
     const kc=n.kind==='urgent'?'var(--red)':n.kind==='warn'?'var(--amber)':'var(--brand)';

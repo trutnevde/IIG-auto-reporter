@@ -1893,10 +1893,15 @@ class Api:
             if ("delivery" in c.keys()) and c["delivery"] == "external":
                 bound_by_owner.setdefault(owner_of.get(c["login"]), set()).add(c["login"])
         rows = []
-        for u in self.db.list_users():
-            if u["role"] == "observer":
-                continue
-            bset = bound_by_owner.get(u["id"], set())
+        # Ничьи проекты (owner=NULL) тоже висят обязательством на агентстве, но раньше
+        # выпадали из Контроля: строки строились только по пользователям, а корзина None
+        # молча терялась. Работодатель видел «долг 1», а кто именно — нигде.
+        buckets = [(u, bound_by_owner.get(u["id"], set()))
+                   for u in self.db.list_users() if u["role"] != "observer"]
+        orphan = bound_by_owner.get(None, set())
+        if orphan:
+            buckets.append((None, orphan))
+        for u, bset in buckets:
             total = len(bset)
             done = bset & sent_this
             exc_items = []   # уважительные: отдельно (авто-скип + закрытые долги)
@@ -1920,8 +1925,12 @@ class Api:
             status = ("none" if total == 0 else "ok" if not debt
                       else "partial" if (done or exc_logins) else "miss")
             rows.append({
-                "user_id": u["id"], "name": u["name"] or u["email"], "email": u["email"],
-                "role": u["role"], "active": bool(u["active"]),
+                "user_id": (u["id"] if u else None),
+                "name": (u["name"] or u["email"]) if u else "Без владельца",
+                "email": (u["email"] if u else ""),
+                "role": (u["role"] if u else "unassigned"),
+                "active": (bool(u["active"]) if u else True),
+                "unassigned": u is None,          # строка «ничьи проекты» — её нужно раздать
                 "bound": total, "sent": len(done), "on_monday": len(bset & sent_mon),
                 "excused": exc_items, "debt": len(debt),
                 "missing": [{"login": m, "name": names.get(m, m)} for m in debt],
@@ -1930,13 +1939,15 @@ class Api:
                 "last_activity": last, "status": status,
             })
         order = {"miss": 0, "partial": 1, "none": 2, "ok": 3}
-        rows.sort(key=lambda r: (order.get(r["status"], 9), -(r["bound"] or 0)))
+        # ничьи проекты — наверх: это не чья-то недоработка, а дыра в раздаче
+        rows.sort(key=lambda r: (0 if (r.get("unassigned") and r["debt"]) else 1,
+                                 order.get(r["status"], 9), -(r["bound"] or 0)))
         bt = sum(r["bound"] for r in rows)
         st = sum(r["sent"] for r in rows)
         ex = sum(len(r["excused"]) for r in rows)
         dt = sum(r["debt"] for r in rows)
         agency = {"week_from": mon.isoformat(), "week_to": today.isoformat(),
-                  "specialists": sum(1 for r in rows if r["bound"] or r["role"] == "admin"),
+                  "specialists": sum(1 for r in rows if not r.get("unassigned") and (r["bound"] or r["role"] == "admin")),
                   "bound_total": bt, "sent_total": st, "excused_total": ex, "debt_total": dt,
                   "coverage": (round(100 * (st + ex) / bt) if bt else None),
                   "at_risk": sum(1 for r in rows if r["status"] in ("miss", "partial"))}
