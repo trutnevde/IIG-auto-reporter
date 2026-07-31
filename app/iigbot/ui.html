@@ -512,6 +512,9 @@
     .icon-btn{width:var(--tap);height:var(--tap)}
     /* поля и кнопки во всю ширину — под большой палец */
     .field input,.field select,.field textarea{min-height:46px}
+    /* выбор файла шире экрана: у него своя внутренняя ширина, её надо срезать */
+    input[type=file]{max-width:100%;width:100%;box-sizing:border-box}
+    .btn{min-height:38px}
   }
 
   /* --- 2. Нижняя навигация: главное под большим пальцем --- */
@@ -607,20 +610,38 @@
       border-radius:15px;padding:12px 14px;box-shadow:var(--shadow-sm)}
     table.m-cards tr.dlg-crit{border-color:color-mix(in srgb,var(--red) 40%,var(--line))}
     table.m-cards tr.dlg-warn{border-color:color-mix(in srgb,var(--amber) 45%,var(--line))}
-    table.m-cards td{display:flex;align-items:baseline;justify-content:space-between;gap:14px;
+    table.m-cards td{display:flex;align-items:baseline;gap:14px;
       padding:6px 0;border:0;text-align:right;white-space:normal}
+    /* подпись прижата влево, значение — вправо; если значение состоит из нескольких
+       кусков («мы:» + дата), они держатся вместе, а не растаскиваются по краям */
     table.m-cards td::before{content:attr(data-l);color:var(--muted);font-size:12px;font-weight:500;
-      text-align:left;flex:0 0 auto;max-width:46%}
+      text-align:left;flex:0 0 auto;max-width:46%;margin-right:auto}
     table.m-cards td:empty{display:none}
     /* первая ячейка — заголовок карточки, без подписи и на всю ширину */
     table.m-cards td:first-child{display:block;text-align:left;font-size:15px;
       padding:0 0 8px;border-bottom:1px solid var(--line-soft);margin-bottom:4px}
     table.m-cards td:first-child::before{display:none}
-    /* ячейка с кнопками — в строку, кнопки во всю ширину */
-    table.m-cards td.right,table.m-cards td:last-child{display:flex;flex-wrap:wrap;gap:8px;
+    /* приписка под значением («вчера», «мы не писали») — своей строкой справа,
+       иначе она встаёт третьей колонкой и значение уезжает в середину */
+    table.m-cards td{flex-wrap:wrap}
+    table.m-cards td > .mini-2{flex:1 0 100%;text-align:right;font-size:12px;
+      color:var(--muted);opacity:1;margin-top:1px}
+    table.m-cards td:first-child > .mini-2{text-align:left;font-size:12.5px}
+    /* длинный текст (сообщение клиента, ошибка) не влезает в правую колонку —
+       такие ячейки раскладываем в два этажа: подпись сверху, текст во всю ширину */
+    table.m-cards td.m-stack{display:block;text-align:left}
+    table.m-cards td.m-stack::before{display:block;max-width:none;margin-bottom:3px}
+    table.m-cards td.m-stack > .mini-2{text-align:left}
+    table.m-cards .dlg-msg{max-width:none;font-size:13px}
+    /* ячейка с кнопками — в строку, кнопки во всю ширину. Именно с кнопками:
+       раньше правило ловило любую последнюю ячейку и съедало её подпись
+       (в «Клиентах» так пропадало «Добавлен») */
+    table.m-cards td.m-act{display:flex;flex-wrap:wrap;gap:8px;
       justify-content:stretch;padding-top:10px}
-    table.m-cards td.right::before,table.m-cards td:last-child::before{display:none}
-    table.m-cards td.right .btn,table.m-cards td:last-child .btn{flex:1 1 auto;justify-content:center}
+    table.m-cards td.m-act::before{display:none}
+    table.m-cards td.m-act .btn{flex:1 1 auto;justify-content:center}
+    /* кнопка из одной иконки не должна растягиваться на пол-строки — она квадратная */
+    table.m-cards td.m-act .btn:has(> svg:only-child){flex:0 0 auto;width:46px;padding:0}
     /* пустое состояние внутри таблицы не должно выглядеть карточкой */
     table.m-cards tr:has(td[colspan]){background:none;border:0;box-shadow:none;padding:0}
     table.m-cards td[colspan]{display:block;text-align:center;padding:0}
@@ -637,6 +658,24 @@
       border-radius:99px;padding:8px 15px;background:var(--surface-2);border:1px solid var(--line)}
     .tabs .t.on{background:var(--grad);border-color:transparent;color:#fff}
   }
+
+  /* --- 6б. Смахивание строки влево (см. swipeWrap): карточка едет,
+     под ней проступает действие. Порог — 96px, до него всё возвращается. --- */
+  @media (max-width:640px){
+    table.m-cards tr.sw{position:relative;overflow:hidden;padding:0;background:var(--green-bg)}
+    table.m-cards tr.sw > .sw-in{padding:12px 14px;background:var(--surface);border-radius:15px;
+      transition:transform .22s cubic-bezier(.22,1,.36,1);will-change:transform}
+    table.m-cards tr.sw.sw-live > .sw-in{box-shadow:-6px 0 16px rgba(1,66,129,.10)}
+    table.m-cards tr.sw > .sw-bg{position:absolute;inset:0;display:flex;align-items:center;
+      justify-content:flex-end;gap:7px;padding-right:20px;color:var(--green);
+      font-size:13px;font-weight:700;pointer-events:none}
+    table.m-cards tr.sw.sw-armed{background:var(--green)}
+    table.m-cards tr.sw.sw-armed > .sw-bg{color:#fff}
+    /* подсказка о жесте — один раз над списком */
+    .sw-hint{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);
+      padding:10px 14px 0}
+  }
+  @media (min-width:641px){.sw-hint{display:none}}
 
   /* --- 7. Потянуть-обновить --- */
   .ptr{position:absolute;left:0;right:0;top:0;display:grid;place-items:center;height:0;
@@ -662,8 +701,72 @@
     .modal .body{overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
     .modal footer{flex:0 0 auto;padding:12px 16px;gap:10px}
     .modal footer .btn{flex:1 1 auto;justify-content:center;min-height:46px}
-    /* выдвижная карточка клиента — на весь экран, как детальный экран в приложении */
-    .drawer{width:100vw;max-width:100vw;border-radius:0;padding-top:var(--safe-t);padding-bottom:var(--safe-b)}
+    /* выдвижная карточка клиента — на весь экран, как детальный экран в приложении:
+       выше нижней навигации (иначе панель перекрывает низ формы и «Сохранить») */
+    .drawer{width:100vw;max-width:100vw;border-radius:0;z-index:80;
+      padding-top:var(--safe-t);padding-bottom:var(--safe-b)}
+    .drawer header{padding:13px 14px;position:sticky;top:0;background:var(--surface);z-index:2}
+    .drawer .body{padding:14px}
+    .drawer footer{padding:12px 14px}
+    .drawer footer .btn{flex:1 1 auto;justify-content:center;min-height:46px}
+    /* колоночные формы, свёрстанные сеткой прямо в атрибуте style (карточка клиента,
+       заведение сотрудника, фильтры): на 375px подписи рвутся, поля уезжают за край */
+    [style*="grid-template-columns:1fr 1fr"],
+    [style*="grid-template-columns:248px"],
+    [style*="grid-template-columns:1fr 160px"],
+    [style*="grid-template-columns:1fr 110px"]{grid-template-columns:1fr!important}
+    /* строка цели: галка + название во всю ширину, ID отдельной строчкой снизу */
+    .goalrow{grid-template-columns:26px 1fr 30px;gap:7px;row-gap:2px;margin-bottom:10px}
+    .goalrow.head{display:none}
+    .goalrow > *:nth-child(2){grid-column:2;grid-row:2;font-size:12px!important;opacity:.75}
+    .goalrow > *:nth-child(3){grid-column:2;grid-row:1}
+    .goalrow > *:nth-child(4){grid-column:3;grid-row:1}
+    .goalrow input[type=checkbox]{width:20px;height:20px}
+  }
+
+  /* --- 9. Экран раздела: без дублей и без воздуха.
+     Заголовок секции слово в слово повторяет крошку в шапке — на телефоне
+     это просто минус строка на первом экране (так же в Директе и ВК:
+     название раздела живёт только в шапке). --- */
+  @media (max-width:640px){
+    section[data-view] h2.title{display:none}
+    .sub{font-size:12.5px;line-height:1.4;margin:0 0 12px}
+    .sub.sub-clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+      overflow:hidden;margin-bottom:2px}
+    .sub-more{display:block;background:none;border:0;padding:5px 0 12px;font:inherit;
+      font-size:12px;font-weight:650;color:var(--brand);cursor:pointer;min-height:34px;text-align:left}
+    /* ссылки внутри плашек — пальцем в строку текста не попасть, даём им площадь */
+    .alert a{display:inline-block;padding:5px 1px;min-height:30px}
+    /* панель инструментов: поиск и фильтр в одну строку, редкое — под «Действия» */
+    .toolbar{gap:8px;margin-bottom:12px}
+    .toolbar > .tb-hide{display:none}
+    .toolbar > input[type=search]{flex:1 1 100%;min-height:44px}
+    .toolbar > select{flex:1 1 auto;min-height:44px}
+    .toolbar > .tb-more{flex:0 0 auto;min-height:44px}
+    .toolbar > div[style*="flex:1"]{display:none}
+    /* плитки сводки: 2 в ряд и компактные — шесть показателей должны
+       умещаться на экран, а не пролистываться */
+    .cards{grid-template-columns:repeat(2,1fr);gap:9px;margin-bottom:14px}
+    .card{padding:11px;gap:9px;border-radius:14px}
+    .card::after{width:62px;height:62px;right:-22px;top:-22px}
+    .card-ic{width:34px;height:34px;border-radius:10px;font-size:16px}
+    .card-k{font-size:11px;letter-spacing:0;line-height:1.25}
+    .card-v{font-size:22px}
+    .card-s{font-size:11px;margin-top:2px}
+    /* плитка с пояснением (сдача недели) — во всю ширину, иначе строка
+       «отправлено 16 из 24 • …» рвётся на шесть строк */
+    .cards .card:has(.card-s){grid-column:1/-1}
+    /* панели: заголовок и поля потеснее — экономим по 8–10px на каждой */
+    .panel h3{padding:12px 14px;font-size:13.5px}
+    .panel .body{padding:13px 14px}
+    .grid2{gap:12px}
+    /* кнопки в панели делят ширину поровну, а не «широкая + огрызок» */
+    .row-actions{gap:8px}
+    .row-actions .btn{flex:1 1 40%;justify-content:center;min-height:42px}
+    .row-actions .btn.primary{flex:1 1 100%}
+    .dash-health{font-size:11.5px;line-height:1.55;margin-top:12px}
+    /* плавающая кнопка игры перекрывала текст; на телефоне игра живёт в «Ещё» */
+    .gm-fab{display:none!important}
   }
 </style>
 </head>
@@ -926,7 +1029,7 @@
       <div><b id="gmScore">0</b><span>счёт</span></div>
       <div><b id="gmBest">0</b><span>рекорд</span></div>
     </div>
-    <button class="gm-x" onclick="gmToggle()" title="Свернуть (Esc)">✕</button>
+    <button class="gm-x" onclick="gmToggle()" title="Свернуть (Esc)"><svg class="ic"><use href="#i-x"/></svg></button>
   </div>
   <div class="gm-body">
     <div class="gm-board" id="gmBoard">
@@ -1282,22 +1385,152 @@ function tabbarSync(view){
   });
 })();
 
+/* Отрисовщики асинхронные: к моменту таймера в render() на экране ещё скелетон,
+   а таблица появляется через сотни миллисекунд. Поэтому мобильную доводку вешаем
+   на наблюдателя — он ловит любую перерисовку, включая частичные (после действий
+   в списке). Обе функции идемпотентны, так что повторный проход ничего не портит. */
+(function(){
+  let t=null;
+  function kick(){
+    clearTimeout(t);
+    t=setTimeout(()=>{
+      const s=document.querySelector('section[data-view].on');
+      if(s){mobilizeTables(s);clampSubs(s);mobilizeToolbar(s);}
+    },40);
+  }
+  function install(){
+    const c=document.querySelector('.content'); if(!c||!window.MutationObserver)return;
+    new MutationObserver(kick).observe(c,{childList:true,subtree:true});
+    kick();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);
+  else install();
+})();
+
+/* --- смахивание строки: в почте и мессенджерах это основной способ «разобрать»
+   список одним пальцем. Тянем карточку влево — из-под неё выезжает действие;
+   отпустил за порогом — выполнили. Само действие сидит в data-sw-act. --- */
+(function(){
+  let row=null, inn=null, x0=0, y0=0, dx=0, lock=null;
+  const TRIG=96;
+  function start(e){
+    if(!isPhone())return;
+    const t=e.target.closest && e.target.closest('tr.sw'); if(!t)return;
+    if(e.target.closest('button,a,input,select,textarea'))return;
+    row=t; inn=t.querySelector(':scope > .sw-in'); if(!inn){row=null;return;}
+    x0=e.touches[0].clientX; y0=e.touches[0].clientY; dx=0; lock=null;
+    inn.style.transition='none';
+  }
+  function move(e){
+    if(!row)return;
+    const ex=e.touches[0].clientX-x0, ey=e.touches[0].clientY-y0;
+    if(lock===null){
+      if(Math.abs(ex)<6&&Math.abs(ey)<6)return;
+      lock=Math.abs(ex)>Math.abs(ey)*1.4?'x':'y';    // вертикаль отдаём прокрутке
+      if(lock==='x')row.classList.add('sw-live');
+    }
+    if(lock!=='x')return;
+    dx=Math.min(0, ex);                               // тянем только влево
+    inn.style.transform='translateX('+dx+'px)';
+    row.classList.toggle('sw-armed', dx<=-TRIG);
+  }
+  function end(){
+    if(!row)return;
+    const r=row, i=inn, fire=dx<=-TRIG;
+    row=null; inn=null;
+    i.style.transition='';
+    r.classList.remove('sw-live','sw-armed');
+    if(!fire){ i.style.transform=''; return; }
+    i.style.transform='translateX(-100%)';
+    const fn=window[r.dataset.swAct], id=r.dataset.swId;
+    setTimeout(()=>{ i.style.transform=''; }, 260);
+    if(typeof fn==='function')fn(id&&/^-?\d+$/.test(id)?parseInt(id,10):id);
+  }
+  document.addEventListener('touchstart',start,{passive:true});
+  document.addEventListener('touchmove',move,{passive:true});
+  document.addEventListener('touchend',end);
+  document.addEventListener('touchcancel',end);
+})();
+
 /* --- таблицы -> карточки: подписи берём из шапки, чтобы не переписывать
    17 отрисовщиков. На каждой ячейке появляется data-l, дальше работает CSS. --- */
 function mobilizeTables(root){
   if(!isPhone())return;
   (root||document).querySelectorAll('table').forEach(t=>{
-    const heads=[...t.querySelectorAll('thead th')].map(th=>(th.textContent||'').trim());
+    // в подпись не должна попадать стрелка сортировки — берём текст без служебных значков
+    const heads=[...t.querySelectorAll('thead th')].map(th=>{
+      const c=th.cloneNode(true);
+      c.querySelectorAll('.si,svg').forEach(x=>x.remove());
+      return (c.textContent||'').trim();
+    });
     if(!heads.length)return;
     t.querySelectorAll('tbody tr').forEach(tr=>{
-      [...tr.children].forEach((td,i)=>{
+      // именно td, а не tr.children: у смахиваемых строк ячейки лежат внутри .sw-in
+      [...tr.querySelectorAll('td')].forEach((td,i)=>{
         if(td.hasAttribute('colspan'))return;
         const l=heads[i];
         if(l&&!td.hasAttribute('data-l'))td.setAttribute('data-l',l);
+        // длинное значение в узкой правой колонке рвётся по одному слову —
+        // такие ячейки раскладываем вертикально (подпись сверху, текст ниже)
+        if(i&&(td.textContent||'').trim().length>58)td.classList.add('m-stack');
+        // ячейка действий: кнопки во всю ширину, подпись не нужна
+        if(td.querySelector('button,a.btn'))td.classList.add('m-act');
       });
+      swipeWrap(tr);
     });
     t.classList.add('m-cards');
   });
+}
+/* Редкие действия раздела («Подтянуть из Директа», «Экспорт CSV»…) на телефоне
+   растягиваются на весь первый экран каждое. Прячем их в шторку «Действия»,
+   на виду остаются поиск и фильтр — то, чем пользуются каждый раз. */
+function mobilizeToolbar(root){
+  if(!isPhone())return;
+  (root||document).querySelectorAll('.toolbar').forEach(tb=>{
+    if(tb.dataset.mobile)return;
+    const acts=[...tb.children].filter(e=>e.classList.contains('btn'));
+    if(acts.length<2)return;
+    tb.dataset.mobile='1';
+    acts.forEach(a=>a.classList.add('tb-hide'));
+    const b=document.createElement('button');
+    b.className='btn tb-more';b.type='button';
+    b.innerHTML='<svg class="ic"><use href="#i-tools"/></svg> Действия раздела';
+    b.onclick=()=>{
+      window.TB_RUN=i=>{sheetClose();const a=acts[i];if(a)setTimeout(()=>a.click(),180);};
+      sheetOpen('Действия раздела', acts.map((a,i)=>
+        '<button class="sheet-item" onclick="TB_RUN('+i+')">'+
+        (a.querySelector('svg')?a.querySelector('svg').outerHTML.replace('class="ic"',''):'<svg><use href="#i-tools"/></svg>')+
+        '<span>'+esc((a.textContent||'').trim())+'</span></button>').join(''));
+    };
+    tb.appendChild(b);
+  });
+}
+/* Описание раздела на телефоне занимает по 5 строк первого экрана. Сворачиваем
+   до трёх с пометкой «ещё» — тап разворачивает. Текст никуда не девается. */
+function clampSubs(root){
+  if(!isPhone())return;
+  (root||document).querySelectorAll('p.sub').forEach(p=>{
+    if(p.dataset.clamp)return;
+    p.classList.add('sub-clamp');
+    if(p.scrollHeight-p.clientHeight<4){p.classList.remove('sub-clamp');p.dataset.clamp='no';return;}
+    p.dataset.clamp='yes';
+    const b=document.createElement('button');
+    b.className='sub-more';b.type='button';b.textContent='развернуть';
+    b.onclick=()=>{const off=p.classList.toggle('sub-clamp');b.textContent=off?'развернуть':'свернуть';};
+    p.after(b);
+  });
+}
+/* Строку, помеченную data-sw-act/-id/-label, готовим к смахиванию: содержимое
+   переезжает в подвижный слой .sw-in, а под ним остаётся цветная подложка
+   с названием действия — она и проступает, когда карточку тянут влево. */
+function swipeWrap(tr){
+  if(!tr.dataset.swAct||tr.querySelector(':scope > .sw-in'))return;
+  const inn=document.createElement('div');inn.className='sw-in';
+  while(tr.firstChild)inn.appendChild(tr.firstChild);
+  const bg=document.createElement('div');bg.className='sw-bg';
+  bg.innerHTML='<svg class="ic"><use href="#i-checkbox-circle"/></svg> '+esc(tr.dataset.swLabel||'Готово');
+  tr.appendChild(bg);tr.appendChild(inn);
+  tr.classList.add('sw');
 }
 
 /* --- шапка уезжает при прокрутке вниз, возвращается при прокрутке вверх --- */
@@ -1473,7 +1706,7 @@ document.getElementById('nav').addEventListener('click',e=>{const a=e.target.clo
 function toggleNav(){document.body.classList.toggle('nav-open');}   // мобильный бургер
 function closeNav(){document.body.classList.remove('nav-open');}
 let CURRENT='dashboard';
-function render(v){CURRENT=v;setTimeout(()=>mobilizeTables(document.querySelector('section[data-view="'+v+'"]')),60);({dashboard:renderDashboard,clients:renderClients,chats:renderChats,dialogs:renderDialogs,match:renderMatch,reports:renderReports,budgets:renderBudgets,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,guide:renderGuide,changelog:renderChangelog}[v]||(()=>{}))();}
+function render(v){CURRENT=v;setTimeout(()=>{const s=document.querySelector('section[data-view="'+v+'"]');mobilizeTables(s);clampSubs(s);mobilizeToolbar(s);},60);({dashboard:renderDashboard,clients:renderClients,chats:renderChats,dialogs:renderDialogs,match:renderMatch,reports:renderReports,budgets:renderBudgets,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,guide:renderGuide,changelog:renderChangelog}[v]||(()=>{}))();}
 function refresh(){render(CURRENT);loadBadges();}
 
 /* ---------- бейджи/статус ---------- */
@@ -1491,7 +1724,9 @@ function statCardLink(color,ic,label,val,dest,sub,tip){
 }
 function budMoneyShort(v,cur){return v==null?'':(Math.round(v).toLocaleString('ru-RU')+' '+(cur==='RUB'?'₽':(cur||'')));}
 async function renderDashboard(){
-  const host=el('v_dashboard');host.innerHTML=skeleton('cards',6);
+  // в разметке заглушка помечена class="empty" (по центру, приглушённо) — после
+  // первого рендера класс надо снять, иначе весь Обзор живёт в центрированной коробке
+  const host=el('v_dashboard');host.className='';host.innerHTML=skeleton('cards',6);
   let d;try{d=await api('dashboard');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   const isObs=(d.role==='observer')||(ME&&ME.role==='observer');
   const bud=d.budgets||{},wk=d.week||{},hl=d.health||{};
@@ -1600,8 +1835,9 @@ function clGoalsCell(c){
   if(!gs.length)return '<span class="muted">— нет</span>';
   const active=gs.filter(g=>g.active!==false);
   const shown=active.length?active:gs;
-  const cap=shown.slice(0,3).map(g=>'<span class="chip">'+esc(g.name||g.id)+'</span>').join('');
-  const more=shown.length>3?('<span class="gmore">+'+(shown.length-3)+'</span>'):'';
+  const lim=isPhone()?1:3;      // на телефоне три названия целей занимают полкарточки
+  const cap=shown.slice(0,lim).map(g=>'<span class="chip">'+esc(g.name||g.id)+'</span>').join('');
+  const more=shown.length>lim?('<span class="gmore">+'+(shown.length-lim)+'</span>'):'';
   const cnt='<span class="gcnt" title="целей в отчёт / всего"><svg class="ic"><use href="#i-focus-3"/></svg> '+active.length+'/'+gs.length+'</span>';
   return '<div class="goals-cell">'+cnt+cap+more+'</div>';
 }
@@ -1657,9 +1893,11 @@ async function dlgOff(chatId,btn){
   if(btn){btn.disabled=true;btn.textContent='…';}
   try{
     await api('dialog_dismiss',chatId);
-    toast('Убрал из ожидающих. Вернётся, когда клиент напишет снова','ok');
+    // смахнуть можно и случайно — поэтому рядом всегда лежит «Вернуть»
+    toast('Убрал из ожидающих. Вернётся, когда клиент напишет снова','ok',
+          {label:'Вернуть',fn:()=>dlgOn(chatId)});
     renderDialogs();loadBadges();
-  }catch(e){if(btn){btn.disabled=false;btn.textContent='<svg class="ic"><use href="#i-checkbox-circle"/></svg> Ответ не нужен';}}
+  }catch(e){if(btn){btn.disabled=false;btn.innerHTML='<svg class="ic"><use href="#i-checkbox-circle"/></svg> Ответ не нужен';}}
 }
 async function dlgOn(chatId,btn){
   if(btn){btn.disabled=true;btn.textContent='…';}
@@ -1697,7 +1935,7 @@ async function renderDialogs(){
   const nb=el('navDialogs');if(nb){const n=d.counts.waiting;nb.textContent=n;nb.style.display=n?'':'none';}
   const rowCls=h=>h>=d.crit_h?'dlg-crit':(h>=d.warn_h?'dlg-warn':'');
   const canAct=true;   // список ведут все, включая работодателя
-  const rows=w.map(r=>`<tr class="${rowCls(r.wait_h)}">
+  const rows=w.map(r=>`<tr class="${rowCls(r.wait_h)}" data-sw-act="dlgOff" data-sw-id="${r.chat_id}" data-sw-label="Ответ не нужен">
       <td><b>${esc(r.client_name||r.chat_title||'—')}</b><div class="mini-2">${esc(r.chat_title||'')}</div></td>
       <td class="nowrap"><b style="color:${r.wait_h>=d.crit_h?'var(--red)':(r.wait_h>=d.warn_h?'var(--amber)':'var(--ink)')}">${waitFmt(r.wait_h)}</b><div class="mini-2">${fmtWhen(r.last_client_at)}</div></td>
       <td><div class="dlg-msg">${esc(r.last_client_text||'—')}</div><div class="mini-2">от: ${esc(r.last_client_name||'клиент')}</div></td>
@@ -1734,6 +1972,7 @@ async function renderDialogs(){
       ${statCard(d.counts.silent?'violet':'slate','<svg class="ic"><use href="#i-cactus"/></svg>','Забыты ('+d.silent_days+'+ дн)',d.counts.silent)}
     </div>
     ${w.length?`<div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-time"/></svg></span> Ждут нашего ответа (${w.length})</h3>
+      <div class="sw-hint"><svg class="ic"><use href="#i-arrow-go-back"/></svg> Смахни карточку влево — снимет с ожидания</div>
       <div class="scrollx"><table>
         <thead><tr><th>Клиент</th><th>Ждёт</th><th>Последнее сообщение клиента</th><th>Ведёт</th><th>Наш ответ</th><th></th></tr></thead>
         <tbody>${rows}</tbody></table></div></div>`
@@ -1898,7 +2137,7 @@ async function doBindManual(chatId){const s=el('mansel_'+chatId);if(!s.value){to
 /* ---------- ГАЙД: вкладки + поиск ---------- */
 const GUIDE=[
 // ===== НАЧАЛО =====
-{tab:'Начало',icon:'⚡',title:'С чего начать',kw:'старт начало первый вход кабинет обзор',html:`
+{tab:'Начало',icon:'<svg class="ic"><use href="#i-flashlight"/></svg>',title:'С чего начать',kw:'старт начало первый вход кабинет обзор',html:`
   <p>Кабинет — это веб-версия IIG Reporter: клиенты Яндекс.Директа, чаты Telegram, недельные отчёты и выгрузка в Google-таблицы. Всё в браузере, ставить ничего не нужно.</p>
   <p><b>Первые шаги:</b></p>
   <ol>
@@ -1907,46 +2146,46 @@ const GUIDE=[
     <li>Твои клиенты уже назначены админом — открой <b>Клиенты</b>, чтобы их увидеть.</li>
     <li>Привяжи чаты клиентов (раздел <b>Привязки</b>) и жми <b>Рассылку</b>.</li>
   </ol>
-  <div class="note">Совет: сначала прогони <b>«🧪 Пробу»</b> — она соберёт отчёты без отправки, чтобы убедиться, что всё в порядке.</div>`},
-{tab:'Начало',icon:'🔐',title:'Вход, пароль, выход',kw:'логин пароль вход выход забыл сброс аккаунт email',html:`
+  <div class="note">Совет: сначала прогони <b>«<svg class="ic"><use href="#i-flask"/></svg> Пробу»</b> — она соберёт отчёты без отправки, чтобы убедиться, что всё в порядке.</div>`},
+{tab:'Начало',icon:'<svg class="ic"><use href="#i-lock-2"/></svg>',title:'Вход, пароль, выход',kw:'логин пароль вход выход забыл сброс аккаунт email',html:`
   <p>Вход — по <b>email + пароль</b>. Регистрации нет: аккаунты заводит только администратор.</p>
   <ul>
     <li><b>Забыл пароль?</b> Попроси админа — он сменит его в разделе «Пользователи» (кнопка «Пароль»).</li>
-    <li><b>Выйти</b> — иконка ⎋ справа вверху (рядом с твоим именем).</li>
+    <li><b>Выйти</b> — иконка <svg class="ic"><use href="#i-logout-box-r"/></svg> справа вверху (рядом с твоим именем).</li>
     <li>Сессия держится ~30 дней, повторно вводить пароль каждый раз не нужно.</li>
   </ul>`},
-{tab:'Начало',icon:'🧭',title:'Разделы кабинета',kw:'меню разделы навигация интерфейс сайдбар вкладки столпы группы',html:`
+{tab:'Начало',icon:'<svg class="ic"><use href="#i-home-5"/></svg>',title:'Разделы кабинета',kw:'меню разделы навигация интерфейс сайдбар вкладки столпы группы',html:`
   <p>Меню слева разбито на четыре смысловых блока — сверху то, чем пользуешься каждый день.</p>
-  <p><b>🏠 Обзор</b> — сводка, тревожные плашки и кнопки рассылки. Точка входа.</p>
+  <p><b><svg class="ic"><use href="#i-home-5"/></svg> Обзор</b> — сводка, тревожные плашки и кнопки рассылки. Точка входа.</p>
   <p class="gcap"><b>Ведение проектов</b> — всё про клиентов и общение с ними:</p>
   <ul>
-    <li><b>👥 Клиенты</b> — твои клиенты, их цели, атрибуция и способ доставки.</li>
-    <li><b>💬 Чаты</b> — Telegram-чаты, где есть бот (вкладки «Мои / Свободные / Все»).</li>
-    <li><b>⏳ Ждут ответа</b> — кому мы не ответили и с кем давно не общались. Красная цифра на пункте — сколько ждут.</li>
-    <li><b>🔗 Привязки</b> — связать чат ↔ клиент. Жёлтая цифра — сколько чатов ещё без клиента.</li>
-    <li><b>💰 Бюджеты</b> — остатки счетов, темп трат, «на сколько хватит» + алерты.</li>
+    <li><b><svg class="ic"><use href="#i-users"/></svg> Клиенты</b> — твои клиенты, их цели, атрибуция и способ доставки.</li>
+    <li><b><svg class="ic"><use href="#i-chat-3"/></svg> Чаты</b> — Telegram-чаты, где есть бот (вкладки «Мои / Свободные / Все»).</li>
+    <li><b><svg class="ic"><use href="#i-time"/></svg> Ждут ответа</b> — кому мы не ответили и с кем давно не общались. Красная цифра на пункте — сколько ждут.</li>
+    <li><b><svg class="ic"><use href="#i-links"/></svg> Привязки</b> — связать чат ↔ клиент. Жёлтая цифра — сколько чатов ещё без клиента.</li>
+    <li><b><svg class="ic"><use href="#i-wallet-3"/></svg> Бюджеты</b> — остатки счетов, темп трат, «на сколько хватит» + алерты.</li>
   </ul>
   <p class="gcap"><b>Отчётность</b> — всё, чем отдаём результат клиенту:</p>
   <ul>
-    <li><b>📨 Отчёты</b> — предпросмотр, конструктор, история отправок.</li>
-    <li><b>📤 Сторонние</b> — отчёты для мессенджеров вне Telegram (копипаст).</li>
-    <li><b>📗 Таблицы</b> — выгрузка в Google-таблицы клиентов.</li>
+    <li><b><svg class="ic"><use href="#i-send-plane"/></svg> Отчёты</b> — предпросмотр, конструктор, история отправок.</li>
+    <li><b><svg class="ic"><use href="#i-outbox"/></svg> Сторонние</b> — отчёты для мессенджеров вне Telegram (копипаст).</li>
+    <li><b><svg class="ic"><use href="#i-book-2"/></svg> Таблицы</b> — выгрузка в Google-таблицы клиентов.</li>
   </ul>
   <p class="gcap"><b>Управление</b> — виден только админу и работодателю:</p>
   <ul>
-    <li><b>👁 Контроль</b> — покрытие обязательств по сотрудникам, досье, нагрузка, передача проектов.</li>
-    <li><b>🔑 Пользователи</b> — сотрудники, доступы и раздача клиентов (админ и работодатель).</li>
-    <li><b>🩺 Журнал</b> — технические события и сбои сервера (только админ).</li>
+    <li><b><svg class="ic"><use href="#i-eye"/></svg> Контроль</b> — покрытие обязательств по сотрудникам, досье, нагрузка, передача проектов.</li>
+    <li><b><svg class="ic"><use href="#i-key-2"/></svg> Пользователи</b> — сотрудники, доступы и раздача клиентов (админ и работодатель).</li>
+    <li><b><svg class="ic"><use href="#i-heart-pulse"/></svg> Журнал</b> — технические события и сбои сервера (только админ).</li>
   </ul>
   <p class="gcap"><b>Система</b>:</p>
   <ul>
-    <li><b>⚙️ Настройки</b> — тексты отчёта, моя приписка, атрибуция, расписание.</li>
-    <li><b>📖 Гайд</b> — эта справка.</li>
+    <li><b><svg class="ic"><use href="#i-settings-3"/></svg> Настройки</b> — тексты отчёта, моя приписка, атрибуция, расписание.</li>
+    <li><b><svg class="ic"><use href="#i-book-2"/></svg> Гайд</b> — эта справка.</li>
   </ul>
   <div class="note">Если ты специалист, блок «Управление» просто не показывается — лишних пунктов в меню нет.</div>`},
-{tab:'Начало',icon:'🌗',title:'Тема и обновление',kw:'тема светлая тёмная обновить refresh',html:`
-  <p>Вверху справа: <b>🌙/☀️</b> — переключить светлую/тёмную тему (запоминается), <b>⟳ Обновить</b> — перечитать данные с сервера.</p>`},
-{tab:'Начало',icon:'⌨️',title:'Горячие клавиши и палитра команд',kw:'горячие клавиши ctrl+k палитра команд поиск быстро слэш вопрос shortcuts',html:`
+{tab:'Начало',icon:'<svg class="ic"><use href="#i-contrast-2"/></svg>',title:'Тема и обновление',kw:'тема светлая тёмная обновить refresh',html:`
+  <p>Вверху справа: <b><svg class="ic"><use href="#i-moon"/></svg>/<svg class="ic"><use href="#i-sun"/></svg></b> — переключить светлую/тёмную тему (запоминается), <b><svg class="ic"><use href="#i-refresh"/></svg> Обновить</b> — перечитать данные с сервера.</p>`},
+{tab:'Начало',icon:'<svg class="ic"><use href="#i-keyboard-box"/></svg>',title:'Горячие клавиши и палитра команд',kw:'горячие клавиши ctrl+k палитра команд поиск быстро слэш вопрос shortcuts',html:`
   <p>Если сидишь в кабинете каждый день, мышь можно почти не трогать.</p>
   <ul>
     <li><span class="gkbd">Ctrl</span> + <span class="gkbd">K</span> (или просто <span class="gkbd">/</span>) — <b>палитра команд</b>. Начни печатать: «kst» — откроет клиента, «бюдж» — прыгнет в Бюджеты, «рассылка» — запустит её. Ищет по разделам, клиентам и действиям сразу.</li>
@@ -1955,25 +2194,25 @@ const GUIDE=[
     <li><span class="gkbd">Esc</span> — закрыть палитру, окно или панель.</li>
   </ul>
   <div class="note">Клавиши не срабатывают, пока курсор стоит в поле ввода — печатать они не мешают.</div>`},
-{tab:'Начало',icon:'↩️',title:'Отмена вместо «вы уверены?»',kw:'отмена undo подтверждение уверены confirm обратимо',html:`
+{tab:'Начало',icon:'<svg class="ic"><use href="#i-arrow-go-back"/></svg>',title:'Отмена вместо «вы уверены?»',kw:'отмена undo подтверждение уверены confirm обратимо',html:`
   <p>Раньше почти каждое действие спрашивало «вы уверены?». На такие вопросы жмут «да» не глядя, поэтому они и не защищали.</p>
   <p>Теперь по-другому: <b>обратимое действие выполняется сразу</b>, а внизу появляется плашка с кнопкой <b>«Отменить»</b> — несколько секунд, чтобы передумать. Так работают: закрытие долга, возврат долга, снятие клиента с ожидания ответа, передача проектов между специалистами.</p>
   <p>Подтверждение осталось только там, где отменить нельзя или что-то уходит наружу: рассылка клиентам, тестовый отчёт, удаление чата, очистка журнала, запись в Google-таблицы. У таких кнопок красный цвет и понятное название — не «OK», а «Отправить клиентам».</p>
-  <div class="note">Если в карточке клиента остались несохранённые правки, программа спросит перед закрытием — раньше можно было потерять полчаса работы одним кликом мимо.</div>`},{tab:'Начало',icon:'🎮',title:'Перерыв — игра в углу',kw:'перерыв игра отдых 2048 залипалка развлечение пауза устал',html:`
-  <p>В правом нижнем углу есть круглая кнопка <b>🎮</b> — это перерыв. Голова кипит от отчётов, надо на пару минут переключиться — открывай.</p>
+  <div class="note">Если в карточке клиента остались несохранённые правки, программа спросит перед закрытием — раньше можно было потерять полчаса работы одним кликом мимо.</div>`},{tab:'Начало',icon:'<svg class="ic"><use href="#i-gamepad"/></svg>',title:'Перерыв — игра в углу',kw:'перерыв игра отдых 2048 залипалка развлечение пауза устал',html:`
+  <p>В правом нижнем углу есть круглая кнопка <b><svg class="ic"><use href="#i-gamepad"/></svg></b> — это перерыв. Голова кипит от отчётов, надо на пару минут переключиться — открывай.</p>
   <p>Внутри <b>2048</b>: складывай одинаковые плитки, чтобы получались вдвое большие. Управление — <b>стрелки</b> или <b>WASD</b>, на телефоне <b>свайп</b>. <span class="gkbd">Esc</span> сворачивает.</p>
   <ul>
     <li><b><svg class="ic"><use href="#i-arrow-go-back"/></svg> Ход назад</b> — отменить последний ход, если промахнулся.</li>
-    <li><b>🔄 Заново</b> — начать партию сначала.</li>
+    <li><b><svg class="ic"><use href="#i-refresh"/></svg> Заново</b> — начать партию сначала.</li>
     <li>Счёт и <b>рекорд</b> сохраняются в браузере, партия — тоже: свернул, ушёл работать, вернулся и доиграл с того же места.</li>
     <li>По дороге ловишь вехи: 128 — «лид», 256 — «заявка», 512 — «клиент», 1024 — «кейс», 2048 — «кейс года». После 2048 можно продолжать.</li>
   </ul>
   <div class="note">Пока панель свёрнута, игра ничего не считает и не жуёт батарею — она полностью выключена. И клавиши она не перехватывает: если печатаешь в поле ввода, стрелки работают как обычно.</div>`},
 // ===== КЛИЕНТЫ =====
-{tab:'Клиенты',icon:'👥',title:'Что такое клиент',kw:'клиент логин директ аккаунт кто такой',html:`
+{tab:'Клиенты',icon:'<svg class="ic"><use href="#i-users"/></svg>',title:'Что такое клиент',kw:'клиент логин директ аккаунт кто такой',html:`
   <p><b>Клиент</b> = рекламный аккаунт в Яндекс.Директе (его логин, напр. <span class="gkbd">porg-xxxx</span> или <span class="gkbd">kupijigru</span>). У клиента есть имя (обычно домен), цели Метрики, модель атрибуции и привязанные чаты, куда уходят отчёты.</p>
   <p>Ты видишь только <b>своих</b> клиентов (тех, кого админ закрепил за тобой или кого ты подцепил привязкой). <b>Админ — тоже специалист</b> со своим стеком и чужих клиентов не видит. Всё агентство целиком видит только <b>Наблюдатель</b> (работодатель).</p>`},
-{tab:'Клиенты',icon:'🔄',title:'Откуда берутся клиенты',kw:'синхронизация подтянуть директ пул общий sync агентство',html:`
+{tab:'Клиенты',icon:'<svg class="ic"><use href="#i-refresh"/></svg>',title:'Откуда берутся клиенты',kw:'синхронизация подтянуть директ пул общий sync агентство',html:`
   <p>Клиенты тянутся из агентского аккаунта Директа. Кнопка <b>«Подтянуть из Директа»</b> (только у админа) добавляет всех клиентов агентства в <b>общий пул</b> (пока ничьи).</p>
   <p>Дальше клиенты попадают к специалистам двумя путями:</p>
   <ul>
@@ -1981,15 +2220,15 @@ const GUIDE=[
     <li><b>Специалист сам подцепляет</b> — привязал чат свободного клиента → клиент закрепился за ним (см. вкладку «Чаты и привязки»).</li>
   </ul>
   <div class="note">Список клиентов Директа и их цели <b>обновляются автоматически раз в сутки</b> — новые клиенты и новые ключевые цели подтянутся сами. Кнопки «Подтянуть из Директа» и «Цели из Метрики» остаются для ручного обновления «прямо сейчас».</div>`},
-{tab:'Клиенты',icon:'🗂',title:'Карточка клиента',kw:'карточка имя домен атрибуция сохранить редактировать доставка',html:`
-  <p>Клик по клиенту открывает карточку: <b>имя</b> (используется как домен для поиска Google-таблицы), <b>атрибуция</b>, <b>доставка</b> (✈️ Telegram / 📤 Сторонний) и <b>цели</b>. «Сохранить» — записать изменения, «📨 Тестовый отчёт» — прислать отчёт в привязанный чат для проверки.</p>`},
-{tab:'Клиенты',icon:'🔃',title:'Сортировка и колонка «Добавлен»',kw:'сортировка колонки дата добавления новые сверху цели компактно',html:`
+{tab:'Клиенты',icon:'<svg class="ic"><use href="#i-folder-5"/></svg>',title:'Карточка клиента',kw:'карточка имя домен атрибуция сохранить редактировать доставка',html:`
+  <p>Клик по клиенту открывает карточку: <b>имя</b> (используется как домен для поиска Google-таблицы), <b>атрибуция</b>, <b>доставка</b> (<svg class="ic"><use href="#i-telegram"/></svg> Telegram / <svg class="ic"><use href="#i-outbox"/></svg> Сторонний) и <b>цели</b>. «Сохранить» — записать изменения, «<svg class="ic"><use href="#i-send-plane"/></svg> Тестовый отчёт» — прислать отчёт в привязанный чат для проверки.</p>`},
+{tab:'Клиенты',icon:'<svg class="ic"><use href="#i-refresh"/></svg>',title:'Сортировка и колонка «Добавлен»',kw:'сортировка колонки дата добавления новые сверху цели компактно',html:`
   <p>Заголовки таблицы кликабельны — сортировка по любому столбцу (повторный клик разворачивает, индикатор ▲/▼). По умолчанию — <b>по дате добавления, новые сверху</b>.</p>
-  <p>Колонка <b>«Цели»</b> компактная: «🎯 активных/всего» + пара названий + «+N», чтобы строка не растягивалась. Полный список — в карточке клиента.</p>`},
-{tab:'Клиенты',icon:'📝',title:'Заметки по проектам',kw:'заметка проект пауза контекст комментарий напоминание',html:`
+  <p>Колонка <b>«Цели»</b> компактная: «<svg class="ic"><use href="#i-focus-3"/></svg> активных/всего» + пара названий + «+N», чтобы строка не растягивалась. Полный список — в карточке клиента.</p>`},
+{tab:'Клиенты',icon:'<svg class="ic"><use href="#i-quill-pen"/></svg>',title:'Заметки по проектам',kw:'заметка проект пауза контекст комментарий напоминание',html:`
   <p>К проекту можно оставить заметку — например «клиент на паузе до августа» или «отчёты только после согласования». Она видна всем причастным: в <b>досье специалиста</b> и в карточке клиента.</p>
   <p>Пишет заметку владелец проекта, а также админ и работодатель.</p>`},
-{tab:'Клиенты',icon:'🎯',title:'Цели: галочка и «Конверсии» — это разное',kw:'цели метрика активные ключевые микро галочки конверсии лиды дополнительные',html:`
+{tab:'Клиенты',icon:'<svg class="ic"><use href="#i-focus-3"/></svg>',title:'Цели: галочка и «Конверсии» — это разное',kw:'цели метрика активные ключевые микро галочки конверсии лиды дополнительные',html:`
   <p>У клиента подтягиваются <b>все</b> цели Метрики. Дальше работают <b>два разных</b> механизма — их часто путают:</p>
   <ul>
     <li><b>Галочка «в отчёт»</b> — решает, <b>покажем ли цель</b> клиенту. Что отмечено — то и будет в отчёте, отдельной строкой с числом и CPA. Ставится и снимается вручную.</li>
@@ -1999,45 +2238,45 @@ const GUIDE=[
   <div class="note">При подтягивании целей галочки проставляются автоматически по широкому списку — попадают и не-лиды (клики по кнопкам, корзина). Это нормально: они покажутся в отчёте, но в «Конверсии» не войдут. Лишнее — снимай галочкой.</div>
   <p>Кнопка <b>«Цели из Метрики»</b> подтягивает новые цели и расставляет галочки; у <b>уже существующих</b> целей твои галочки не трогает. Потолок: 30 целей показываем в отчёте, из них до 15 формируют «Конверсии».</p>`},
 // ===== ЧАТЫ И ПРИВЯЗКИ =====
-{tab:'Чаты и привязки',icon:'🤖',title:'Бот и как он видит чаты',kw:'бот webhook добавить группа чат telegram видит',html:`
+{tab:'Чаты и привязки',icon:'<svg class="ic"><use href="#i-telegram"/></svg>',title:'Бот и как он видит чаты',kw:'бот webhook добавить группа чат telegram видит',html:`
   <p>Отчёты шлёт агентский Telegram-бот. Чтобы он увидел чат клиента — <b>добавь бота в группу</b> клиента (лучше администратором). Бот сразу определит чат, напишет в него «я на связи» и покажется в разделе <b>Чаты</b>.</p>
   <div class="note">Бот работает через webhook на сервере — он ловит новые чаты всегда, ничего запускать не нужно.</div>`},
-{tab:'Чаты и привязки',icon:'🔗',title:'Привязать чат к клиенту',kw:'привязка привязать чат клиент bind связать',html:`
+{tab:'Чаты и привязки',icon:'<svg class="ic"><use href="#i-links"/></svg>',title:'Привязать чат к клиенту',kw:'привязка привязать чат клиент bind связать',html:`
   <p>Привязка = «этому чату слать отчёты этого клиента».</p>
-  <p><b>Способ 1 — ссылка:</b> кнопка <b>＋ Подключить клиента</b> → выбери клиента → «Получить ссылку» → открой её и выбери группу. Бот зайдёт и привяжется сам.</p>
+  <p><b>Способ 1 — ссылка:</b> кнопка <b><svg class="ic"><use href="#i-add-circle"/></svg> Подключить клиента</b> → выбери клиента → «Получить ссылку» → открой её и выбери группу. Бот зайдёт и привяжется сам.</p>
   <p><b>Способ 2 — вручную:</b> добавь бота в группу → чат появится в <b>Чаты</b> → в <b>Привязки</b> подтверди предложенного клиента или выбери вручную.</p>
   <p><b>Способ 3 — команда:</b> прямо в чате набери <span class="gkbd">/bind &lt;логин&gt;</span>.</p>`},
-{tab:'Чаты и привязки',icon:'🧲',title:'Правило «привязал → взял»',kw:'закрепил забрал свой клиент владелец захват специалист',html:`
+{tab:'Чаты и привязки',icon:'<svg class="ic"><use href="#i-links"/></svg>',title:'Правило «привязал → взял»',kw:'закрепил забрал свой клиент владелец захват специалист',html:`
   <p><b>Ключевое правило:</b> когда специалист привязывает чат к <b>свободному</b> (ничьему) клиенту — этот клиент автоматически закрепляется за ним. Так формируется твой стек клиентов.</p>
   <ul>
     <li>Привязать можно своего или свободного клиента; <b>чужого</b> (закреплённого за другим специалистом) — нельзя.</li>
     <li>Админ раздаёт/переназначает клиентов поверх — его слово последнее.</li>
   </ul>
   <div class="note">Исключение для руководителя: админ и работодатель могут привязывать <b>сразу на нужного специалиста</b> — см. следующую тему.</div>`},
-{tab:'Чаты и привязки',icon:'🎯',title:'Привязка сразу на специалиста (для руководителя)',kw:'привязать на специалиста работодатель админ владелец не себе назначить сразу',html:`
-  <p>Админу и работодателю в разделах <b>«Привязки»</b> и <b>«Чаты»</b> доступен выбор <b>«🎯 Привязывать на специалиста»</b>. Выбрал человека — и привязка сразу закрепляет проект за ним, а не за тобой.</p>
+{tab:'Чаты и привязки',icon:'<svg class="ic"><use href="#i-focus-3"/></svg>',title:'Привязка сразу на специалиста (для руководителя)',kw:'привязать на специалиста работодатель админ владелец не себе назначить сразу',html:`
+  <p>Админу и работодателю в разделах <b>«Привязки»</b> и <b>«Чаты»</b> доступен выбор <b>«<svg class="ic"><use href="#i-focus-3"/></svg> Привязывать на специалиста»</b>. Выбрал человека — и привязка сразу закрепляет проект за ним, а не за тобой.</p>
   <p>Работает и в <b>массовой привязке</b> (≥75%): все привязанные проекты уйдут выбранному специалисту.</p>
   <p>Раньше проект липнул к тому, кто привязывал, и приходилось потом вручную переназначать десятки клиентов.</p>`},
-{tab:'Чаты и привязки',icon:'📂',title:'Вкладки в разделе «Чаты»',kw:'чаты мои свободные все видимые фильтр чужие проекты',html:`
+{tab:'Чаты и привязки',icon:'<svg class="ic"><use href="#i-folder-5"/></svg>',title:'Вкладки в разделе «Чаты»',kw:'чаты мои свободные все видимые фильтр чужие проекты',html:`
   <ul>
     <li><b>Мои</b> — чаты, привязанные к твоим клиентам.</li>
     <li><b>Свободные</b> — чаты без привязки. Их видят все специалисты: кто первый привязал — того и клиент. Помечены значком «свободный».</li>
     <li><b>Все видимые</b> — то и другое вместе.</li>
   </ul>
   <p>Чужие привязанные чаты (клиенты других специалистов) не показываются вообще.</p>`},
-{tab:'Чаты и привязки',icon:'⏳',title:'Раздел «Ждут ответа»',kw:'ждут ответа не ответили молчим забытые давно не общались ответ не нужен скрыть снять',html:`
+{tab:'Чаты и привязки',icon:'<svg class="ic"><use href="#i-time"/></svg>',title:'Раздел «Ждут ответа»',kw:'ждут ответа не ответили молчим забытые давно не общались ответ не нужен скрыть снять',html:`
   <p>Показывает клиентов, которые написали в чат, а мы им ещё <b>не ответили</b>. Считается по реальной переписке — отчёт бота ответом не считается, поэтому «ответили» не срабатывает ложно по понедельникам.</p>
   <ul>
     <li><b>Жёлтым</b> — ждёт больше 4 часов, <b>красным</b> — больше суток. На «дольше суток» владельцу проекта прилетает уведомление в колокольчик (раз в сутки на чат, без спама).</li>
     <li>Как только кто-то из наших пишет в чат, строка исчезает сама — специально ничего нажимать не надо.</li>
     <li>Второй блок <b>«Давно не общались»</b> — чаты без всякой активности 21+ день: клиент забыт, стоит написать первым.</li>
   </ul>
-  <p><b>Кнопка «✓ Ответ не нужен»</b> (справа в строке) — для случаев, когда отвечать нечего: клиент написал «Отлично» или «Ок». Строка уходит из списка, счётчик уменьшается, уведомления по этому чату больше не приходят.</p>
-  <div class="note">Это не «удалить навсегда»: снятие держится <b>ровно до следующего сообщения клиента</b>. Напишет что-то новое — чат сам вернётся в список. Снятые лежат под строкой «🙈 Снятые с ожидания» — там же кнопка <b>«↩ Вернуть»</b>, если нажал по ошибке. Видно, кто снял.</div>
+  <p><b>Кнопка «<svg class="ic"><use href="#i-checkbox-circle"/></svg> Ответ не нужен»</b> (справа в строке) — для случаев, когда отвечать нечего: клиент написал «Отлично» или «Ок». Строка уходит из списка, счётчик уменьшается, уведомления по этому чату больше не приходят.</p>
+  <div class="note">Это не «удалить навсегда»: снятие держится <b>ровно до следующего сообщения клиента</b>. Напишет что-то новое — чат сам вернётся в список. Снятые лежат под строкой «<svg class="ic"><use href="#i-eye-off"/></svg> Снятые с ожидания» — там же кнопка <b>«<svg class="ic"><use href="#i-arrow-go-back"/></svg> Вернуть»</b>, если нажал по ошибке. Видно, кто снял.</div>
   <p class="muted" style="font-size:12.5px">Список ведут все, включая работодателя — он видит чаты всего агентства и тоже может снимать и возвращать.</p>`},
-{tab:'Чаты и привязки',icon:'⚡',title:'Массовая привязка',kw:'массовая bind_bulk авто уверенность порог много',html:`
+{tab:'Чаты и привязки',icon:'<svg class="ic"><use href="#i-flashlight"/></svg>',title:'Массовая привязка',kw:'массовая bind_bulk авто уверенность порог много',html:`
   <p>В разделе <b>Привязки</b> кнопка массовой привязки цепляет все непривязанные чаты, где совпадение с клиентом уверенное (по порогу). Остальное подправишь вручную. Массово цепляются только свои и свободные клиенты.</p>`},
-{tab:'Чаты и привязки',icon:'💬',title:'Команды бота в чате',kw:'команды start bind unbind whereami chats help бот',html:`
+{tab:'Чаты и привязки',icon:'<svg class="ic"><use href="#i-chat-3"/></svg>',title:'Команды бота в чате',kw:'команды start bind unbind whereami chats help бот',html:`
   <ul>
     <li><span class="gkbd">/start</span> или <span class="gkbd">/whereami</span> — где я и к кому привязан.</li>
     <li><span class="gkbd">/bind &lt;логин&gt;</span> — привязать чат к клиенту (только админ/владелец бота).</li>
@@ -2045,133 +2284,133 @@ const GUIDE=[
     <li><span class="gkbd">/chats</span> — список известных чатов, <span class="gkbd">/help</span> — справка.</li>
   </ul>`},
 // ===== РАССЫЛКА =====
-{tab:'Рассылка',icon:'📨',title:'Как запустить рассылку',kw:'рассылка запустить отправить отчёты неделя кнопка',html:`
-  <p>Раздел <b>Обзор</b> → <b>«📨 Запустить рассылку сейчас»</b>. Соберёт отчёты за прошлую неделю и отправит в чаты <b>твоих</b> клиентов.</p>
+{tab:'Рассылка',icon:'<svg class="ic"><use href="#i-send-plane"/></svg>',title:'Как запустить рассылку',kw:'рассылка запустить отправить отчёты неделя кнопка',html:`
+  <p>Раздел <b>Обзор</b> → <b>«<svg class="ic"><use href="#i-send-plane"/></svg> Запустить рассылку сейчас»</b>. Соберёт отчёты за прошлую неделю и отправит в чаты <b>твоих</b> клиентов.</p>
   <ul>
     <li>Ты (специалист) шлёшь только своих клиентов; админ — тоже своих. У каждого свой стек — пересечений нет.</li>
     <li>«Отправить всем разом по агентству» делает <b>автозапуск (cron)</b>, а не кнопка (см. «Автозапуск»).</li>
   </ul>`},
-{tab:'Рассылка',icon:'📊',title:'Окно прогресса',kw:'прогресс окно статус счётчик отправлено ошибка',html:`
+{tab:'Рассылка',icon:'<svg class="ic"><use href="#i-bar-chart"/></svg>',title:'Окно прогресса',kw:'прогресс окно статус счётчик отправлено ошибка',html:`
   <p>После запуска открывается окно прогресса: живой счётчик <b>(готово/всего)</b> и строка по каждому клиенту:</p>
   <ul>
-    <li>✅ отправлено (и в скольких чатах),</li>
-    <li>⏭️ пропущен (нет активных кампаний за 4 недели),</li>
-    <li>🚫 нет привязанного чата,</li>
-    <li>❌ ошибка (с причиной).</li>
+    <li><svg class="ic"><use href="#i-check-double"/></svg> отправлено (и в скольких чатах),</li>
+    <li><svg class="ic"><use href="#i-skip-forward"/></svg> пропущен (нет активных кампаний за 4 недели),</li>
+    <li><svg class="ic"><use href="#i-forbid-2"/></svg> нет привязанного чата,</li>
+    <li><svg class="ic"><use href="#i-close-circle"/></svg> ошибка (с причиной).</li>
   </ul>
-  <p>Внизу — итог и, если были сбои, кнопка «🔁 Переотправить недошедшим».</p>`},
-{tab:'Рассылка',icon:'🧪',title:'Проба (без отправки)',kw:'проба dry-run тест проверка без отправки сухой прогон',html:`
-  <p>Кнопка <b>«🧪 Проба (без отправки)»</b> рядом с рассылкой прогоняет всё <b>с тем же окном прогресса, но клиентам ничего не шлёт</b>. Каждый отчёт помечается 🧪 «собран».</p>
+  <p>Внизу — итог и, если были сбои, кнопка «<svg class="ic"><use href="#i-refresh"/></svg> Переотправить недошедшим».</p>`},
+{tab:'Рассылка',icon:'<svg class="ic"><use href="#i-flask"/></svg>',title:'Проба (без отправки)',kw:'проба dry-run тест проверка без отправки сухой прогон',html:`
+  <p>Кнопка <b>«<svg class="ic"><use href="#i-flask"/></svg> Проба (без отправки)»</b> рядом с рассылкой прогоняет всё <b>с тем же окном прогресса, но клиентам ничего не шлёт</b>. Каждый отчёт помечается <svg class="ic"><use href="#i-flask"/></svg> «собран».</p>
   <p>Зачем: за минуту убедиться, что все отчёты собираются (никто не отвалится по ошибке, ни у кого не «нет чата») — <b>перед</b> боевым запуском.</p>`},
-{tab:'Рассылка',icon:'🔁',title:'Переотправить недошедшим',kw:'переотправить недошедшие ошибка повтор failed',html:`
-  <p>Если после рассылки у кого-то ❌/🚫 — кнопка <b>«🔁 Переотправить недошедшим»</b> повторит отправку <b>только этим</b> клиентам (не всем заново). После пробы кнопка не показывается, чтобы не отправить случайно вживую.</p>`},
-{tab:'Рассылка',icon:'🕘',title:'Автозапуск по расписанию',kw:'автозапуск расписание cron планировщик понедельник еженедельно weekly',html:`
+{tab:'Рассылка',icon:'<svg class="ic"><use href="#i-refresh"/></svg>',title:'Переотправить недошедшим',kw:'переотправить недошедшие ошибка повтор failed',html:`
+  <p>Если после рассылки у кого-то <svg class="ic"><use href="#i-close-circle"/></svg>/<svg class="ic"><use href="#i-forbid-2"/></svg> — кнопка <b>«<svg class="ic"><use href="#i-refresh"/></svg> Переотправить недошедшим»</b> повторит отправку <b>только этим</b> клиентам (не всем заново). После пробы кнопка не показывается, чтобы не отправить случайно вживую.</p>`},
+{tab:'Рассылка',icon:'<svg class="ic"><use href="#i-clock"/></svg>',title:'Автозапуск по расписанию',kw:'автозапуск расписание cron планировщик понедельник еженедельно weekly',html:`
   <p>Каноничная недельная рассылка «по всему агентству» настраивается через <b>cron на сервере</b> (панель хостинга Beget → Cron), команда <span class="gkbd">python -m iigbot weekly</span>, например по понедельникам 09:00. Он один раз шлёт всем — без дублей.</p>
   <p>Кнопки в кабинете — для ручного/точечного запуска (свои клиенты), cron — для автоматики.</p>`},
-{tab:'Рассылка',icon:'🧾',title:'Что внутри отчёта',kw:'структура отчёт текст кампании конверсии cpa приписка вступление',html:`
+{tab:'Рассылка',icon:'<svg class="ic"><use href="#i-file-list-2"/></svg>',title:'Что внутри отчёта',kw:'структура отчёт текст кампании конверсии cpa приписка вступление',html:`
   <p>Отчёт за неделю содержит: вступление, клиента и период, метрики (показы/клики/расход/CTR/CPC), <b>конверсии по ключевым целям</b> с CR и CPA, а при нескольких кампаниях — разбивку. В конце — <b>приписка</b> (общая из Настроек или твоя личная — см. «Настройки → Моя приписка»; можно вообще без неё).</p>
   <p>Если у клиента отмечены цели, которые не считаются ключевыми, после CPA идёт блок <b>«Дополнительные цели (в конверсии не входят)»</b> — они показаны числом и CPA, но в «Конверсии», CR и CPA аккаунта не входят. Блок печатается один раз, в «Итого по аккаунту», а не в каждой кампании. Цели с нулём не выводятся вообще — ни в основном списке, ни в дополнительном.</p>`},
 // ===== СТОРОННИЕ =====
-{tab:'Сторонние',icon:'📤',title:'Клиент в стороннем мессенджере',kw:'сторонний whatsapp vk max яндекс копипаст доставка вручную не telegram способ',html:`
+{tab:'Сторонние',icon:'<svg class="ic"><use href="#i-outbox"/></svg>',title:'Клиент в стороннем мессенджере',kw:'сторонний whatsapp vk max яндекс копипаст доставка вручную не telegram способ',html:`
   <p>Бот шлёт отчёты только в Telegram. Для клиентов в других мессенджерах (WhatsApp, VK, MAX, Яндекс и т.п.) есть режим <b>«Сторонний»</b>: отчёт собирается в кабинете, а ты копируешь текст и вставляешь в чат клиента вручную.</p>
   <p>Пометить клиента сторонним:</p>
   <ul>
-    <li>в <b>карточке клиента</b> — поле «Доставка отчёта» → «📤 Сторонний (копипаст)»;</li>
+    <li>в <b>карточке клиента</b> — поле «Доставка отчёта» → «<svg class="ic"><use href="#i-outbox"/></svg> Сторонний (копипаст)»;</li>
     <li>во вкладке <b>Сторонние</b> — тумблером «→ сделать сторонним» прямо в списке.</li>
   </ul>
-  <p>У сторонних в списке клиентов — бейдж <b>📤 сторонний</b>.</p>`},
-{tab:'Сторонние',icon:'📥',title:'Собрать и вставить отчёты',kw:'собрать отчёты копировать вставить скопировать всё блоки сторонние',html:`
-  <p>Во вкладке <b>Сторонние</b> твои сторонние клиенты уже отмечены галочками. Жми <b>«📥 Собрать отчёты»</b> — по каждому построится недельный отчёт (тот же, что в Telegram), но <b>никому не отправится</b>.</p>
-  <p>У каждого — кнопка <b>«📋 Копировать»</b> (или «Скопировать всё» сверху, все отчёты с шапками клиентов). Вставляешь текст в чат клиента в его мессенджере.</p>
+  <p>У сторонних в списке клиентов — бейдж <b><svg class="ic"><use href="#i-outbox"/></svg> сторонний</b>.</p>`},
+{tab:'Сторонние',icon:'<svg class="ic"><use href="#i-inbox-archive"/></svg>',title:'Собрать и вставить отчёты',kw:'собрать отчёты копировать вставить скопировать всё блоки сторонние',html:`
+  <p>Во вкладке <b>Сторонние</b> твои сторонние клиенты уже отмечены галочками. Жми <b>«<svg class="ic"><use href="#i-inbox-archive"/></svg> Собрать отчёты»</b> — по каждому построится недельный отчёт (тот же, что в Telegram), но <b>никому не отправится</b>.</p>
+  <p>У каждого — кнопка <b>«<svg class="ic"><use href="#i-file-copy-2"/></svg> Копировать»</b> (или «Скопировать всё» сверху, все отчёты с шапками клиентов). Вставляешь текст в чат клиента в его мессенджере.</p>
   <div class="note">Сторонние <b>не участвуют в бот-рассылке и пробе</b> — больше не висят ошибкой «нет чата».</div>`},
-{tab:'Сторонние',icon:'✓',title:'Сбор = зачёт в Контроле',kw:'зачёт контроль работодатель сдал наблюдатель обязательство сторонний',html:`
-  <p>Когда жмёшь «Собрать отчёты», сторонние клиенты автоматически <b>идут в зачёт «Контроля»</b> — работодатель видит их сданными за неделю (плашка «✓ зачтено»).</p>
+{tab:'Сторонние',icon:'<svg class="ic"><use href="#i-check-double"/></svg>',title:'Сбор = зачёт в Контроле',kw:'зачёт контроль работодатель сдал наблюдатель обязательство сторонний',html:`
+  <p>Когда жмёшь «Собрать отчёты», сторонние клиенты автоматически <b>идут в зачёт «Контроля»</b> — работодатель видит их сданными за неделю (плашка «<svg class="ic"><use href="#i-checkbox-circle"/></svg> зачтено»).</p>
   <p>Если у стороннего нет открута за 4 недели — он отметится <b>авто-уважительно</b> (не висит долгом).</p>`},
 // ===== БЮДЖЕТЫ =====
-{tab:'Бюджеты',icon:'💰',title:'Что показывает вкладка «Бюджеты»',kw:'бюджет остаток баланс темп дней осталось кампании счёт деньги',html:`
-  <p>Вкладка <b>Бюджеты</b> следит за деньгами клиентов: по каждому — <b>остаток общего счёта</b>, <b>темп трат</b> за 7 дней и <b>на сколько дней хватит</b> при таком темпе, плюс статусы кампаний (сколько включено, сколько 💳 остановлено по оплате) и дневной бюджет.</p>
-  <p>Рабочий пул — клиенты с владельцем или привязкой, тратившие последние 3 недели. Кто не тратил — во вкладке «💤 Неактивные».</p>`},
-{tab:'Бюджеты',icon:'🔴',title:'Зоны риска и алерты в личку',kw:'критично внимание алерт личка telegram уведомление пополнить дней бюджет',html:`
+{tab:'Бюджеты',icon:'<svg class="ic"><use href="#i-wallet-3"/></svg>',title:'Что показывает вкладка «Бюджеты»',kw:'бюджет остаток баланс темп дней осталось кампании счёт деньги',html:`
+  <p>Вкладка <b>Бюджеты</b> следит за деньгами клиентов: по каждому — <b>остаток общего счёта</b>, <b>темп трат</b> за 7 дней и <b>на сколько дней хватит</b> при таком темпе, плюс статусы кампаний (сколько включено, сколько <svg class="ic"><use href="#i-bank-card"/></svg> остановлено по оплате) и дневной бюджет.</p>
+  <p>Рабочий пул — клиенты с владельцем или привязкой, тратившие последние 3 недели. Кто не тратил — во вкладке «<svg class="ic"><use href="#i-cup"/></svg> Неактивные».</p>`},
+{tab:'Бюджеты',icon:'<svg class="ic"><use href="#i-alert"/></svg>',title:'Зоны риска и алерты в личку',kw:'критично внимание алерт личка telegram уведомление пополнить дней бюджет',html:`
   <ul>
-    <li><b>🔴 Критично</b> — меньше 3 дней до нуля.</li>
-    <li><b>🟡 Внимание</b> — меньше 7 дней либо есть кампании, остановленные по оплате.</li>
-    <li><b>🟢 ОК</b> — денег хватает.</li>
+    <li><b><svg class="ic"><use href="#i-alert"/></svg> Критично</b> — меньше 3 дней до нуля.</li>
+    <li><b><svg class="ic"><use href="#i-error-warning"/></svg> Внимание</b> — меньше 7 дней либо есть кампании, остановленные по оплате.</li>
+    <li><b><svg class="ic"><use href="#i-checkbox-circle"/></svg> ОК</b> — денег хватает.</li>
   </ul>
   <p>Критичные раз в сутки уходят <b>алертом в личный Telegram</b> одним сообщением. Число критичных также висит красным бейджем на пункте меню «Бюджеты».</p>`},
-{tab:'Бюджеты',icon:'🔗',title:'Как настроить алерты себе',kw:'привязать telegram алерты настройки по всему агентству мои клиенты username start',html:`
-  <p><b>Настройки → «Алерты по бюджету — мой Telegram» → «🔗 Привязать Telegram»</b>: откроется бот, жмёшь <b>Start</b> — и чат привязан. Работает даже если у тебя нет публичного @username (раньше из-за этого алерты не доходили).</p>
+{tab:'Бюджеты',icon:'<svg class="ic"><use href="#i-links"/></svg>',title:'Как настроить алерты себе',kw:'привязать telegram алерты настройки по всему агентству мои клиенты username start',html:`
+  <p><b>Настройки → «Алерты по бюджету — мой Telegram» → «<svg class="ic"><use href="#i-links"/></svg> Привязать Telegram»</b>: откроется бот, жмёшь <b>Start</b> — и чат привязан. Работает даже если у тебя нет публичного @username (раньше из-за этого алерты не доходили).</p>
   <p><b>Кому что приходит:</b> каждому специалисту — алерты по <b>его</b> клиентам. Админ и работодатель могут выбрать режим <b>«По всему агентству»</b> — тогда придут все критичные, включая проекты без владельца.</p>
   <p>Проверить статус — кнопка «Проверить статус»; отключить — «Отвязать».</p>`},
-{tab:'Бюджеты',icon:'👀',title:'Мои клиенты или всё агентство',kw:'мои клиенты всё агентство переключатель админ наблюдатель пусто не вижу бюджеты',html:`
+{tab:'Бюджеты',icon:'<svg class="ic"><use href="#i-eye"/></svg>',title:'Мои клиенты или всё агентство',kw:'мои клиенты всё агентство переключатель админ наблюдатель пусто не вижу бюджеты',html:`
   <p>Вверху вкладки у админа и работодателя есть переключатель <b>«Мои клиенты / Всё агентство»</b>. Если у тебя нет своих проектов, в режиме «Мои» будет пусто — переключись на «Всё агентство».</p>
-  <p>Кнопка <b>«⟳ Обновить сейчас»</b> собирает <b>только твоих</b> клиентов (быстро). Полный сбор по агентству идёт сам раз в 12 часов.</p>`},
-{tab:'Бюджеты',icon:'⟳',title:'Как обновляются бюджеты',kw:'обновить 12 часов автоматически собрать сейчас бюджеты',html:`
-  <p>Бюджеты пересобираются <b>сами каждые 12 часов</b> (по всему агентству). Нужно прямо сейчас — кнопка <b>«⟳ Обновить сейчас»</b> собирает <b>только твоих</b> клиентов (быстро). Сверху видно, когда собирали последний раз.</p>`},
+  <p>Кнопка <b>«<svg class="ic"><use href="#i-refresh"/></svg> Обновить сейчас»</b> собирает <b>только твоих</b> клиентов (быстро). Полный сбор по агентству идёт сам раз в 12 часов.</p>`},
+{tab:'Бюджеты',icon:'<svg class="ic"><use href="#i-refresh"/></svg>',title:'Как обновляются бюджеты',kw:'обновить 12 часов автоматически собрать сейчас бюджеты',html:`
+  <p>Бюджеты пересобираются <b>сами каждые 12 часов</b> (по всему агентству). Нужно прямо сейчас — кнопка <b>«<svg class="ic"><use href="#i-refresh"/></svg> Обновить сейчас»</b> собирает <b>только твоих</b> клиентов (быстро). Сверху видно, когда собирали последний раз.</p>`},
 // ===== КОНТРОЛЬ =====
-{tab:'Контроль',icon:'👁',title:'Наблюдатель (работодатель)',kw:'наблюдатель работодатель контроль видит всё роль просмотр начальник',html:`
+{tab:'Контроль',icon:'<svg class="ic"><use href="#i-eye"/></svg>',title:'Наблюдатель (работодатель)',kw:'наблюдатель работодатель контроль видит всё роль просмотр начальник',html:`
   <p><b>Наблюдатель</b> — это работодатель: видит <b>всё</b> (всех клиентов, все отчёты, все бюджеты, весь Контроль), но <b>ничего не меняет</b> — только смотрит. Роль выдаёт админ в разделе «Пользователи».</p>`},
-{tab:'Контроль',icon:'📋',title:'Покрытие обязательств',kw:'контроль покрытие сдал не сдал долг понедельник еженедельно специалист процент',html:`
-  <p>Раздел <b>Контроль</b> (наблюдатель и админ) показывает по каждому специалисту: сколько его клиентов получили отчёт на этой неделе, покрытие в %, кто в долгу. Статусы: ✅ всё сдал / ⚠️ частично / ❌ не сдал.</p>
+{tab:'Контроль',icon:'<svg class="ic"><use href="#i-file-copy-2"/></svg>',title:'Покрытие обязательств',kw:'контроль покрытие сдал не сдал долг понедельник еженедельно специалист процент',html:`
+  <p>Раздел <b>Контроль</b> (наблюдатель и админ) показывает по каждому специалисту: сколько его клиентов получили отчёт на этой неделе, покрытие в %, кто в долгу. Статусы: <svg class="ic"><use href="#i-check-double"/></svg> всё сдал / <svg class="ic"><use href="#i-warn"/></svg> частично / <svg class="ic"><use href="#i-close-circle"/></svg> не сдал.</p>
   <p>Сдача считается по факту отправки (Telegram-рассылка) <b>и по сбору сторонних</b> (копипаст = зачёт).</p>`},
-{tab:'Контроль',icon:'🛡',title:'Закрыть долг и написать сотруднику',kw:'долг уважительная причина проект отвалился деньги не крутятся сообщение сотруднику ярко ответ',html:`
+{tab:'Контроль',icon:'<svg class="ic"><use href="#i-shield-check"/></svg>',title:'Закрыть долг и написать сотруднику',kw:'долг уважительная причина проект отвалился деньги не крутятся сообщение сотруднику ярко ответ',html:`
   <p><b>Закрыть долг уважительно:</b> если клиент не сдан по причине «проект отвалился» или «деньги не крутятся» — долг закрывается с комментарием и перестаёт висеть.</p>
   <p><b><svg class="ic"><use href="#i-brush-2"/></svg> Закрыть все долги:</b> если у сотрудника несколько долгов — кнопка закрывает <b>все разом</b> одной причиной, не нужно кликать по каждому.</p>
-  <p><b>Сообщение сотруднику:</b> наблюдатель оставляет сообщение — оно выплывает у того ярко в кабинете (срочные — красным). <b>Специалист может ответить</b> кнопкой «↩ Ответить» прямо на баннере; ответ виден работодателю в списке сообщений, а баннер после ответа гаснет.</p>`},
-{tab:'Контроль',icon:'👤',title:'Досье специалиста',kw:'досье карточка специалиста сотрудник проекты тренд деньги переписка',html:`
-  <p>Кнопка <b>«👤 Досье»</b> в строке сотрудника открывает всё про него в одном месте:</p>
+  <p><b>Сообщение сотруднику:</b> наблюдатель оставляет сообщение — оно выплывает у того ярко в кабинете (срочные — красным). <b>Специалист может ответить</b> кнопкой «<svg class="ic"><use href="#i-arrow-go-back"/></svg> Ответить» прямо на баннере; ответ виден работодателю в списке сообщений, а баннер после ответа гаснет.</p>`},
+{tab:'Контроль',icon:'<svg class="ic"><use href="#i-user-3"/></svg>',title:'Досье специалиста',kw:'досье карточка специалиста сотрудник проекты тренд деньги переписка',html:`
+  <p>Кнопка <b>«<svg class="ic"><use href="#i-user-3"/></svg> Досье»</b> в строке сотрудника открывает всё про него в одном месте:</p>
   <ul>
     <li>покрытие недели, долги, суммарный <b>темп трат</b> его клиентов и сколько из них в красной зоне;</li>
-    <li><b>все проекты</b> со статусом сдачи (✅ сдан / ❌ долг / 🛡 уважительно / ⏭ нет открута), остатком бюджета и заметкой;</li>
+    <li><b>все проекты</b> со статусом сдачи (<svg class="ic"><use href="#i-check-double"/></svg> сдан / <svg class="ic"><use href="#i-close-circle"/></svg> долг / <svg class="ic"><use href="#i-shield-check"/></svg> уважительно / <svg class="ic"><use href="#i-skip-forward"/></svg> нет открута), остатком бюджета и заметкой;</li>
     <li><b>тренд покрытия за 8 недель</b> — видно, систематический это должник или разовый провал;</li>
     <li>переписка: сообщения и ответы сотрудника.</li>
   </ul>
-  <p>Прямо оттуда — «✉️ Написать» и «🔁 Передать проекты».</p>`},
-{tab:'Контроль',icon:'📈',title:'Тренд сдачи и баланс нагрузки',kw:'тренд график недели покрытие нагрузка сколько проектов перегружен среднее',html:`
+  <p>Прямо оттуда — «<svg class="ic"><use href="#i-mail"/></svg> Написать» и «<svg class="ic"><use href="#i-refresh"/></svg> Передать проекты».</p>`},
+{tab:'Контроль',icon:'<svg class="ic"><use href="#i-line-chart"/></svg>',title:'Тренд сдачи и баланс нагрузки',kw:'тренд график недели покрытие нагрузка сколько проектов перегружен среднее',html:`
   <p><b>Тренд сдачи</b> — графики покрытия за 8 недель: по агентству и по каждому специалисту. Одна неделя может быть случайностью, тренд — уже система.</p>
   <p><b>Баланс нагрузки</b> — сколько недельных обязательств у каждого (полосками), среднее по команде; перегруженные подсвечены красным, недогруженные — жёлтым. Отдельно предупреждение: <b>«N проектов с чатом, но без владельца»</b> — их никто не ведёт, стоит раздать.</p>`},
-{tab:'Контроль',icon:'📨',title:'Сводка в Telegram (понедельник)',kw:'сводка дайджест телеграм понедельник рассылка руководителю отчёт о команде',html:`
+{tab:'Контроль',icon:'<svg class="ic"><use href="#i-send-plane"/></svg>',title:'Сводка в Telegram (понедельник)',kw:'сводка дайджест телеграм понедельник рассылка руководителю отчёт о команде',html:`
   <p>Каждый <b>понедельник после 10:00</b> руководителю автоматически уходит сводка в личку: покрытие агентства, кто не сдал (поимённо), бюджеты на исходе, нагрузка по людям, проекты без владельца.</p>
-  <p>Получают её все, у кого в <b>Настройках</b> включён режим <b>«По всему агентству»</b> (и привязан Telegram). В разделе «Контроль» есть кнопки <b>«👁 Посмотреть текст»</b> и <b>«📨 Отправить сейчас»</b>.</p>`},
-{tab:'Контроль',icon:'🎛',title:'Раздача проектов и передача стека',kw:'раздача проектов назначить специалиста фильтр передать все проекты увольнение отпуск',html:`
-  <p><b>Раздача проектов:</b> назначь клиента специалисту и сразу выбери способ доставки (✈️ Telegram / 📤 Сторонний). Есть фильтры: по специалисту, «без владельца», по доставке, плюс поиск и счётчик.</p>
+  <p>Получают её все, у кого в <b>Настройках</b> включён режим <b>«По всему агентству»</b> (и привязан Telegram). В разделе «Контроль» есть кнопки <b>«<svg class="ic"><use href="#i-eye"/></svg> Посмотреть текст»</b> и <b>«<svg class="ic"><use href="#i-send-plane"/></svg> Отправить сейчас»</b>.</p>`},
+{tab:'Контроль',icon:'<svg class="ic"><use href="#i-equalizer"/></svg>',title:'Раздача проектов и передача стека',kw:'раздача проектов назначить специалиста фильтр передать все проекты увольнение отпуск',html:`
+  <p><b>Раздача проектов:</b> назначь клиента специалисту и сразу выбери способ доставки (<svg class="ic"><use href="#i-telegram"/></svg> Telegram / <svg class="ic"><use href="#i-outbox"/></svg> Сторонний). Есть фильтры: по специалисту, «без владельца», по доставке, плюс поиск и счётчик.</p>
   <p><b><svg class="ic"><use href="#i-refresh"/></svg> Передать все проекты:</b> разом перекинуть <b>весь стек</b> одного специалиста другому — при увольнении, отпуске или передаче дел. Поддерживается «ничьи → специалисту» и «специалист → в общий пул».</p>`},
-{tab:'Контроль',icon:'🕵️',title:'Журнал действий (кто что сделал)',kw:'журнал действий аудит история кто привязал назначил закрыл долг изменил',html:`
+{tab:'Контроль',icon:'<svg class="ic"><use href="#i-spy"/></svg>',title:'Журнал действий (кто что сделал)',kw:'журнал действий аудит история кто привязал назначил закрыл долг изменил',html:`
   <p>Полная история административных действий: кто привязал чат, назначил проект, передал стек, закрыл долг, сменил доставку, завёл сотрудника, отправил сводку. С фильтром по типу действия.</p>
   <p>Нужен, чтобы не спорить «кто это переназначил» — видно имя и время.</p>`},
-{tab:'Контроль',icon:'👥',title:'Работодатель управляет командой',kw:'работодатель наблюдатель права пользователи завести сотрудника заблокировать пароль роль',html:`
+{tab:'Контроль',icon:'<svg class="ic"><use href="#i-users"/></svg>',title:'Работодатель управляет командой',kw:'работодатель наблюдатель права пользователи завести сотрудника заблокировать пароль роль',html:`
   <p>Раздел <b>«Пользователи»</b> доступен и работодателю: завести сотрудника, сменить ему пароль, заблокировать, поменять роль.</p>
   <p><b>Ограничение по безопасности:</b> менять администраторов и выдавать роль «Администратор» может только сам администратор — работодатель не может повысить себя или другого до доступа к токенам.</p>`},
 // ===== GOOGLE-ТАБЛИЦЫ =====
-{tab:'Google-таблицы',icon:'📗',title:'Что выгружается',kw:'google таблицы выгрузка ленты разрезы месяц неделя',html:`
+{tab:'Google-таблицы',icon:'<svg class="ic"><use href="#i-book-2"/></svg>',title:'Что выгружается',kw:'google таблицы выгрузка ленты разрезы месяц неделя',html:`
   <p>Раздел <b>Таблицы</b> заполняет Google-таблицу клиента («Auto-Reporter ОТЧЕТ &lt;домен&gt;»):</p>
   <ul>
     <li><b>Ленты</b> «Общий по неделям» / «по месяцам» — свежие данные период за периодом.</li>
     <li><b>Составные листы месяца</b> — блок по кампаниям + под-блок недель.</li>
     <li><b>Разрезы</b> (снимки) — по РК, группам, ключам, поисковым фразам, регионам за период.</li>
   </ul>`},
-{tab:'Google-таблицы',icon:'🔢',title:'Как считаются конверсии',kw:'конверсии таблица цели единый подсчёт сходятся тотал',html:`
+{tab:'Google-таблицы',icon:'<svg class="ic"><use href="#i-bar-chart"/></svg>',title:'Как считаются конверсии',kw:'конверсии таблица цели единый подсчёт сходятся тотал',html:`
   <p>И ленты, и разрезы считают конверсии <b>по одним и тем же ключевым целям</b> — поэтому «по неделям» и «тотал по кампаниям» сходятся. Раньше разрезы брали «голое» поле Conversions Директа (другая метрика) — это исправлено.</p>
   <div class="note">Небольшое расхождение свежей выгрузки и старых недельных снимков — норма: Директ дозачисляет конверсии задним числом (лиды доходят не сразу).</div>`},
-{tab:'Google-таблицы',icon:'🔗',title:'Открыть таблицу клиента',kw:'ссылка открыть таблицу google быстрый доступ отчёты',html:`
-  <p>Ссылки на таблицы есть в двух местах: в разделе <b>«Отчёты»</b> сверху («📗 Таблицы клиентов» — плитки со ссылками) и в разделе <b>«Таблицы»</b> — кнопка <b>«📗 Открыть таблицу ↗»</b> рядом с выбором клиента.</p>
+{tab:'Google-таблицы',icon:'<svg class="ic"><use href="#i-links"/></svg>',title:'Открыть таблицу клиента',kw:'ссылка открыть таблицу google быстрый доступ отчёты',html:`
+  <p>Ссылки на таблицы есть в двух местах: в разделе <b>«Отчёты»</b> сверху («<svg class="ic"><use href="#i-book-2"/></svg> Таблицы клиентов» — плитки со ссылками) и в разделе <b>«Таблицы»</b> — кнопка <b>«<svg class="ic"><use href="#i-book-2"/></svg> Открыть таблицу ↗»</b> рядом с выбором клиента.</p>
   <p>Показываются только клиенты, у которых таблица <b>реально существует</b> и расшарена на сервисный аккаунт.</p>`},
-{tab:'Google-таблицы',icon:'🔑',title:'Доступ к таблице клиента',kw:'sa_key сервисный ключ расшарить доступ google редактор',html:`
+{tab:'Google-таблицы',icon:'<svg class="ic"><use href="#i-key-2"/></svg>',title:'Доступ к таблице клиента',kw:'sa_key сервисный ключ расшарить доступ google редактор',html:`
   <p>Чтобы кабинет мог писать в таблицу, она должна быть <b>расшарена (Редактор)</b> на сервисный аккаунт (его email виден в разделе, где настраивается доступ). Ключ <span class="gkbd">sa_key.json</span> уже стоит на сервере.</p>`},
 // ===== ПОЛЬЗОВАТЕЛИ =====
-{tab:'Пользователи',icon:'🔑',title:'Три роли: специалист, админ, наблюдатель',kw:'роли админ специалист наблюдатель работодатель права доступ что может видит',html:`
+{tab:'Пользователи',icon:'<svg class="ic"><use href="#i-key-2"/></svg>',title:'Три роли: специалист, админ, наблюдатель',kw:'роли админ специалист наблюдатель работодатель права доступ что может видит',html:`
   <p><b>Специалист</b> — видит и рассылает только своих клиентов; может подцеплять свободных привязкой.</p>
   <p><b>Админ</b> — тоже специалист со <b>своим стеком</b> (по клиентам видит и рассылает только своих!), но ещё умеет админское: заводит сотрудников, раздаёт/переназначает клиентов, синхронизирует Директ, видит Журнал. Чужих клиентов админ <b>не</b> видит.</p>
   <p><b>Наблюдатель (работодатель)</b> — видит <b>всё</b> агентство (клиенты, отчёты, бюджеты, Контроль), но только смотрит — ничего не меняет и не рассылает.</p>`},
-{tab:'Пользователи',icon:'👤',title:'Завести сотрудника',kw:'создать пользователь сотрудник email пароль пригласить роль',html:`
-  <p>Раздел <b>Пользователи</b> (только админ) → «Новый пользователь»: email, имя, временный пароль, роль (👤 специалист / 🔑 админ / 👁 наблюдатель) → «Создать». Публичной регистрации нет — только так. Роль можно сменить и позже в списке пользователей.</p>`},
-{tab:'Пользователи',icon:'🎛',title:'Раздать клиентов',kw:'назначить раздать клиент владелец специалист пул',html:`
+{tab:'Пользователи',icon:'<svg class="ic"><use href="#i-user-3"/></svg>',title:'Завести сотрудника',kw:'создать пользователь сотрудник email пароль пригласить роль',html:`
+  <p>Раздел <b>Пользователи</b> (только админ) → «Новый пользователь»: email, имя, временный пароль, роль (<svg class="ic"><use href="#i-user-3"/></svg> специалист / <svg class="ic"><use href="#i-key-2"/></svg> админ / <svg class="ic"><use href="#i-eye"/></svg> наблюдатель) → «Создать». Публичной регистрации нет — только так. Роль можно сменить и позже в списке пользователей.</p>`},
+{tab:'Пользователи',icon:'<svg class="ic"><use href="#i-equalizer"/></svg>',title:'Раздать клиентов',kw:'назначить раздать клиент владелец специалист пул',html:`
   <p>Внизу раздела «Пользователи» — список всех клиентов с владельцем. Выбери специалиста в выпадашке напротив клиента → он закреплён за ним. Есть поиск по названию. «— общий пул —» возвращает клиента в ничьи.</p>`},
-{tab:'Пользователи',icon:'🚫',title:'Блокировка и пароль',kw:'заблокировать деактивировать пароль сменить уволить',html:`
+{tab:'Пользователи',icon:'<svg class="ic"><use href="#i-forbid-2"/></svg>',title:'Блокировка и пароль',kw:'заблокировать деактивировать пароль сменить уволить',html:`
   <p>В таблице пользователей: <b>«Пароль»</b> — сменить, <b>«Заблокировать»</b> — деактивировать (сотрудник не сможет войти, клиенты остаются за ним, пока не переназначишь).</p>`},
 // ===== НАСТРОЙКИ =====
-{tab:'Настройки',icon:'✍️',title:'Тексты отчёта',kw:'вступление приписка специалист текст комментарий опционально настройки',html:`
+{tab:'Настройки',icon:'<svg class="ic"><use href="#i-quill-pen"/></svg>',title:'Тексты отчёта',kw:'вступление приписка специалист текст комментарий опционально настройки',html:`
   <p><b>Вступление</b> — первая строка отчёта. <b>Приписка специалиста</b> — необязательна: впишешь текст → он появится внизу отчёта; оставишь пустым → приписки не будет. Это <b>общая</b> приписка агентства (работает как запасная).</p>`},
-{tab:'Настройки',icon:'🖋',title:'Моя приписка (личная)',kw:'моя приписка личная подпись специалист свой контакт денис телефон',html:`
+{tab:'Настройки',icon:'<svg class="ic"><use href="#i-quill-pen"/></svg>',title:'Моя приписка (личная)',kw:'моя приписка личная подпись специалист свой контакт денис телефон',html:`
   <p>У каждого специалиста может быть <b>своя</b> подпись в конце отчётов по <b>его</b> клиентам — подставляется везде, где строится отчёт (превью, рассылка, авто-рассылка, «Сторонние»). Блок «Моя приписка» в Настройках, три режима:</p>
   <ul>
     <li><b>Общая</b> — берётся из блока «Приписка специалиста» выше (по умолчанию);</li>
@@ -2179,7 +2418,7 @@ const GUIDE=[
     <li><b>Без приписки</b> — в твоих отчётах приписки не будет вообще.</li>
   </ul>
   <p>Подставляется по <b>владельцу клиента</b>: у Ирины её подпись, у тебя твоя — даже в автоматической рассылке.</p>`},
-{tab:'Настройки',icon:'📐',title:'Модель атрибуции',kw:'атрибуция lsc lscd lc fc lydc кросс-девайс модель конверсии единая',html:`
+{tab:'Настройки',icon:'<svg class="ic"><use href="#i-equalizer"/></svg>',title:'Модель атрибуции',kw:'атрибуция lsc lscd lc fc lydc кросс-девайс модель конверсии единая',html:`
   <p>Атрибуция задаётся <b>в одном месте</b> — «Настройки → Атрибуция по умолчанию» — и действует на <b>всё сразу</b>: недельные отчёты, конструктор и Google-таблицы. Раньше отчёты жили на LSC, а таблицы на LYDC, из-за чего цифры по одному клиенту не сходились между собой.</p>
   <p>Дефолт агентства — <b>LSCCD, «последний значимый переход, кросс-девайс»</b> (рекомендация Мари). Конверсия достаётся Директу, даже если человек потом зашёл на сайт напрямую, а телефон и компьютер одного человека Яндекс сшивает по Яндекс ID.</p>
   <p>Все модели Директа:</p>
@@ -2193,28 +2432,28 @@ const GUIDE=[
   </ul>
   <div class="note">Директ подменяет часть моделей сам: просишь <b>LSC</b> — в ответе колонка <span class="gkbd">LSCCD</span>, <b>FC</b> → <span class="gkbd">FCCD</span>, <b>LYDC</b> → <span class="gkbd">AUTO</span>. То есть отчёты и раньше считались «последним значимым с кросс-девайсом», а таблицы, стоявшие на LYDC, — фактически по AUTO. Именно поэтому их цифры не сходились.</div>
   <div class="note">У конкретного клиента можно переопределить в карточке. Если там выбрано «— как в Настройках —», клиент следует за общей настройкой агентства и менять его отдельно не нужно.</div>`},
-{tab:'Настройки',icon:'🗓',title:'День и время',kw:'день время расписание рассылка когда справочно',html:`
+{tab:'Настройки',icon:'<svg class="ic"><use href="#i-time"/></svg>',title:'День и время',kw:'день время расписание рассылка когда справочно',html:`
   <p>Поля «День рассылки» и «Время» — справочные (для памяти). Реальный автозапуск задаётся в cron на сервере (см. «Рассылка → Автозапуск»). Кнопка «Запустить рассылку» работает в любой момент.</p>`},
 // ===== КОНСТРУКТОР =====
-{tab:'Конструктор',icon:'🛠',title:'Конструктор отчётов',kw:'конструктор разрез уровень срез период экспорт xlsx кампании ключи регионы',html:`
+{tab:'Конструктор',icon:'<svg class="ic"><use href="#i-tools"/></svg>',title:'Конструктор отчётов',kw:'конструктор разрез уровень срез период экспорт xlsx кампании ключи регионы',html:`
   <p><b>Отчёты → Конструктор</b> — произвольный разрез Директа за любой период: уровень (аккаунт / кампании / группы / объявления / фразы / поисковые запросы), доп-срезы (дата, устройство, пол/возраст, гео, тип сети), модель атрибуции и цели. Можно посмотреть, отправить в чат клиента или выгрузить в <b>.xlsx</b>.</p>`},
-{tab:'Конструктор',icon:'🎯',title:'Конверсии по каждой цели',kw:'конверсии по целям отдельные колонки разбивка цель заявка звонок сколько',html:`
-  <p>Выбранные цели показываются <b>отдельными колонками</b> «🎯 Название цели» — видно, сколько конверсий принесла каждая, а не только общая сумма. Колонки сортируются кликом, есть строка ИТОГО.</p>
+{tab:'Конструктор',icon:'<svg class="ic"><use href="#i-focus-3"/></svg>',title:'Конверсии по каждой цели',kw:'конверсии по целям отдельные колонки разбивка цель заявка звонок сколько',html:`
+  <p>Выбранные цели показываются <b>отдельными колонками</b> «<svg class="ic"><use href="#i-focus-3"/></svg> Название цели» — видно, сколько конверсий принесла каждая, а не только общая сумма. Колонки сортируются кликом, есть строка ИТОГО.</p>
   <p>Разбивка попадает и в <b>xlsx</b>, и в <b>копируемый текст</b> (в ИТОГО строкой «По целям: …», по строкам — в квадратных скобках). Цели с нулём не выводятся, чтобы не засорять отчёт.</p>`},
-{tab:'Конструктор',icon:'📝',title:'Текст объявления вместо ID',kw:'объявление заголовок текст креатив id объявл ads',html:`
+{tab:'Конструктор',icon:'<svg class="ic"><use href="#i-quill-pen"/></svg>',title:'Текст объявления вместо ID',kw:'объявление заголовок текст креатив id объявл ads',html:`
   <p>На уровне <b>«Объявления»</b> в колонке видно сам креатив: <b>заголовок</b> и текст объявления, а ID — мелкой подписью снизу. Раньше был только числовой ID.</p>
   <p>Тексты подтягиваются из Директа для текстовых и динамических объявлений; в xlsx подставляется «заголовок — текст (ID)».</p>`},
-{tab:'Конструктор',icon:'💾',title:'Черновик и группировка «за весь период»',kw:'черновик сохраняется настройки сброс за весь период группировка даты',html:`
-  <p><b>Черновик:</b> настройки конструктора (клиент, разрез, срезы, период, цели, колонки) сохраняются автоматически — вышел и вернулся, всё на месте. Кнопка <b>«↩ Сброс»</b> очищает.</p>
+{tab:'Конструктор',icon:'<svg class="ic"><use href="#i-save-3"/></svg>',title:'Черновик и группировка «за весь период»',kw:'черновик сохраняется настройки сброс за весь период группировка даты',html:`
+  <p><b>Черновик:</b> настройки конструктора (клиент, разрез, срезы, период, цели, колонки) сохраняются автоматически — вышел и вернулся, всё на месте. Кнопка <b>«<svg class="ic"><use href="#i-arrow-go-back"/></svg> Сброс»</b> очищает.</p>
   <p><b>Группировка даты → «За весь период»:</b> сворачивает выбранный диапазон в одну строку (вместо разбивки по дням/неделям/месяцам).</p>`},
-{tab:'Конструктор',icon:'🎯',title:'Если у клиента нет целей',kw:'нет целей подтянуть цели кнопка метрика общие конверсии',html:`
-  <p>Если под списком целей написано «у клиента нет целей → будут общие конверсии», рядом есть кнопка <b>«🎯 Подтянуть цели»</b>: она находит счётчик Метрики, загружает цели и сразу сохраняет их клиенту — не нужно идти в карточку.</p>`},
+{tab:'Конструктор',icon:'<svg class="ic"><use href="#i-focus-3"/></svg>',title:'Если у клиента нет целей',kw:'нет целей подтянуть цели кнопка метрика общие конверсии',html:`
+  <p>Если под списком целей написано «у клиента нет целей → будут общие конверсии», рядом есть кнопка <b>«<svg class="ic"><use href="#i-focus-3"/></svg> Подтянуть цели»</b>: она находит счётчик Метрики, загружает цели и сразу сохраняет их клиенту — не нужно идти в карточку.</p>`},
 // ===== ЖУРНАЛ =====
-{tab:'Журнал',icon:'🩺',title:'Журнал (только админ)',kw:'журнал ошибки лог сбои события автосинк диагностика технические',html:`
+{tab:'Журнал',icon:'<svg class="ic"><use href="#i-heart-pulse"/></svg>',title:'Журнал (только админ)',kw:'журнал ошибки лог сбои события автосинк диагностика технические',html:`
   <p>Раздел <b>Журнал</b> (только админ) — технические события сервера: ошибки (API, рассылка, сбор отчётов) и итоги фоновых задач (автосинк клиентов/целей, сбор бюджетов). Свежие сверху, есть очистка.</p>
   <p>Сюда попадает всё, что раньше мелькало красным сообщением и терялось — удобно, когда что-то пошло не так.</p>`},
 // ===== FAQ =====
-{tab:'FAQ',icon:'❓',title:'Частые вопросы',kw:'faq вопросы почему не вижу дубли кто рассылает клиент пропал',html:`
+{tab:'FAQ',icon:'<svg class="ic"><use href="#i-question"/></svg>',title:'Частые вопросы',kw:'faq вопросы почему не вижу дубли кто рассылает клиент пропал',html:`
   <p><b>Почему я не вижу клиента?</b> Он не закреплён за тобой. Попроси админа назначить или привяжи его чат — заберёшь себе.</p>
   <p><b>Придёт ли клиенту отчёт дважды?</b> Нет, если каждый жмёт только свою рассылку. Дубль возможен только если и ты, и другой специалист вручную запустите одного клиента (у вас он один быть не может — он за кем-то одним).</p>
   <p><b>Кому уйдёт по моей кнопке?</b> Только твоим привязанным клиентам.</p>
@@ -2224,18 +2463,18 @@ const GUIDE=[
   <p><b>Не приходят алерты по бюджетам?</b> Получатель должен один раз написать боту <span class="gkbd">/start</span> в личку — иначе бот не может ему писать.</p>
   <p><b>Почему я (админ) не вижу чужих клиентов?</b> Так и задумано: админ — тоже специалист со своим стеком. Всё агентство видит только Наблюдатель.</p>
   <p><b>Я админ, но в «Бюджетах» пусто.</b> Значит на тебе нет проектов. Переключи вверху «Мои клиенты» → <b>«Всё агентство»</b>.</p>
-  <p><b>Привязал чат — проект закрепился за мной, а нужен был другому.</b> Админ и работодатель могут привязывать <b>сразу на специалиста</b> (селект «🎯 Привязывать на специалисту» в «Привязках» и «Чатах»). Если уже закрепилось — «🔁 Передать все проекты» в Контроле.</p>
+  <p><b>Привязал чат — проект закрепился за мной, а нужен был другому.</b> Админ и работодатель могут привязывать <b>сразу на специалиста</b> (селект «<svg class="ic"><use href="#i-focus-3"/></svg> Привязывать на специалисту» в «Привязках» и «Чатах»). Если уже закрепилось — «<svg class="ic"><use href="#i-refresh"/></svg> Передать все проекты» в Контроле.</p>
   <p><b>Мне приходят чужие алерты по бюджету.</b> Это исправлено: каждому идут только его клиенты. Если хочешь получать всё — включи «По всему агентству» в Настройках; если не хочешь — выключи этот режим.</p>
   <p><b>Отметил цель галочкой, а в «Конверсиях» её нет.</b> Так и должно быть: галочка решает, <b>покажем</b> ли цель, а в строку «Конверсии» входят только ключевые (заявка, звонок, покупка, заказ). Твоя цель в отчёте есть — ищи её в блоке «Дополнительные цели (в конверсии не входят)» после CPA. Если цель по факту лид, а попала в дополнительные — скажи, поправим.</p>
   <p><b>Конверсий больше, чем реальных заявок.</b> Частая причина — цели, которые считают одно и то же действие. Классика: Calltouch отдаёт «Звонок», «Целевой звонок», «Уникальный звонок» и «Уникально-целевой звонок» — это один звонок, посчитанный 4 раза. То же с интернет-магазинами: «Ecommerce: покупка» + «Автосбор: покупка» + «Заказ оформлен» — одна покупка, три конверсии. Снимай галочки с дублирующих целей, оставляя по одной на действие.</p>
   <p><b>Цифры в отчёте и в Google-таблице не сходятся.</b> Раньше причина была в разных моделях атрибуции (отчёт — LSC, таблицы — LYDC); теперь модель <b>одна на всё</b>, из Настроек. Небольшое расхождение всё равно возможно: Директ дозачисляет конверсии задним числом, поэтому свежая выгрузка и снимок недельной давности могут отличаться.</p>
   <p><b>После смены атрибуции цифры в таблице «поехали».</b> Так и будет: строки, посчитанные под старой моделью, останутся как есть, новые считаются по новой. Это видно ступенькой в ленте «по неделям». Если нужна однородная история — старые периоды придётся пересчитать заново.</p>`},
 // ===== ПРОБЛЕМЫ =====
-{tab:'Проблемы',icon:'🩹',title:'Если что-то не так',kw:'проблема ошибка не работает бот молчит рассылка 0 favicon кеш',html:`
+{tab:'Проблемы',icon:'<svg class="ic"><use href="#i-first-aid-kit"/></svg>',title:'Если что-то не так',kw:'проблема ошибка не работает бот молчит рассылка 0 favicon кеш',html:`
   <ul>
     <li><b>Рассылка пишет «нет клиентов»</b> — за тобой не закреплён ни один клиент. Привяжи чат или попроси админа назначить.</li>
-    <li><b>Клиент ⏭️ пропущен</b> — нет активных кампаний за 4 недели (это норма) — либо у него правда нет открута.</li>
-    <li><b>🚫 нет чата</b> — клиент не привязан ни к одной группе. Привяжи в разделе «Привязки».</li>
+    <li><b>Клиент <svg class="ic"><use href="#i-skip-forward"/></svg> пропущен</b> — нет активных кампаний за 4 недели (это норма) — либо у него правда нет открута.</li>
+    <li><b><svg class="ic"><use href="#i-forbid-2"/></svg> нет чата</b> — клиент не привязан ни к одной группе. Привяжи в разделе «Привязки».</li>
     <li><b>Бот не отвечает в чате</b> — проверь, что он в группе (лучше админом). На сервере бот работает через webhook постоянно.</li>
     <li><b>Иконка-панда во вкладке старая</b> — браузеры кешируют favicon, помогает жёсткое обновление (Ctrl+F5).</li>
     <li><b>«Сессия истекла»</b> — просто войди заново.</li>
@@ -2290,6 +2529,21 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-07-31',tag:'ui',title:'Телефон: доводка после первого захода',
+ sum:'Сводка влезает в экран, длинный текст читается, строки смахиваются',items:[
+  '<b>«Обзор» был свёрнут в узкую центрированную коробку.</b> Заглушка раздела помечена как «пусто», и после загрузки эта пометка не снималась — весь экран жил с лишними отступами по краям и текстом по центру. Теперь снимается; заодно на телефоне плитки встали <b>по две в ряд</b> и стали компактнее: шесть показателей и плашки «Требует внимания» видны сразу, а не через полтора экрана прокрутки.',
+  '<b>Заголовок раздела на телефоне убран</b> — он слово в слово повторял название в шапке. Описание под ним сворачивается до трёх строк с кнопкой «развернуть».',
+  '<b>Смахивание строки.</b> В «Ждут ответа» карточку можно потянуть влево — из-под неё выезжает «Ответ не нужен», отпустил за порогом — сняли. Смахнуть случайно не страшно: в плашке сразу «Вернуть».',
+  '<b>Карточки списков стали читаемыми.</b> Длинное сообщение клиента больше не жмётся в правую колонку по одному слову в строку, а раскладывается во всю ширину; приписки («вчера», «мы не писали») встают отдельной строкой справа, а не растаскиваются по краям.',
+  '<b>Карточка клиента — отдельный экран,</b> как в приложениях: поверх нижней навигации (раньше панель перекрывала низ формы), поля в один столбец (модель атрибуции больше не обрезается), у цели название во всю ширину, ID — строчкой ниже.',
+  '<b>Редкие действия раздела ушли в шторку «Действия».</b> В «Клиентах» четыре кнопки («Подтянуть из Директа», «Цели из Метрики», «Экспорт CSV», «Импорт config.json») занимали весь первый экран — теперь на виду поиск и фильтр, остальное по кнопке.',
+  '<b>Колонка «Добавлен» в «Клиентах» показывала мусор</b> вида «08T12:08:01+00:00.07.2026»: в коде оказались две одноимённые функции даты, и та, что для «Что нового», перебивала нужную. Теперь дата как дата — и это касалось не только телефона.',
+  'Мелочи: плавающая кнопка игры на телефоне убрана (перекрывала текст, игра осталась в «Ещё»), формы в «Пользователях» и «Контроле» больше не уезжают за правый край, кнопка из одной иконки не растягивается на пол-строки, подписи в карточках не наследуют стрелку сортировки.']},
+{date:'2026-07-31',tag:'ui',title:'Значки: эмодзи не осталось нигде',
+ sum:'Гайд и «Что нового» — последнее место, где они прятались',items:[
+  'В интерфейсе эмодзи заменили на SVG-значки ещё раньше, но <b>Гайд</b> остался с ними: у каждой из 64 тем в заголовке стоял эмодзи, и ещё сотня встречалась в самих текстах — они цитировали кнопки («нажми <b>Подтянуть цели</b>») старыми значками, которых на экране уже нет.',
+  'Теперь и заголовки тем, и упоминания кнопок внутри текста показывают <b>ровно те же значки, что на экране</b>. Заодно почистились статусы в описаниях (сдан / долг / уважительно / нет открута) и записи в «Что нового».',
+  'Оставлены только типографские стрелки (↔ у привязки, ↗ у внешней ссылки) и ⋮ там, где описывается меню самого Telegram.']},
 {date:'2026-07-30',tag:'fix',title:'Контроль: нашлись «ничьи» проекты',
  sum:'Долг был виден цифрой, но не именем',items:[
   'Работодатель видел на «Обзоре» долг, а в «Контроле» его не было ни у кого: сумма по строкам давала 40 обязательств против 41 на «Обзоре», долгов 0 против 1.',
@@ -2302,11 +2556,11 @@ const CHANGELOG=[
   '<b>Пустые экраны теперь подсказывают.</b> Было 49 мест, где написано просто «Пусто.» — человек не понимал, поломка это или так задумано. Стало: иконка, объяснение и кнопка следующего шага. «У тебя пока нет проектов → Смотреть свободные», «Бюджеты ещё не собирали → Обновить сейчас».',
   '<b>Отмена вместо допроса.</b> Обратимые действия (закрыть долг, вернуть долг, снять с ожидания, передать проекты) выполняются сразу, а в плашке появляется «Отменить». Подтверждение осталось только для необратимого и уходящего клиентам — и кнопки там красные, с понятным названием вместо «OK».',
   '<b>Свои окна вместо браузерных.</b> 16 confirm() и 6 prompt() заменены на диалоги в стиле кабинета: работают с клавиатуры (Enter/Esc) и нормально выглядят на телефоне. Выбор причины закрытия долга больше не требует печатать «1, 2 или 3» — просто кнопки.',
-  '<b>Скелетоны вместо спиннеров.</b> 23 места «⟳ загрузка…» заменены на серые заготовки в форме будущей таблицы: экран больше не прыгает, когда приезжают данные.',
+  '<b>Скелетоны вместо спиннеров.</b> 23 места «<svg class="ic"><use href="#i-refresh"/></svg> загрузка…» заменены на серые заготовки в форме будущей таблицы: экран больше не прыгает, когда приезжают данные.',
   '<b>Ошибки на человеческом.</b> Вместо «Reports API 400: Элемент массива AttributionModels содержит неверное значение перечисления» — «Директ не принял запрос: убери один срез или смени разрез», а технический текст под кнопкой «Подробности». Плюс 65 мест, где ошибка проглатывалась молча (жмёшь — ничего не происходит, и никто не объясняет), теперь озвучены. Сообщение показывается ровно один раз.',
   '<b>Палитра команд Ctrl+K</b> (или просто «/»): начни печатать — «kst» откроет клиента, «бюдж» прыгнет в Бюджеты, «рассылка» запустит её. Клавиша «?» — шпаргалка. В полях ввода клавиши не перехватываются.',
   '<b>Прогресс рассылки стал видимым:</b> полоса заполнения, «7 из 24 · осталось 17» и имя клиента, на котором стоим прямо сейчас. Сбор сторонних отчётов тоже показывает очередь поимённо, а не безликое «собираю…».',
-  '<b>Мелочи:</b> «✓ Скопировано» появляется прямо на кнопке, а не тостом в углу; время пишется как «2 часа назад» (точная дата — в подсказке); строка, которая только что изменилась, коротко подсвечивается; при уходе из карточки с несохранёнными правками программа предупредит; появились фокус-кольца для клавиатуры и уважение к системной настройке «меньше анимаций».']},
+  '<b>Мелочи:</b> «<svg class="ic"><use href="#i-checkbox-circle"/></svg> Скопировано» появляется прямо на кнопке, а не тостом в углу; время пишется как «2 часа назад» (точная дата — в подсказке); строка, которая только что изменилась, коротко подсвечивается; при уходе из карточки с несохранёнными правками программа предупредит; появились фокус-кольца для клавиатуры и уважение к системной настройке «меньше анимаций».']},
 {date:'2026-07-29',tag:'fix',title:'Атрибуция: разобрались и исправили коды',
  sum:'Директ подменяет модели сам — проверили на живом API',items:[
   'Моделей в программе было три разных: недельные отчёты считали по <b>LSC</b>, Google-таблицы — по зашитому в код <b>LYDC</b>, конструктор — по LSC. Цифры по одному клиенту за один период между собой не сходились.',
@@ -2316,20 +2570,20 @@ const CHANGELOG=[
   'Настройка «Атрибуция по умолчанию» теперь одна на отчёты, конструктор и xlsx. <b>Перевод Google-таблиц на неё же — следующим шагом:</b> он изменит цифры в лентах, и старые строки останутся посчитанными по-старому (будет видна ступенька). Включим отдельно, чтобы решить, что делать с историей.']},
 {date:'2026-07-29',tag:'fix',title:'Работодатель не видел кнопку «Ответ не нужен»',
  sum:'Просил Денис — починено',items:[
-  'Кнопка «✓ Ответ не нужен» была закрыта от роли «Наблюдатель», а это как раз работодатель — тот, кто эту кнопку и попросил. Теперь список ведут все: и специалисты, и работодатель.',
+  'Кнопка «<svg class="ic"><use href="#i-checkbox-circle"/></svg> Ответ не нужен» была закрыта от роли «Наблюдатель», а это как раз работодатель — тот, кто эту кнопку и попросил. Теперь список ведут все: и специалисты, и работодатель.',
   'Работодатель видит чаты всего агентства, поэтому может снять с ожидания или вернуть любой из них. Остальные ограничения роли не тронуты — редактировать клиентов и запускать рассылки он по-прежнему не может.']},
 {date:'2026-07-29',tag:'feature',title:'«Ждут ответа»: кнопка «Ответ не нужен»',
  sum:'Клиент написал «Отлично» — убери строку одним кликом',items:[
-  'По просьбе Ксении: в списке ожидающих справа появилась кнопка <b>«✓ Ответ не нужен»</b>. Клиент написал «Отлично» или «Ок» — отвечать нечего, а строка висела и мозолила глаза. Теперь убирается одним кликом: счётчик уменьшается, уведомления по этому чату не приходят.',
+  'По просьбе Ксении: в списке ожидающих справа появилась кнопка <b>«<svg class="ic"><use href="#i-checkbox-circle"/></svg> Ответ не нужен»</b>. Клиент написал «Отлично» или «Ок» — отвечать нечего, а строка висела и мозолила глаза. Теперь убирается одним кликом: счётчик уменьшается, уведомления по этому чату не приходят.',
   'Снятие не навсегда — оно держится ровно до следующего сообщения клиента. Напишет что-то новое — чат сам вернётся в список. Ничего чистить руками не нужно.',
-  'Снятые не исчезают бесследно: под таблицей строка «🙈 Снятые с ожидания» со списком, кнопкой «↩ Вернуть» и подписью, кто снял.',
+  'Снятые не исчезают бесследно: под таблицей строка «<svg class="ic"><use href="#i-eye-off"/></svg> Снятые с ожидания» со списком, кнопкой «<svg class="ic"><use href="#i-arrow-go-back"/></svg> Вернуть» и подписью, кто снял.',
   'Действие пишется в журнал действий, так что работодателю видно, кто и что снимал. Сам наблюдатель кнопок не имеет — только просмотр.',
   'В гайд добавлена тема «Раздел “Ждут ответа”» — раньше этот раздел был описан только в патчноутах.']},
-{date:'2026-07-29',tag:'feature',title:'🎮 Перерыв — игра в правом нижнем углу',
+{date:'2026-07-29',tag:'feature',title:'<svg class="ic"><use href="#i-gamepad"/></svg> Перерыв — игра в правом нижнем углу',
  sum:'Устал от отчётов — переключись на пару минут',items:[
-  'В правом нижнем углу появилась круглая кнопка 🎮. Открывает панель с «2048»: складывай одинаковые плитки, чтобы получались вдвое большие.',
+  'В правом нижнем углу появилась круглая кнопка <svg class="ic"><use href="#i-gamepad"/></svg>. Открывает панель с «2048»: складывай одинаковые плитки, чтобы получались вдвое большие.',
   'Управление: стрелки или WASD (в том числе в русской раскладке — ЦЫФВ), на телефоне — свайп по доске. Esc сворачивает.',
-  '«↩ Ход назад» отменяет последний ход, «🔄 Заново» начинает партию сначала.',
+  '«<svg class="ic"><use href="#i-arrow-go-back"/></svg> Ход назад» отменяет последний ход, «<svg class="ic"><use href="#i-refresh"/></svg> Заново» начинает партию сначала.',
   'Счёт, рекорд и сама партия сохраняются в браузере: свернул, поработал, вернулся — доска на месте.',
   'Вехи по дороге: 128 — «лид», 256 — «заявка», 512 — «клиент», 1024 — «кейс», 2048 — «кейс года». Собрал 2048 — можно остановиться или играть дальше.',
   'Пока панель свёрнута, игра полностью выключена — ни таймеров, ни расчётов, ни расхода батареи. Клавиши она тоже не перехватывает: печатаешь в поле — стрелки работают как обычно.',
@@ -2355,30 +2609,30 @@ const CHANGELOG=[
  sum:'Больше не смущает «16/24 · 100%»',items:[
   'Карточка «Твоя сдача недели» показывала «16/24 · 100%» — выглядело как ошибка. На самом деле покрытие считает выполненные обязательства: отправленные отчёты + клиенты без открута (авто-уважительно) + долги, закрытые причиной.',
   'Теперь на карточке крупно процент, а под ним расшифровка: «отправлено 16 из 24 · нет открута 3 · закрыто 5 · долг 0» — сразу видно, из чего сложились 100%. В подсказке при наведении — формула целиком.']},
-{date:'2026-07-28',tag:'feature',title:'⏳ «Ждут ответа» — видно, каким клиентам мы долго не отвечали',
+{date:'2026-07-28',tag:'feature',title:'<svg class="ic"><use href="#i-time"/></svg> «Ждут ответа» — видно, каким клиентам мы долго не отвечали',
  sum:'Новый раздел: кто написал в чат, а мы молчим',items:[
   'Бот теперь считает переписку в чатах клиентов: кто написал последним — клиент, наш сотрудник или сам бот. Отчёт бота ответом НЕ считается, поэтому «ответили» не срабатывает ложно по понедельникам.',
-  'Раздел «⏳ Ждут ответа»: список клиентов, которым мы не ответили, отсортированный по времени ожидания — с текстом последнего сообщения, кто ведёт проект и когда мы писали в последний раз. Жёлтым — ждёт больше 4 часов, красным — больше суток.',
+  'Раздел «<svg class="ic"><use href="#i-time"/></svg> Ждут ответа»: список клиентов, которым мы не ответили, отсортированный по времени ожидания — с текстом последнего сообщения, кто ведёт проект и когда мы писали в последний раз. Жёлтым — ждёт больше 4 часов, красным — больше суток.',
   'Второй блок «Давно не общались» — чаты, где вообще нет активности 21+ день: клиент забыт, стоит написать первым.',
   'Счётчик ждущих — в меню и на «Обзоре» отдельной карточкой, плюс строка в «Требует внимания» с топ-3 самых заждавшихся.',
   'Если клиент ждёт дольше суток — владельцу проекта прилетает уведомление в колокольчик (раз в сутки на чат, без спама).',
   'Скоуп по ролям: специалист видит только своих клиентов, работодатель — всех.',
-  '📥 Историю можно подтянуть задним числом: «взять из истории отправок» (быстро, заполнит «давно не общались») либо загрузить экспорт чата из Telegram Desktop в JSON — тогда подтянутся и вопросы клиентов, и наши ответы.']},
+  '<svg class="ic"><use href="#i-inbox-archive"/></svg> Историю можно подтянуть задним числом: «взять из истории отправок» (быстро, заполнит «давно не общались») либо загрузить экспорт чата из Telegram Desktop в JSON — тогда подтянутся и вопросы клиентов, и наши ответы.']},
 {date:'2026-07-26',tag:'fix',title:'Работодатель может подтягивать клиентов из Директа',
  sum:'Синхронизация справочника клиентов открыта наблюдателю',items:[
-  'Кнопка «🔄 Подтянуть из Директа» теперь работает и у работодателя — раньше упиралась в «только администратор», хотя именно он раздаёт проекты и ему нужен свежий список.',
+  'Кнопка «<svg class="ic"><use href="#i-refresh"/></svg> Подтянуть из Директа» теперь работает и у работодателя — раньше упиралась в «только администратор», хотя именно он раздаёт проекты и ему нужен свежий список.',
   'После синхронизации показывается, сколько клиентов новых и какие именно; новые попадают в уведомления и в журнал действий.',
   '«Цели из Метрики (всем)» и «Импорт config.json» остаются за специалистом/админом — они меняют настройки проектов.']},
 {date:'2026-07-26',tag:'major',title:'Уведомления, бэкапы, скорость и безопасность',
  sum:'Колокольчик с уведомлениями, резервные копии базы, ускорение и защита входа',items:[
-  '🔔 Центр уведомлений: колокольчик справа сверху со счётчиком непрочитанных. Внутри — «вышло обновление кабинета», «вам назначили проект», «бота добавили в новый чат», «бюджет на исходе», «сообщение от руководителя». Клик по уведомлению переносит в нужный раздел и снимает счётчик; есть «Прочитать все».',
-  '💾 Резервные копии базы: делаются автоматически раз в сутки (хранятся 14 последних), копия целостная — с учётом WAL. В Настройках у админа — список копий, «Сделать копию сейчас» и скачивание.',
-  '⚡ «Отчёты» больше не тормозят: список Google-таблиц кэшируется на 15 минут (2,9 сек → 11 мс).',
-  '⚡ Сбор бюджетов ускорен в ~4 раза — запросы к Директу идут параллельно.',
-  '🔒 Защита входа от перебора паролей: после 5 неудачных попыток — пауза, растущая до 5 минут.',
-  '🔁 «Отправить снова» — повторная отправка недельного отчёта клиенту прямо из Истории.',
-  '⬇ Экспорт в CSV (Excel): клиенты, история отправок, бюджеты.',
-  '🧹 Журнал ошибок больше не растёт бесконечно — ротация при 1 МБ.']},
+  '<svg class="ic"><use href="#i-notification-3"/></svg> Центр уведомлений: колокольчик справа сверху со счётчиком непрочитанных. Внутри — «вышло обновление кабинета», «вам назначили проект», «бота добавили в новый чат», «бюджет на исходе», «сообщение от руководителя». Клик по уведомлению переносит в нужный раздел и снимает счётчик; есть «Прочитать все».',
+  '<svg class="ic"><use href="#i-save-3"/></svg> Резервные копии базы: делаются автоматически раз в сутки (хранятся 14 последних), копия целостная — с учётом WAL. В Настройках у админа — список копий, «Сделать копию сейчас» и скачивание.',
+  '<svg class="ic"><use href="#i-flashlight"/></svg> «Отчёты» больше не тормозят: список Google-таблиц кэшируется на 15 минут (2,9 сек → 11 мс).',
+  '<svg class="ic"><use href="#i-flashlight"/></svg> Сбор бюджетов ускорен в ~4 раза — запросы к Директу идут параллельно.',
+  '<svg class="ic"><use href="#i-lock-2"/></svg> Защита входа от перебора паролей: после 5 неудачных попыток — пауза, растущая до 5 минут.',
+  '<svg class="ic"><use href="#i-refresh"/></svg> «Отправить снова» — повторная отправка недельного отчёта клиенту прямо из Истории.',
+  '<svg class="ic"><use href="#i-download-2"/></svg> Экспорт в CSV (Excel): клиенты, история отправок, бюджеты.',
+  '<svg class="ic"><use href="#i-delete-bin"/></svg> Журнал ошибок больше не растёт бесконечно — ротация при 1 МБ.']},
 {date:'2026-07-26',tag:'fix',title:'Гайд актуализирован (60 тем)',
  sum:'Догнали руководство: описаны все фичи с 17 по 26 июля',items:[
   'Гайд вырос с 43 до 60 тем: добавлены Досье специалиста, Тренд сдачи и нагрузка, Сводка в Telegram, Раздача и передача проектов, Журнал действий, Управление командой, Заметки по проектам.',
@@ -2387,26 +2641,26 @@ const CHANGELOG=[
   'FAQ дополнен: «в Бюджетах пусто у админа», «проект закрепился не за тем», «приходят чужие алерты».']},
 {date:'2026-07-26',tag:'major',title:'Кабинет работодателя: досье, тренды, сводка в Telegram, аудит',
  sum:'Большой пак для руководителя — 7 новых возможностей в «Контроле»',items:[
-  '📨 Понедельничная сводка в Telegram: покрытие агентства, кто не сдал (поимённо), бюджеты на исходе, нагрузка. Уходит сама по понедельникам всем с режимом «По всему агентству» + кнопки «Посмотреть текст» и «Отправить сейчас».',
-  '👤 Досье специалиста: клик по «Досье» в Контроле — покрытие недели, долги, темп трат его клиентов, все проекты со статусом сдачи и остатком бюджета, тренд за 8 недель, переписка с ответами. Оттуда же — написать и передать проекты.',
-  '📈 Тренд сдачи по неделям: графики-спарклайны по агентству и каждому специалисту — видно систематических должников, а не только текущую неделю.',
-  '⚖️ Баланс нагрузки: у кого сколько обязательств (полосками), среднее по команде, подсветка перегруженных и недогруженных + предупреждение «N проектов с чатом, но без владельца».',
-  '🕵️ Журнал действий: кто привязал, назначил, передал стек, закрыл долг, менял доставку и сотрудников — с фильтром по типу действия.',
-  '👥 Работодатель управляет командой: раздел «Пользователи» теперь доступен и ему — завести сотрудника, сменить пароль, заблокировать, выдать роль. Трогать администраторов и выдавать админку он не может.',
-  '📝 Заметки по проектам: «клиент на паузе до августа» — видно в досье и в карточке клиента, чтобы контекст не терялся.']},
+  '<svg class="ic"><use href="#i-send-plane"/></svg> Понедельничная сводка в Telegram: покрытие агентства, кто не сдал (поимённо), бюджеты на исходе, нагрузка. Уходит сама по понедельникам всем с режимом «По всему агентству» + кнопки «Посмотреть текст» и «Отправить сейчас».',
+  '<svg class="ic"><use href="#i-user-3"/></svg> Досье специалиста: клик по «Досье» в Контроле — покрытие недели, долги, темп трат его клиентов, все проекты со статусом сдачи и остатком бюджета, тренд за 8 недель, переписка с ответами. Оттуда же — написать и передать проекты.',
+  '<svg class="ic"><use href="#i-line-chart"/></svg> Тренд сдачи по неделям: графики-спарклайны по агентству и каждому специалисту — видно систематических должников, а не только текущую неделю.',
+  '<svg class="ic"><use href="#i-equalizer"/></svg> Баланс нагрузки: у кого сколько обязательств (полосками), среднее по команде, подсветка перегруженных и недогруженных + предупреждение «N проектов с чатом, но без владельца».',
+  '<svg class="ic"><use href="#i-spy"/></svg> Журнал действий: кто привязал, назначил, передал стек, закрыл долг, менял доставку и сотрудников — с фильтром по типу действия.',
+  '<svg class="ic"><use href="#i-users"/></svg> Работодатель управляет командой: раздел «Пользователи» теперь доступен и ему — завести сотрудника, сменить пароль, заблокировать, выдать роль. Трогать администраторов и выдавать админку он не может.',
+  '<svg class="ic"><use href="#i-quill-pen"/></svg> Заметки по проектам: «клиент на паузе до августа» — видно в досье и в карточке клиента, чтобы контекст не терялся.']},
 {date:'2026-07-25',tag:'feature',title:'Права работодателя, массовые долги, алерты и ссылки на таблицы',
  sum:'Пак по обратной связи: 8 доработок — привязка на специалиста, фильтры, алерты для работодателя',items:[
   'Работодатель (и админ) теперь привязывает чат СРАЗУ на нужного специалиста: в «Привязках» выбор «Привязывать на специалиста». Раньше проект закреплялся за тем, кто привязывал, и приходилось вручную переназначать десятки проектов.',
   'Алерты по бюджету доступны и работодателю: в Настройках у всех ролей есть «Привязать Telegram», а у админа/наблюдателя — режим «По всему агентству» (все критичные, включая проекты без владельца).',
   'Алерты больше не сваливаются на владельца бота: убран фолбэк «ничьи → первому админу». Теперь каждый получает своё, а «всё агентство» — только тот, кто явно включил этот режим.',
-  'Контроль: кнопка «🧹 Закрыть все долги» — закрыть сразу все долги сотрудника одной причиной, вместо клика по каждому.',
+  'Контроль: кнопка «<svg class="ic"><use href="#i-delete-bin"/></svg> Закрыть все долги» — закрыть сразу все долги сотрудника одной причиной, вместо клика по каждому.',
   'Раздача проектов: фильтры по специалисту, по «без владельца» и по способу доставки + счётчик показанных.',
   'Бюджеты: переключатель «Мои клиенты / Всё агентство» для админа и наблюдателя — админ без своих проектов больше не видит пустой экран.',
-  'Отчёты и Таблицы: ссылки 📗 «Открыть таблицу» — Google-таблица клиента открывается в один клик.',
+  'Отчёты и Таблицы: ссылки <svg class="ic"><use href="#i-book-2"/></svg> «Открыть таблицу» — Google-таблица клиента открывается в один клик.',
   'Чаты: вкладки «Мои / Свободные / Все видимые» — чужие проекты больше не мешаются, свободные чаты вынесены отдельно.',
   'Отчёты стали чище: цели с нулём конверсий больше не печатаются («Цель: 0» больше не засоряет).',
   'Привязка «на специалиста» теперь во ВСЕХ местах: и в «Привязках», и во вкладке «Чаты», и в массовой привязке (≥75%) — проект больше не липнет к тому, кто привязывал.',
-  '🔁 «Передать все проекты» — разом перекинуть весь стек одного специалиста другому (увольнение, отпуск, передача дел) вместо ручного переноса по одному.']},
+  '<svg class="ic"><use href="#i-refresh"/></svg> «Передать все проекты» — разом перекинуть весь стек одного специалиста другому (увольнение, отпуск, передача дел) вместо ручного переноса по одному.']},
 {date:'2026-07-21',tag:'feature',title:'Конструктор: текст объявления на уровне «Объявления»',
  sum:'Видно заголовок и текст объявления, а не только его ID',items:[
   'На уровне «Объявления» в отчёте теперь виден сам креатив: заголовок (жирным) + текст объявления, а ID уходит мелкой подписью снизу. Раньше была только колонка «ID объявл.» с числом.',
@@ -2414,7 +2668,7 @@ const CHANGELOG=[
   'Кнопка «Скопировать текст» теперь тоже отдаёт полный отчёт: разрез конверсий по целям (в ИТОГО и по строкам) и текст объявлений вместо голого ID — раньше эта часть терялась.']},
 {date:'2026-07-21',tag:'fix',title:'Конструктор: конверсии по каждой цели + фикс xlsx',
  sum:'Разбивка конверсий по целям отдельными колонками; поправлен экспорт',items:[
-  'Конструктор: конверсии теперь можно смотреть ПО КАЖДОЙ ЦЕЛИ — на каждую выбранную цель своя колонка «🎯 <цель>» (раньше все цели сливались в одну «Конв.»). Колонки сортируются, есть строка ИТОГО и разбивка в xlsx.',
+  'Конструктор: конверсии теперь можно смотреть ПО КАЖДОЙ ЦЕЛИ — на каждую выбранную цель своя колонка «<svg class="ic"><use href="#i-focus-3"/></svg> <цель>» (раньше все цели сливались в одну «Конв.»). Колонки сортируются, есть строка ИТОГО и разбивка в xlsx.',
   'Фикс «No module named openpyxl» — на сервер доставлена библиотека для выгрузки в xlsx.']},
 {date:'2026-07-20',tag:'hotfix',title:'Фиксы по обратной связи',
  sum:'Скоуп сбора бюджетов, надёжные алерты, вёрстка «дышит»',items:[
@@ -2427,7 +2681,7 @@ const CHANGELOG=[
 {date:'2026-07-17',tag:'feature',title:'Ролевой Обзор + пак из 8 доработок',
  sum:'Новый кокпит на «Обзоре» и куча улучшений по всему кабинету',items:[
   'Обзор переделан под роль: специалисту — бюджеты на исходе, твоя сдача недели, сторонние к сбору, здоровье фона; работодателю — кокпит по всему агентству. Карточки кликабельны и ведут в свой раздел.',
-  'Конструктор: кнопка «🎯 Подтянуть цели» прямо там, когда у клиента нет целей.',
+  'Конструктор: кнопка «<svg class="ic"><use href="#i-focus-3"/></svg> Подтянуть цели» прямо там, когда у клиента нет целей.',
   'Конструктор: группировка даты «За весь период» (весь диапазон одной строкой).',
   'Конструктор: черновик — все настройки сохраняются сами, вышел и вернулся — всё на месте; кнопка «Сброс».',
   'Специалист может ответить на сообщение работодателя; работодатель видит ответы в Контроле; ответ убирает баннер.',
@@ -2447,7 +2701,7 @@ const CHANGELOG=[
   'Раздел «Журнал» (только админ): технические события и сбои сервера, свежие сверху, с очисткой.',
   'Личная приписка у каждого специалиста (своя подпись в отчётах, 3 режима: общая/своя/без).',
   'Мобильная вёрстка: сайдбар за бургером (оверлей), контент в одну колонку, карточка клиента на весь экран.',
-  'Клиенты: сортировка по всем колонкам (▲▼), компактная колонка целей «🎯 актив/всего +N» вместо «сосиски» из чипов.',
+  'Клиенты: сортировка по всем колонкам (▲▼), компактная колонка целей «<svg class="ic"><use href="#i-focus-3"/></svg> актив/всего +N» вместо «сосиски» из чипов.',
   'Гайд полностью актуализирован под все фичи (43 темы, 14 разделов; поправлены роли, добавлены Бюджеты/Сторонние/Контроль/Журнал).']},
 {date:'2026-07-15',tag:'feature',title:'«Сторонний мессенджер» + фикс 10 целей',
  sum:'Копипаст-отчёты для мессенджеров вне Telegram; попытка и откат Яндекс Мессенджера',items:[
@@ -2518,7 +2772,9 @@ const CHANGELOG=[
 ];
 const CL_TAG={major:['КРУПНОЕ','var(--brand)','rgba(1,113,176,.12)'],feature:['ФИЧА','var(--green)','var(--green-bg)'],fix:['ФИКС','var(--amber)','var(--amber-bg)'],hotfix:['ХОТФИКС','var(--red)','var(--red-bg)']};
 let CL_OPEN={};
-function clDate(d){const p=(d||'').split('-');return p.length===3?(p[2]+'.'+p[1]+'.'+p[0]):d;}
+/* имя clogDate, а не clDate: одноимённая функция уже есть у «Клиентов», и она
+   перебивалась этой — в колонке «Добавлен» вместо даты выходило «08T12:08:01+00:00.07.2026» */
+function clogDate(d){const p=(d||'').split('-');return p.length===3?(p[2]+'.'+p[1]+'.'+p[0]):d;}
 function renderChangelog(){
   const host=el('v_changelog');
   const total=CHANGELOG.reduce((n,e)=>n+(e.items?e.items.length:0),0);
@@ -2528,7 +2784,7 @@ function renderChangelog(){
     return `<div class="cl-card">
       <div class="cl-head" onclick="clToggle(${i})">
         <span class="cl-tag" style="color:${t[1]};background:${t[2]}">${t[0]}</span>
-        <span class="cl-date">${clDate(e.date)}</span>
+        <span class="cl-date">${clogDate(e.date)}</span>
         <b class="cl-title">${esc(e.title)}</b>
         <span class="cl-sum">${esc(e.sum||'')}</span>
         <span class="cl-arw" style="transform:rotate(${open?90:0}deg)">▸</span>
@@ -3065,7 +3321,7 @@ async function doCollectExternal(){
   const credited=res.filter(r=>r.credited).length;
   html+=`<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
     <span class="badge b-green">Готово: ${ok.length}</span>
-    ${credited?`<span class="badge b-green" title="Зачтено в Контроле как сданные">✓ в зачёт: ${credited}</span>`:''}
+    ${credited?`<span class="badge b-green" title="Зачтено в Контроле как сданные"><svg class="ic"><use href="#i-checkbox-circle"/></svg> в зачёт: ${credited}</span>`:''}
     ${res.length-ok.length?`<span class="badge b-amber">пропущено/ошибок: ${res.length-ok.length}</span>`:''}
     ${ok.length>1?`<button class="btn sm primary" onclick="extCopyAll()"><svg class="ic"><use href="#i-file-copy-2"/></svg> Скопировать всё (${ok.length})</button>
       <span class="muted" style="font-size:12px">каждый — с шапкой клиента, отчёты разделены чертой</span>`:''}</div>`;
@@ -3075,7 +3331,7 @@ async function doCollectExternal(){
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <b>${esc(r.name)}</b><span class="muted" style="font-size:12px">${esc(r.login)}</span>
           <span class="badge b-green" style="font-size:11px">${r.campaigns} камп.</span>
-          ${r.credited?'<span class="badge b-green" style="font-size:11px" title="Отмечено сданным в Контроле">✓ зачтено</span>':''}
+          ${r.credited?'<span class="badge b-green" style="font-size:11px" title="Отмечено сданным в Контроле"><svg class="ic"><use href="#i-checkbox-circle"/></svg> зачтено</span>':''}
           <div class="grow"></div>
           <button class="btn sm primary" onclick="extCopyOne(${i})"><svg class="ic"><use href="#i-file-copy-2"/></svg> Копировать</button>
         </div>
@@ -3194,8 +3450,8 @@ async function renderSettings(){
     <h2 class="title">Настройки</h2><p class="sub">Токены, доступы, тексты и расписание.</p>
     <div class="grid2">
       <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-plug"/></svg></span> Подключения</h3><div class="body"><div class="kvs">
-        <div class="k">Telegram бот</div><div>${tgOk?('<span class="badge b-green">✓ @'+esc(s.telegram.username||'')+'</span>'):('<span class="badge b-red">'+esc(s.telegram.status)+'</span>')}</div>
-        <div class="k">Яндекс OAuth</div><div>${s.yandex.status==='ок'?'<span class="badge b-green">✓ подключён</span>':'<span class="badge b-red">нет токена</span>'}</div>
+        <div class="k">Telegram бот</div><div>${tgOk?('<span class="badge b-green"><svg class="ic"><use href="#i-checkbox-circle"/></svg> @'+esc(s.telegram.username||'')+'</span>'):('<span class="badge b-red">'+esc(s.telegram.status)+'</span>')}</div>
+        <div class="k">Яндекс OAuth</div><div>${s.yandex.status==='ок'?'<span class="badge b-green"><svg class="ic"><use href="#i-checkbox-circle"/></svg> подключён</span>':'<span class="badge b-red">нет токена</span>'}</div>
       </div>
       <div class="field" style="margin-top:14px"><label>Telegram bot token</label><input id="stTgToken" placeholder="${s.telegram.has_token?'задан — оставь пустым, чтобы не менять':'вставь токен от @BotFather'}"></div>
       <div class="field"><label>Yandex OAuth токен</label><input id="stYaToken" placeholder="${s.yandex.has_token?'задан — оставь пустым, чтобы не менять':'вставь OAuth токен Яндекс.Директа'}"></div>
@@ -3369,7 +3625,7 @@ async function pullGoals(){
 function addGoal(id,name,active){
   const row=document.createElement('div');row.className='goalrow';
   const on=active!==false;
-  row.innerHTML=`<label class="ga-wrap" title="Показывать в отчётах"><input type="checkbox" class="ga" ${on?'checked':''}></label><input placeholder="ID" value="${esc(id||'')}"><input placeholder="Название" value="${esc(name||'')}"><button class="btn sm" onclick="this.parentNode.remove()">✕</button>`;
+  row.innerHTML=`<label class="ga-wrap" title="Показывать в отчётах"><input type="checkbox" class="ga" ${on?'checked':''}></label><input placeholder="ID" value="${esc(id||'')}"><input placeholder="Название" value="${esc(name||'')}"><button class="btn sm" onclick="this.parentNode.remove()"><svg class="ic"><use href="#i-x"/></svg></button>`;
   el('dGoals').appendChild(row);
 }
 function collectGoals(){return [...document.querySelectorAll('#dGoals .goalrow:not(.head)')].map(r=>{const t=r.querySelectorAll('input[placeholder]');const chk=r.querySelector('.ga');return {id:(t[0]?t[0].value.trim():''),name:(t[1]?t[1].value.trim():''),active:chk?chk.checked:true};}).filter(g=>g.id);}
@@ -3481,7 +3737,7 @@ async function renderSupervision(){
     const debtHtml=r.missing.length?('<div style="margin-top:6px">'+r.missing.map(m=>'<span class="debtchip">'+esc(m.name||m.login)+' <button onclick="supExcuse(\''+encodeURIComponent(m.login)+'\',this)" data-name="'+esc(m.name||m.login)+'" title="Закрыть долг — уважительная причина">закрыть долг</button></span>').join('')+
       ((r.missing.length>1&&!r.unassigned)?('<button class="btn sm" style="margin-top:6px;border-color:var(--red);color:var(--red)" onclick="supExcuseAll('+r.user_id+')" title="Закрыть все долги этого сотрудника одной причиной"><svg class="ic"><use href="#i-brush-2"/></svg> Закрыть все долги ('+r.missing.length+')</button>'):'')+
       '</div>'):'';
-    const excHtml=r.excused.length?('<details style="margin-top:5px"><summary class="muted" style="cursor:pointer;font-size:12px">уважительно закрыто: '+r.excused.length+'</summary>'+r.excused.map(x=>'<div class="mini-2" style="margin-top:3px">✓ '+esc(x.name)+' — '+esc(x.reason)+(x.excuse_id?(' · <a href="#" onclick="supUnexcuse('+x.excuse_id+');return false" style="color:var(--muted)">вернуть долг</a>'):'')+'</div>').join('')+'</details>'):'';
+    const excHtml=r.excused.length?('<details style="margin-top:5px"><summary class="muted" style="cursor:pointer;font-size:12px">уважительно закрыто: '+r.excused.length+'</summary>'+r.excused.map(x=>'<div class="mini-2" style="margin-top:3px"><svg class="ic"><use href="#i-checkbox-circle"/></svg> '+esc(x.name)+' — '+esc(x.reason)+(x.excuse_id?(' · <a href="#" onclick="supUnexcuse('+x.excuse_id+');return false" style="color:var(--muted)">вернуть долг</a>'):'')+'</div>').join('')+'</details>'):'';
     return '<tr>'+
       '<td><b>'+esc(r.name)+'</b>'+(r.unassigned?' <span class="badge b-amber">не раздано</span>':'')+(r.role==='admin'?' <span class="badge b-grey">админ</span>':'')+(!r.active?' <span class="badge b-grey">заблокирован</span>':'')+'<div class="mini-2">'+(r.unassigned?'проекты без владельца — их обязательства висят на агентстве':esc(r.email))+'</div></td>'+
       '<td class="right">'+r.bound+'</td>'+
@@ -3496,7 +3752,7 @@ async function renderSupervision(){
   const notesHtml=notes.length?notes.map(n=>{
     const kc=n.kind==='urgent'?'var(--red)':n.kind==='warn'?'var(--amber)':'var(--brand)';
     const reps=(n.replies||[]).map(rp=>'<div class="mini-2" style="margin-top:4px;padding:6px 10px;background:var(--surface-2);border-radius:8px;border-left:3px solid var(--green)"><svg class="ic"><use href="#i-arrow-go-back"/></svg> <b>'+esc(rp.user_name||'специалист')+'</b>: '+esc(rp.text)+' <span class="muted">· '+fmtWhen(rp.created_at)+'</span></div>').join('');
-    return '<div style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)"><span style="width:4px;border-radius:4px;background:'+kc+'"></span><div style="flex:1;min-width:0"><div>'+esc(n.text)+'</div><div class="mini-2">→ '+esc(n.to_name)+' · '+fmtWhen(n.created_at)+' · прочитали: '+n.acks+((n.replies&&n.replies.length)?(' · <b style="color:var(--green)">ответов: '+n.replies.length+'</b>'):'')+'</div>'+reps+'</div><button class="btn sm" onclick="supDelNote('+n.id+')">✕</button></div>';}).join(''):'<div class="muted" style="padding:10px 0">Сообщений пока нет.</div>';
+    return '<div style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)"><span style="width:4px;border-radius:4px;background:'+kc+'"></span><div style="flex:1;min-width:0"><div>'+esc(n.text)+'</div><div class="mini-2">→ '+esc(n.to_name)+' · '+fmtWhen(n.created_at)+' · прочитали: '+n.acks+((n.replies&&n.replies.length)?(' · <b style="color:var(--green)">ответов: '+n.replies.length+'</b>'):'')+'</div>'+reps+'</div><button class="btn sm" onclick="supDelNote('+n.id+')"><svg class="ic"><use href="#i-x"/></svg></button></div>';}).join(''):'<div class="muted" style="padding:10px 0">Сообщений пока нет.</div>';
   box.innerHTML=`
     <style>
       .debtchip{display:inline-flex;align-items:center;gap:7px;background:var(--red-bg);color:var(--red);border:1px solid var(--red);border-radius:9px;padding:2px 4px 2px 10px;font-size:12px;font-weight:600;margin:3px 6px 0 0}
@@ -3769,7 +4025,7 @@ async function checkNotes(){
       '<span style="font-size:18px">'+ic+'</span>'+
       '<div style="flex:1;min-width:0"><b>'+esc(n.text)+'</b><span style="opacity:.85;font-size:12px;margin-left:8px">— '+esc(n.from_name||'руководитель')+'</span></div>'+
       '<button onclick="noteReplyToggle('+n.id+')" style="'+bs+'"><svg class="ic"><use href="#i-arrow-go-back"/></svg> Ответить</button>'+
-      '<button onclick="ackNote('+n.id+')" style="'+bs+'">✓ Прочитано</button></div>'+
+      '<button onclick="ackNote('+n.id+')" style="'+bs+'"><svg class="ic"><use href="#i-checkbox-circle"/></svg> Прочитано</button></div>'+
       '<div id="noteReply_'+n.id+'" style="display:none;gap:8px;margin-top:8px;padding-left:30px">'+
         '<input id="noteReplyTx_'+n.id+'" placeholder="Ответ работодателю…" style="flex:1;min-width:0;border-radius:8px;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.15);color:inherit;padding:7px 10px;font:inherit" onkeydown="if(event.key===\'Enter\')noteReplySend('+n.id+')">'+
         '<button onclick="noteReplySend('+n.id+')" style="'+bs+'">Отправить</button></div>';
@@ -3998,7 +4254,7 @@ setTimeout(()=>{if(!READY&&!el('loginBg').classList.contains('on'))el('v_dashboa
     256:['#0b3a63','#FFB739'],512:['#FFB739','#7a5200'],1024:['#f59e0b','#3b2500'],
     2048:['#f97316','#fff'],4096:['#ef4444','#fff'],8192:['#a855f7','#fff']};
   // вехи — чуть флавора, чтобы игра была «наша», а не безымянный клон
-  const MILE={64:'разогрелся',128:'лид 🎯',256:'заявка 📨',512:'клиент 🤝',1024:'кейс 🏆',2048:'КЕЙС ГОДА 👑'};
+  const MILE={64:'разогрелся',128:'лид',256:'заявка',512:'клиент',1024:'кейс',2048:'КЕЙС ГОДА'};
 
   let tiles=[], score=0, best=0, seq=1, won=false, prev=null, open=false;
   const $=id=>document.getElementById(id);
@@ -4037,7 +4293,7 @@ setTimeout(()=>{if(!READY&&!el('loginBg').classList.contains('on'))el('v_dashboa
           eaten.add(o.id); tiles=tiles.filter(x=>x.id!==o.id);
           r=nr;c=nc;t.v*=2;t.justMerged=true;score+=t.v;moved=true;
           if(MILE[t.v])note('<b>'+t.v+'</b> — '+MILE[t.v]);
-          if(t.v===2048&&!won){won=true;over('Победа! 🎉','Собрал 2048. Можно остановиться — или идти дальше.','Играю дальше');}
+          if(t.v===2048&&!won){won=true;over('Победа!','Собрал 2048. Можно остановиться — или идти дальше.','Играю дальше');}
         }
         break;
       }
