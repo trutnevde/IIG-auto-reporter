@@ -249,6 +249,12 @@
                0 8px 18px -8px color-mix(in srgb,var(--red) 70%,transparent),
                inset 0 1px 0 rgba(255,255,255,.22)}
   .btn.danger:hover{filter:brightness(1.06)}
+  /* действие строки, а не экрана: цветом читается как фирменное, но не заливает
+     список синим. Раньше «Сохранить» у каждого из 22 чатов была залитой главной —
+     когда главная кнопка у всех, главной нет ни одной. */
+  .btn.tinted{color:var(--brand);border-color:color-mix(in srgb,var(--brand) 32%,var(--line));
+    background:color-mix(in srgb,var(--brand) 6%,var(--surface))}
+  .btn.tinted:hover{background:color-mix(in srgb,var(--brand) 12%,var(--surface))}
   .btn.sm{padding:6px 11px;font-size:12.5px;border-radius:9px}
   .btn:disabled{opacity:.5;cursor:default;transform:none}
   .r-ic{display:inline-block}
@@ -2100,7 +2106,7 @@ async function renderChats(){
           <td>${esc(c.title)}${c.login?'':' <span class="badge b-amber" style="font-size:10.5px">свободный</span>'}</td><td class="muted">${c.chat_id}</td><td>${esc(c.type||'')}</td>
           <td>${c.status==='active'?'<span class="badge b-green">активен</span>':'<span class="badge b-grey">удалён</span>'}</td>
           <td><select id="bind_${c.chat_id}"><option value="">— не привязан —</option>${opts}</select></td>
-          <td class="right"><button class="btn sm primary" onclick="doBind(${c.chat_id})">Сохранить</button> <button class="btn sm" onclick="doDeleteChat(${c.chat_id})" title="Удалить чат из базы"><svg class="ic"><use href="#i-delete-bin"/></svg></button></td>
+          <td class="right"><button class="btn sm tinted" onclick="doBind(${c.chat_id})">Сохранить</button> <button class="btn sm" onclick="doDeleteChat(${c.chat_id})" title="Удалить чат из базы"><svg class="ic"><use href="#i-delete-bin"/></svg></button></td>
         </tr>`).join(''):'<tr><td colspan="6">'+(F==='mine'
       ? emptyState('<svg class="ic"><use href="#i-folder-5"/></svg>','У тебя пока нет проектов','Чаты, которые ещё никому не принадлежат, лежат во вкладке «Свободные» — привяжи оттуда, и клиент станет твоим.',{label:'Смотреть свободные',onclick:()=>{CHAT_FILTER='free';renderChats();}})
       : emptyState('<svg class="ic"><use href="#i-chat-3"/></svg>','Здесь пока пусто','Бот видит чат сразу, как его добавят в группу клиента. Нет чата — добавь бота в группу и напиши там любое сообщение.',{label:'Как подключить клиента',onclick:()=>openOnboard(),primary:false}))+'</td></tr>'}
@@ -2616,6 +2622,7 @@ const CHANGELOG=[
   '<b>Плашки «Требует внимания» промыты, а не залиты.</b> Градиент уходит от цвета к чистому фону, цвет держится на кромке слева. Четыре плашки подряд больше не выглядят светофором.',
   '<b>Главная кнопка</b> — вертикальный градиент в два тона со светлой линией внутри сверху и цветной тенью снизу. Было 135° в три остановки с ореолом на пол-экрана.',
   '<b>Попутно починена читаемость.</b> Белая подпись на кнопке давала контраст 3,3 при норме 4,5 — верхний тон градиента затемнён до 4,9. Приглушённый серый на фоне страницы давал 4,2 — стало 4,8. А в тёмной теме фирменный синий вообще не переопределялся: цифра «Клиентов» и ссылки сливались с панелью (3,1) — теперь там свой светлый синий.',
+  '<b>Главных кнопок стало ровно столько, сколько главных действий.</b> В «Чатах» залитой синей кнопкой «Сохранить» была отмечена каждая из 22 строк — когда главная кнопка у всех, главной нет ни одной. Действия строк («Сохранить» в чатах, «Копировать» в сторонних, «Досье» в Контроле) теперь фирменного цвета, но без заливки, а залитой остаётся одна кнопка на экран или на панель.',
   'Тёмная тема пересобрана целиком по тем же правилам, а не получена инверсией. Разметка, тексты и логика не тронуты — менялись только стили.']},
 {date:'2026-07-31',tag:'ui',title:'Телефон: доводка после первого захода',
  sum:'Сводка влезает в экран, длинный текст читается, строки смахиваются',items:[
@@ -3426,7 +3433,7 @@ async function doCollectExternal(){
           <span class="badge b-green" style="font-size:11px">${r.campaigns} камп.</span>
           ${r.credited?'<span class="badge b-green" style="font-size:11px" title="Отмечено сданным в Контроле"><svg class="ic"><use href="#i-checkbox-circle"/></svg> зачтено</span>':''}
           <div class="grow"></div>
-          <button class="btn sm primary" onclick="extCopyOne(${i})"><svg class="ic"><use href="#i-file-copy-2"/></svg> Копировать</button>
+          <button class="btn sm tinted" onclick="extCopyOne(${i})"><svg class="ic"><use href="#i-file-copy-2"/></svg> Копировать</button>
         </div>
         <textarea class="ext-text" id="extTa_${i}" readonly rows="9">${esc(r.text)}</textarea>
       </div>`;
@@ -3840,7 +3847,7 @@ async function renderSupervision(){
       '<td class="right">'+(r.unassigned
         ? '<button class="btn sm primary" onclick="event.stopPropagation();go(&quot;users&quot;)" title="Назначить эти проекты специалисту"><svg class="ic"><use href="#i-user-3"/></svg> Раздать</button>'
         : '<button class="btn sm" onclick="event.stopPropagation();supNudge('+r.user_id+',this)" data-name="'+esc(r.name)+'" title="Написать сотруднику"><svg class="ic"><use href="#i-mail"/></svg></button> '+
-          '<button class="btn sm primary" onclick="event.stopPropagation();openSpecCard('+r.user_id+')" title="Карточка специалиста: проекты, тренд, деньги"><svg class="ic"><use href="#i-user-3"/></svg> Досье</button>')+'</td>'+
+          '<button class="btn sm tinted" onclick="event.stopPropagation();openSpecCard('+r.user_id+')" title="Карточка специалиста: проекты, тренд, деньги"><svg class="ic"><use href="#i-user-3"/></svg> Досье</button>')+'</td>'+
     '</tr>';}).join('');
   const notesHtml=notes.length?notes.map(n=>{
     const kc=n.kind==='urgent'?'var(--red)':n.kind==='warn'?'var(--amber)':'var(--brand)';
