@@ -118,12 +118,6 @@
   .side .spacer{flex:1}
   .mini{font-size:12px;color:var(--side-muted);padding:10px;border-top:1px solid rgba(255,255,255,.06);margin-top:8px;line-height:1.6}
   .mini-2{opacity:.8}
-  .btn-connect{margin:12px 2px 2px;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--grad);
-    color:#fff;padding:11px;border-radius:11px;font-weight:650;cursor:pointer;
-    box-shadow:var(--grad-sh),var(--grad-in);
-    transition:transform .12s,filter .12s}
-  .btn-connect:hover{filter:brightness(1.05);transform:translateY(-1px)}
-  .btn-connect span{font-size:16px}
 
   /* ---------- main ---------- */
   .main{display:flex;flex-direction:column;min-width:0;overflow:hidden}
@@ -517,8 +511,8 @@
 
   @media (max-width:920px){.grid2{grid-template-columns:1fr}}
   /* планшет: узкая рейка иконок */
-  @media (max-width:900px) and (min-width:641px){.app{grid-template-columns:72px 1fr}.brand-tx,.nav a span:not(.ic):not(.nav-badge),.btn-connect span:last-child,.mini{display:none}
-    .nav a{justify-content:center}.btn-connect{padding:11px 0}}
+  @media (max-width:900px) and (min-width:641px){.app{grid-template-columns:72px 1fr}.brand-tx,.nav a span:not(.ic):not(.nav-badge),.mini{display:none}
+    .nav a{justify-content:center}}
   /* телефон: сайдбар прячется за бургер (оверлей) */
   .burger{display:none}
   .side-bg{position:fixed;inset:0;background:rgba(11,17,32,.55);backdrop-filter:blur(2px);z-index:59;display:none}
@@ -974,10 +968,10 @@
       <a data-go="errlog" id="navErrlog" style="display:none"><svg class="ic"><use href="#i-pulse"/></svg><span>Журнал</span></a>
 
       <div class="nav-cap">Система</div>
+      <a data-act="onboard"><svg class="ic"><use href="#i-add-circle"/></svg><span>Подключить клиента</span></a>
       <a data-go="settings"><svg class="ic"><use href="#i-gear"/></svg><span>Настройки</span></a>
       <a data-go="guide"><svg class="ic"><use href="#i-book"/></svg><span>Гайд</span></a>
     </nav>
-    <div class="btn-connect" onclick="closeNav();openOnboard()"><span><svg class="ic"><use href="#i-add-circle"/></svg></span><span>Подключить клиента</span></div>
     <div class="spacer"></div>
     <div class="mini" id="botInfo">Загрузка…</div>
   </aside>
@@ -1789,7 +1783,13 @@ function go(v){
   const c=document.querySelector('.content'); if(c)c.scrollTop=0;      // новый раздел — с начала
   document.body.classList.remove('hdr-hide');
 }
-document.getElementById('nav').addEventListener('click',e=>{const a=e.target.closest('a');if(a){go(a.dataset.go);closeNav();}});
+document.getElementById('nav').addEventListener('click',e=>{
+  const a=e.target.closest('a'); if(!a)return;
+  closeNav();
+  // пункт-действие («Подключить клиента») открывает окно, а не раздел
+  if(a.dataset.act==='onboard'){openOnboard();return;}
+  if(a.dataset.go)go(a.dataset.go);
+});
 function toggleNav(){document.body.classList.toggle('nav-open');}   // мобильный бургер
 function closeNav(){document.body.classList.remove('nav-open');}
 let CURRENT='dashboard';
@@ -2626,6 +2626,7 @@ const CHANGELOG=[
   '<b>Главная кнопка</b> — вертикальный градиент в два тона со светлой линией внутри сверху и цветной тенью снизу. Было 135° в три остановки с ореолом на пол-экрана.',
   '<b>Попутно починена читаемость.</b> Белая подпись на кнопке давала контраст 3,3 при норме 4,5 — верхний тон градиента затемнён до 4,9. Приглушённый серый на фоне страницы давал 4,2 — стало 4,8. А в тёмной теме фирменный синий вообще не переопределялся: цифра «Клиентов» и ссылки сливались с панелью (3,1) — теперь там свой светлый синий.',
   '<b>Главных кнопок стало ровно столько, сколько главных действий.</b> В «Чатах» залитой синей кнопкой «Сохранить» была отмечена каждая из 22 строк — когда главная кнопка у всех, главной нет ни одной. Действия строк («Сохранить» в чатах, «Копировать» в сторонних, «Досье» в Контроле) теперь фирменного цвета, но без заливки, а залитой остаётся одна кнопка на экран или на панель.',
+  '<b>Синяя кнопка «Подключить клиента» из меню убрана.</b> Она была единственным залитым блоком в боковом меню и перетягивала внимание на действие, которое делают раз в месяц. Сам пункт остался на месте — обычной строкой в группе «Система», рядом с «Настройками» и «Гайдом». Из палитры команд (Ctrl+K) и из «Ещё» на телефоне он тоже никуда не делся.',
   'Тёмная тема пересобрана целиком по тем же правилам, а не получена инверсией. Разметка, тексты и логика не тронуты — менялись только стили.']},
 {date:'2026-07-31',tag:'ui',title:'Телефон: доводка после первого захода',
  sum:'Сводка влезает в экран, длинный текст читается, строки смахиваются',items:[
