@@ -14,46 +14,66 @@
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800&family=Inter:wght@600;700&display=swap" rel="stylesheet">
 <script>/* тема до отрисовки — без мигания */(function(){try{var t=localStorage.getItem('iig-theme');if(!t)t=(window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches)?'dark':'light';document.documentElement.setAttribute('data-theme',t);}catch(e){/* тут ещё нет ни toast, ни DOM — молчим */}})();</script>
 <style>
+  /* ══════════════════════════════════════════════════════════════════
+     ПАЛИТРА. Фирменный #0171B0 — акцент, а не заливка всего экрана:
+     раньше в синий были подкрашены и фон, и поверхности, и линии, и тени,
+     отчего он переставал читаться как цвет агентства. Теперь фон и линии
+     нейтральные, а синий работает там, где на него нужно смотреть.
+     Тени двухслойные (контактная + рассеянная) — как у предмета на столе.
+     ══════════════════════════════════════════════════════════════════ */
   :root{
-    --bg:#eef5fc; --surface:#ffffff; --surface-2:#f3f9fe; --surface-3:#e7f2fb;
-    --ink:#0c1f30; --ink-soft:#31465b; --muted:#647a90; --line:#dde9f5; --line-soft:#edf4fb;
+    --bg:#eceef2; --surface:#ffffff; --surface-2:#f7f8fa; --surface-3:#eef0f3;
+    --ink:#0f1419; --ink-soft:#39424b; --muted:#5f6a73; --line:#e1e5ea; --line-soft:#eceff3;
     --brand:#0171B0; --brand-2:#3897FF;
-    --grad:linear-gradient(135deg,#3897FF 0%,#0171B0 55%,#014281 100%);
-    --grad-soft:linear-gradient(135deg,rgba(56,151,255,.15),rgba(1,113,176,.10));
+    /* вертикальный градиент в два тона + внутренняя подсветка сверху —
+       так рисуют кнопку, которую хочется нажать. 135° в три остановки с
+       ореолом на пол-экрана — первое, по чему узнают шаблон. */
+    --grad:linear-gradient(180deg,#0a76b2 0%,#015b8f 100%);
+    --grad-in:inset 0 1px 0 rgba(255,255,255,.26);
+    --grad-sh:0 1px 2px rgba(1,66,129,.28),0 8px 18px -8px rgba(1,66,129,.55);
+    --grad-soft:linear-gradient(180deg,rgba(1,113,176,.09),rgba(1,113,176,.03));
     --ring:rgba(1,113,176,.32);
-    --green:#138a55; --green-bg:#e6f6ee; --amber:#a86a00; --amber-bg:#fff2d6;
-    --red:#d23b32; --red-bg:#fdeceb; --violet:#7a5af0; --violet-bg:#efeafe;
-    --cyan:#0e9bc4; --cyan-bg:#e2f5fb; --slate:#5b6b80; --slate-bg:#eaf1f8;
+    --green:#12764d; --green-bg:#e9f2ec; --amber:#94620a; --amber-bg:#f8f1e2;
+    --red:#c2392c; --red-bg:#f7ecea; --violet:#5b48c0; --violet-bg:#eeecf7;
+    --cyan:#0b7f9f; --cyan-bg:#e7f1f4; --slate:#5c6771; --slate-bg:#eef0f3;
     --accent:#FFB739; --accent-ink:#7a5200;
-    --shadow-sm:0 1px 2px rgba(1,66,129,.06),0 2px 8px rgba(1,66,129,.07);
-    --shadow-md:0 10px 28px rgba(1,66,129,.12);
-    --shadow-lg:0 24px 60px rgba(1,66,129,.22);
-    --radius:14px;
-    --side-bg:linear-gradient(180deg,#013a6b 0%,#01213e 100%);
-    --side-ink:#c3d8ec; --side-muted:#7e97b2;
+    --shadow-sm:0 1px 1px rgba(16,24,40,.045),0 4px 12px -2px rgba(16,24,40,.07);
+    --shadow-md:0 2px 4px rgba(16,24,40,.05),0 12px 26px -6px rgba(16,24,40,.14);
+    --shadow-lg:0 8px 12px rgba(16,24,40,.07),0 28px 60px -12px rgba(16,24,40,.26);
+    --radius:13px;
+    --side-bg:linear-gradient(180deg,#0d2a44 0%,#08192a 100%);
+    --side-ink:#c8d6e4; --side-muted:#8497ab;
   }
   [data-theme="dark"]{
-    --bg:#08111f; --surface:#0f1c2c; --surface-2:#152435; --surface-3:#1d3047;
-    --ink:#e9eef7; --ink-soft:#c3cde0; --muted:#8a98b0; --line:#233549; --line-soft:#1a2839;
-    --grad:linear-gradient(135deg,#3897FF 0%,#0171B0 60%,#01508a 100%);
-    --grad-soft:linear-gradient(135deg,rgba(56,151,255,.20),rgba(1,113,176,.15));
-    --ring:rgba(56,151,255,.48);
-    --green:#34d399; --green-bg:#102a22; --amber:#fbbf57; --amber-bg:#2c2410;
-    --red:#f87171; --red-bg:#2c1818; --violet:#a78bfa; --violet-bg:#211a39;
-    --cyan:#38bdf8; --cyan-bg:#102733; --slate:#9aa7bd; --slate-bg:#1b2638;
+    /* не инверсия светлой, а свой набор: фон уходит в чернильно-синий,
+       поверхности отделяются светлой кромкой сверху, а не тенью */
+    --bg:#0c1116; --surface:#151c24; --surface-2:#1a222b; --surface-3:#222c37;
+    --ink:#e9eef4; --ink-soft:#c1cbd4; --muted:#8b97a3; --line:#26313c; --line-soft:#212b35;
+    /* фирменный синий на тёмном фоне нечитаем — здесь он светлее. Раньше
+       --brand в тёмной теме не переопределялся вовсе, и синие цифры на
+       плитках («Клиентов», ссылки) сливались с панелью. */
+    --brand:#5aabf2; --brand-2:#8cc6fa;
+    --grad:linear-gradient(180deg,#1a72ac 0%,#125b8e 100%);
+    --grad-in:inset 0 1px 0 rgba(255,255,255,.16);
+    --grad-sh:0 1px 2px rgba(0,0,0,.5),0 10px 22px -10px rgba(30,120,190,.8);
+    --grad-soft:linear-gradient(180deg,rgba(90,171,242,.16),rgba(90,171,242,.05));
+    --ring:rgba(90,171,242,.48);
+    --green:#4fca92; --green-bg:#16281f; --amber:#e2ae54; --amber-bg:#2a2418;
+    --red:#ef7d70; --red-bg:#2a1c1b; --violet:#a08ff5; --violet-bg:#1f1c2e;
+    --cyan:#48b8dc; --cyan-bg:#152a33; --slate:#94a1ad; --slate-bg:#1e262f;
     --accent:#FFB739; --accent-ink:#FFB739;
-    --shadow-sm:0 1px 2px rgba(0,0,0,.30),0 2px 8px rgba(0,0,0,.28);
-    --shadow-md:0 10px 30px rgba(0,0,0,.40);
-    --shadow-lg:0 28px 70px rgba(0,0,0,.55);
-    --side-bg:linear-gradient(180deg,#0a1c30 0%,#06111f 100%);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.45),0 6px 16px -6px rgba(0,0,0,.5);
+    --shadow-md:0 3px 6px rgba(0,0,0,.5),0 16px 32px -10px rgba(0,0,0,.66);
+    --shadow-lg:0 10px 20px rgba(0,0,0,.55),0 34px 70px -14px rgba(0,0,0,.75);
+    --side-bg:linear-gradient(180deg,#111b26 0%,#0a121b 100%);
     --side-ink:#c4d2e2; --side-muted:#7d8ea4;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
+  /* фон ровный: две синие радиальные подсветки по углам делали экран
+     «подкрашенным» и спорили с цветными плитками */
   body{margin:0;font-family:'Rubik',"Segoe UI",system-ui,Roboto,Arial,sans-serif;
-    background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;
-    background-image:radial-gradient(1100px 520px at 100% -10%,rgba(56,151,255,.12),transparent 60%),radial-gradient(900px 480px at -10% 110%,rgba(1,113,176,.10),transparent 55%);
-    background-attachment:fixed;}
+    background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
   a{color:var(--brand);text-decoration:none;cursor:pointer}
   a:hover{text-decoration:underline}
   ::selection{background:rgba(85,113,240,.25)}
@@ -70,7 +90,7 @@
   .side::-webkit-scrollbar-track{background:transparent}
   .brand{display:flex;align-items:center;gap:11px;padding:8px 8px 18px;font-size:17px;letter-spacing:.2px;color:#fff}
   .brand .logo{width:36px;height:36px;border-radius:11px;background:#fff;display:grid;place-items:center;overflow:hidden;
-    box-shadow:0 6px 16px rgba(1,66,129,.38)}
+    box-shadow:0 1px 2px rgba(0,0,0,.35),0 8px 18px -8px rgba(0,0,0,.55)}
   .brand .logo img{width:30px;height:30px;display:block}
   .brand-tx{font-weight:600}.brand-tx b{font-weight:800}
   .nav{display:flex;flex-direction:column;gap:3px;margin-top:4px}
@@ -78,8 +98,12 @@
     position:relative;transition:background .14s,color .14s}
   .nav a .ic{width:20px;text-align:center;font-size:15px;opacity:.92}
   .nav a:hover{background:rgba(255,255,255,.06);color:#fff}
-  .nav a.active{background:var(--grad-soft);color:#fff}
-  .nav a.active::before{content:"";position:absolute;left:-14px;top:8px;bottom:8px;width:4px;border-radius:0 4px 4px 0;background:var(--grad)}
+  /* меню всегда на тёмном фоне, поэтому подсветка активного пункта своя:
+     общий --grad-soft тут почти не виден, а тёмно-синяя полоса сливается */
+  .nav a.active{background:rgba(255,255,255,.10);color:#fff;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.07)}
+  .nav a.active::before{content:"";position:absolute;left:-14px;top:8px;bottom:8px;width:4px;
+    border-radius:0 4px 4px 0;background:linear-gradient(180deg,#5cb0ea,#2b8ac9)}
   .nav-badge{margin-left:auto}
   /* подзаголовки-«столпы» в меню: разделяют группы, сами не кликаются */
   .nav-cap{margin:13px 0 3px;padding:0 11px;font-size:10.5px;font-weight:700;letter-spacing:.09em;
@@ -92,7 +116,8 @@
   .mini{font-size:12px;color:var(--side-muted);padding:10px;border-top:1px solid rgba(255,255,255,.06);margin-top:8px;line-height:1.6}
   .mini-2{opacity:.8}
   .btn-connect{margin:12px 2px 2px;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--grad);
-    color:#fff;padding:11px;border-radius:11px;font-weight:650;cursor:pointer;box-shadow:0 8px 20px rgba(42,159,224,.40);
+    color:#fff;padding:11px;border-radius:11px;font-weight:650;cursor:pointer;
+    box-shadow:var(--grad-sh),var(--grad-in);
     transition:transform .12s,filter .12s}
   .btn-connect:hover{filter:brightness(1.05);transform:translateY(-1px)}
   .btn-connect span{font-size:16px}
@@ -118,23 +143,34 @@
   section[data-view].on{display:block;animation:fade .26s ease}
   @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 
-  h2.title{font-size:21px;margin:0 0 3px;font-weight:750;letter-spacing:.2px}
-  .sub{color:var(--muted);margin:0 0 20px}
+  h2.title{font-size:23px;margin:0 0 4px;font-weight:800;letter-spacing:-.02em}
+  .sub{color:var(--muted);margin:0 0 20px;font-size:13.5px}
 
   /* ---------- stat cards ---------- */
+  /* Плитка — предмет, а не белый прямоугольник с наклейкой: мягкий намыв
+     своего цвета от верхней кромки, тонкая цветная линия, тающая к краям,
+     двухслойная тень и подъём под курсором. Раньше вместо этого в углу
+     висел размытый круг, который ничего не сообщал. */
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px;margin-bottom:20px}
-  .card{--cc:var(--brand);--cc-bg:rgba(42,159,224,.14);
-    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;
-    box-shadow:var(--shadow-sm);display:flex;align-items:center;gap:13px;transition:transform .15s,box-shadow .15s;position:relative;overflow:hidden}
-  .card::after{content:"";position:absolute;right:-30px;top:-30px;width:90px;height:90px;border-radius:50%;
-    background:var(--cc-bg);opacity:.5;filter:blur(6px)}
-  .card:hover{transform:translateY(-3px);box-shadow:var(--shadow-md)}
-  .card-ic{width:46px;height:46px;border-radius:13px;background:var(--cc-bg);color:var(--cc);display:grid;place-items:center;
-    font-size:21px;flex:0 0 auto;z-index:1}
+  .card{--cc:var(--brand);--cc-bg:var(--slate-bg);
+    background:var(--surface);
+    background:linear-gradient(180deg,color-mix(in srgb,var(--cc) 5%,var(--surface)) 0%,var(--surface) 52%);
+    border:1px solid var(--line);border-radius:var(--radius);padding:16px;
+    box-shadow:var(--shadow-sm);display:flex;align-items:center;gap:13px;
+    transition:transform .16s ease,box-shadow .16s ease;position:relative;overflow:hidden}
+  .card::before{content:"";position:absolute;left:16px;right:16px;top:0;height:2px;border-radius:0 0 2px 2px;
+    background:linear-gradient(90deg,transparent,var(--cc),transparent);opacity:.6}
+  .card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+  .card-ic{width:46px;height:46px;border-radius:11px;color:var(--cc);display:grid;place-items:center;
+    font-size:21px;flex:0 0 auto;z-index:1;background:var(--cc-bg);
+    background:linear-gradient(180deg,color-mix(in srgb,var(--cc) 19%,var(--surface)),
+                                      color-mix(in srgb,var(--cc) 9%,var(--surface)));
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--cc) 26%,transparent),0 1px 2px rgba(16,24,40,.06)}
   .card-meta{z-index:1;min-width:0}
-  .card-k{font-size:12px;color:var(--muted);font-weight:650;text-transform:uppercase;letter-spacing:.03em}
-  .card-s{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.35}
-  .card-v{font-size:26px;font-weight:800;margin-top:2px;color:var(--cc);line-height:1.1}
+  .card-k{font-size:12px;color:var(--muted);font-weight:600;line-height:1.3}
+  .card-s{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.4}
+  .card-v{font-size:30px;font-weight:800;margin-top:3px;color:var(--cc);line-height:1.05;
+    letter-spacing:-.035em;font-variant-numeric:tabular-nums}
   .c-cyan{--cc:var(--cyan);--cc-bg:var(--cyan-bg)}
   .c-green{--cc:var(--green);--cc-bg:var(--green-bg)}
   .c-amber{--cc:var(--amber);--cc-bg:var(--amber-bg)}
@@ -147,20 +183,30 @@
 
   /* ---------- panels ---------- */
   .grid2{display:grid;grid-template-columns:1.45fr 1fr;gap:16px}
-  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow-sm);overflow:hidden}
-  .panel h3{margin:0;padding:14px 17px;border-bottom:1px solid var(--line);font-size:14px;font-weight:700;
-    display:flex;align-items:center;gap:9px;background:var(--surface-2)}
-  .h3-ic{font-size:15px}
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow-sm);overflow:hidden;position:relative}
+  /* светлая полоса по верхнему краю — панель читается как единый лист,
+     а не как коробка с крышкой другого цвета */
+  .panel::before{content:"";position:absolute;left:0;right:0;top:0;height:1px;z-index:1;
+    background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--ink) 9%,transparent),transparent)}
+  .panel h3{margin:0;padding:13px 17px;border-bottom:1px solid var(--line-soft);font-size:13.5px;font-weight:700;
+    letter-spacing:-.005em;display:flex;align-items:center;gap:9px;background:transparent}
+  .h3-ic{font-size:15px;color:var(--muted)}
   .panel .body{padding:16px 17px}
   .panel.hero h3{background:var(--grad-soft)}
   .row-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
 
-  .alert{display:flex;gap:11px;align-items:flex-start;padding:12px 14px;border-radius:11px;margin-bottom:10px;font-size:13.5px;
-    border:1px solid transparent}
+  /* Плашка промыта, а не залита: градиент уходит от цвета к чистому фону,
+     цвет держится на кромке слева. Четыре подряд перестают быть светофором. */
+  .alert{--ac:var(--slate);display:flex;gap:11px;align-items:flex-start;padding:11px 14px;
+    border-radius:10px;margin-bottom:9px;font-size:13.5px;line-height:1.5;
+    border:1px solid color-mix(in srgb,var(--ac) 20%,transparent);border-left-width:3px;
+    background:linear-gradient(96deg,color-mix(in srgb,var(--ac) 11%,var(--surface)) 0%,
+                                     color-mix(in srgb,var(--ac) 3%,var(--surface)) 62%,var(--surface) 100%)}
   .alert:last-child{margin-bottom:0}
-  .alert.amber{background:var(--amber-bg);color:var(--amber);border-color:color-mix(in srgb,var(--amber) 28%,transparent)}
-  .alert.red{background:var(--red-bg);color:var(--red);border-color:color-mix(in srgb,var(--red) 26%,transparent)}
-  .alert.grey{background:var(--slate-bg);color:var(--ink-soft);border-color:var(--line)}
+  .alert.amber{--ac:var(--amber);color:var(--amber)}
+  .alert.red{--ac:var(--red);color:var(--red)}
+  .alert.grey{--ac:var(--slate);color:var(--ink-soft)}
   .alert b{font-weight:700}
   .alert a{color:inherit;font-weight:700;text-decoration:underline}
   .ok-empty{color:var(--green);font-weight:600;display:flex;align-items:center;gap:6px}
@@ -187,13 +233,21 @@
   input:focus,select:focus,textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--ring)}
   input[type=search]{min-width:260px}
   .btn{font:inherit;font-weight:650;padding:9px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);
-    color:var(--ink-soft);cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:background .12s,transform .1s,box-shadow .12s}
-  .btn:hover{background:var(--surface-2);transform:translateY(-1px)}
+    color:var(--ink-soft);cursor:pointer;display:inline-flex;align-items:center;gap:7px;
+    box-shadow:0 1px 1px rgba(16,24,40,.04);transition:background .12s,transform .12s,box-shadow .12s}
+  .btn:hover{background:var(--surface-2);transform:translateY(-1px);box-shadow:0 2px 4px rgba(16,24,40,.07)}
   .btn:active{transform:translateY(0)}
-  .btn.primary{background:var(--grad);border-color:transparent;color:#fff;box-shadow:0 6px 16px rgba(42,159,224,.34)}
+  /* главная кнопка: вертикальный градиент в два тона, светлая линия внутри
+     сверху и цветная тень снизу — объём от освещения, а не ореол вокруг */
+  .btn.primary{background:var(--grad);border-color:transparent;color:#fff;
+    box-shadow:var(--grad-sh),var(--grad-in)}
   .btn.primary:hover{filter:brightness(1.05)}
   /* необратимое действие: кнопка красная, чтобы палец притормозил */
-  .btn.danger{background:var(--red);border-color:transparent;color:#fff;box-shadow:0 6px 16px rgba(210,59,50,.3)}
+  .btn.danger{background:linear-gradient(180deg,color-mix(in srgb,var(--red) 92%,#fff),var(--red));
+    border-color:transparent;color:#fff;
+    box-shadow:0 1px 2px color-mix(in srgb,var(--red) 40%,transparent),
+               0 8px 18px -8px color-mix(in srgb,var(--red) 70%,transparent),
+               inset 0 1px 0 rgba(255,255,255,.22)}
   .btn.danger:hover{filter:brightness(1.06)}
   .btn.sm{padding:6px 11px;font-size:12.5px;border-radius:9px}
   .btn:disabled{opacity:.5;cursor:default;transform:none}
@@ -334,8 +388,8 @@
   /* ================= ПЕРЕРЫВ: игра-залипалка (правый нижний угол) ================= */
   .gm-fab{position:fixed;right:18px;bottom:18px;width:52px;height:52px;border-radius:50%;border:0;cursor:pointer;
     background:var(--grad);color:#fff;font-size:22px;display:none;place-items:center;z-index:55;
-    box-shadow:0 8px 22px rgba(1,66,129,.34);transition:transform .18s ease,box-shadow .18s ease}
-  .gm-fab:hover{transform:translateY(-2px) scale(1.05);box-shadow:0 12px 28px rgba(1,66,129,.42)}
+    box-shadow:var(--grad-sh),var(--grad-in);transition:transform .18s ease,box-shadow .18s ease}
+  .gm-fab:hover{transform:translateY(-2px) scale(1.05);box-shadow:var(--shadow-md),var(--grad-in)}
   .gm-fab.on{display:grid}
   .gm-fab.hide{display:none}
   .gm-wrap{position:fixed;right:18px;bottom:18px;width:min(342px,calc(100vw - 24px));z-index:56;
@@ -576,7 +630,7 @@
     opacity:0;pointer-events:none;transition:opacity .22s;z-index:88}
   .sheet-bg.on{opacity:1;pointer-events:auto}
   .sheet{position:fixed;left:0;right:0;bottom:0;z-index:89;
-    background:var(--surface);border-radius:20px 20px 0 0;box-shadow:0 -12px 40px rgba(1,66,129,.22);
+    background:var(--surface);border-radius:20px 20px 0 0;box-shadow:0 -8px 16px rgba(16,24,40,.10),0 -24px 48px -12px rgba(16,24,40,.22);
     transform:translateY(100%);transition:transform .26s cubic-bezier(.22,1,.36,1);
     max-height:88dvh;display:flex;flex-direction:column;
     padding-bottom:var(--safe-b)}
@@ -687,7 +741,7 @@
     table.m-cards tr.sw{position:relative;overflow:hidden;padding:0;background:var(--green-bg)}
     table.m-cards tr.sw > .sw-in{padding:12px 14px;background:var(--surface);border-radius:15px;
       transition:transform .22s cubic-bezier(.22,1,.36,1);will-change:transform}
-    table.m-cards tr.sw.sw-live > .sw-in{box-shadow:-6px 0 16px rgba(1,66,129,.10)}
+    table.m-cards tr.sw.sw-live > .sw-in{box-shadow:-4px 0 12px rgba(16,24,40,.10)}
     table.m-cards tr.sw > .sw-bg{position:absolute;inset:0;display:flex;align-items:center;
       justify-content:flex-end;gap:7px;padding-right:20px;color:var(--green);
       font-size:13px;font-weight:700;pointer-events:none}
@@ -769,8 +823,9 @@
     /* плитки сводки: 2 в ряд и компактные — шесть показателей должны
        умещаться на экран, а не пролистываться */
     .cards{grid-template-columns:repeat(2,1fr);gap:9px;margin-bottom:14px}
-    .card{padding:11px;gap:9px;border-radius:14px}
-    .card::after{width:62px;height:62px;right:-22px;top:-22px}
+    .card{padding:11px;gap:9px;border-radius:var(--radius)}
+    /* цветная кромка сверху подтягивается под узкую плитку */
+    .card::before{left:11px;right:11px}
     .card-ic{width:34px;height:34px;border-radius:10px;font-size:16px}
     .card-k{font-size:11px;letter-spacing:0;line-height:1.25}
     .card-v{font-size:22px}
@@ -2552,6 +2607,16 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-01',tag:'major',title:'Новый визуал кабинета',
+ sum:'Тот же кабинет, но выделанный: свет вместо пуха, цвет по делу',items:[
+  '<b>Синий перестал заливать экран.</b> Раньше в фирменный #0171B0 были подкрашены фон, поверхности, линии и даже тени — от этого он переставал читаться как цвет агентства. Теперь фон и линии нейтральные, а синий появляется там, куда нужно смотреть: главная кнопка, активный раздел, ссылки.',
+  '<b>Плитки сводки стали предметами.</b> У каждой — мягкий намыв своего цвета от верхней кромки и тонкая цветная линия, тающая к краям. Значок сидит в градиентной подложке с волосяным кольцом. Под курсором плитка приподнимается.',
+  '<b>Тень теперь двухслойная</b> — плотная контактная под самым краем и мягкая рассеянная выше, как у предмета на столе. Была одна размытая, отчего всё будто висело в тумане. Заодно убран декоративный размытый круг, который висел в углу каждой плитки и ни о чём не сообщал.',
+  '<b>Цифры выросли и уплотнились:</b> 26 → 30px, трекинг сжат, знаки табличные — колонки выстраиваются, единица больше не уже нуля.',
+  '<b>Плашки «Требует внимания» промыты, а не залиты.</b> Градиент уходит от цвета к чистому фону, цвет держится на кромке слева. Четыре плашки подряд больше не выглядят светофором.',
+  '<b>Главная кнопка</b> — вертикальный градиент в два тона со светлой линией внутри сверху и цветной тенью снизу. Было 135° в три остановки с ореолом на пол-экрана.',
+  '<b>Попутно починена читаемость.</b> Белая подпись на кнопке давала контраст 3,3 при норме 4,5 — верхний тон градиента затемнён до 4,9. Приглушённый серый на фоне страницы давал 4,2 — стало 4,8. А в тёмной теме фирменный синий вообще не переопределялся: цифра «Клиентов» и ссылки сливались с панелью (3,1) — теперь там свой светлый синий.',
+  'Тёмная тема пересобрана целиком по тем же правилам, а не получена инверсией. Разметка, тексты и логика не тронуты — менялись только стили.']},
 {date:'2026-07-31',tag:'ui',title:'Телефон: доводка после первого захода',
  sum:'Сводка влезает в экран, длинный текст читается, строки смахиваются',items:[
   '<b>«Обзор» был свёрнут в узкую центрированную коробку.</b> Заглушка раздела помечена как «пусто», и после загрузки эта пометка не снималась — весь экран жил с лишними отступами по краям и текстом по центру. Теперь снимается; заодно на телефоне плитки встали <b>по две в ряд</b> и стали компактнее: шесть показателей и плашки «Требует внимания» видны сразу, а не через полтора экрана прокрутки.',
