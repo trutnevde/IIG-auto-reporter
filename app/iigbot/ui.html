@@ -152,16 +152,11 @@
      пробовал ради «широкой» плитки, давала рваные ширины: в первом ряду 200px,
      в последнем 420. Высоту ряда решаем не шириной, а самим пояснением:
      оно ограничено двумя строками, полный текст остаётся в подсказке. */
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px;margin-bottom:20px}
-  /* Плитке с длинным пояснением нужны две колонки: в одну пояснение не влезает
-     и ломается на три строки, раздувая высоту всего ряда. Чтобы две колонки
-     не пустовали справа, пояснение переезжает вправо от числа — плитка
-     заполнена, а высота выходит даже меньше, чем была. */
-  .cards .card.card-wide{grid-column:span 2}
-  .cards .card.card-wide .card-meta{display:grid;grid-template-columns:auto minmax(0,1fr);
-    column-gap:16px;align-items:center}
-  .cards .card.card-wide .card-k,.cards .card.card-wide .card-v{grid-column:1}
-  .cards .card.card-wide .card-s{grid-column:2;grid-row:1/3;margin:0;align-self:center}
+  /* колонка шире (250 вместо 168): в узкую плитку пояснение «отправлено 16 из 18
+     · нет открута 2» не влезало и переносилось, раздувая высоту всего ряда —
+     сетка равняет плитки по самой высокой. Плиток в ряду меньше, но все равные. */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;margin-bottom:20px}
+
   .card{--cc:var(--brand);--cc-bg:var(--slate-bg);
     background:var(--surface);
     background:linear-gradient(180deg,color-mix(in srgb,var(--cc) 5%,var(--surface)) 0%,var(--surface) 52%);
@@ -180,8 +175,11 @@
   .card-k{font-size:12px;color:var(--muted);font-weight:600;line-height:1.3}
   /* пояснение не длиннее двух строк: третья строка тянула за собой высоту
      всего ряда, а полный текст никуда не девается — он в подсказке */
+  /* пояснение в одну строку: перенос на вторую-третью раздувал высоту всего
+     ряда, потому что сетка равняет плитки по самой высокой. Полный текст
+     никуда не девается — он в подсказке при наведении */
   .card-s{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.4;
-    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card-v{font-size:30px;font-weight:800;margin-top:3px;color:var(--cc);line-height:1.05;
     letter-spacing:-.035em;font-variant-numeric:tabular-nums}
   .c-cyan{--cc:var(--cyan);--cc-bg:var(--cyan-bg)}
@@ -850,14 +848,14 @@
     .card-ic{width:34px;height:34px;border-radius:10px;font-size:16px}
     .card-k{font-size:11px;letter-spacing:0;line-height:1.25}
     .card-v{font-size:22px}
-    .card-s{font-size:11px;margin-top:2px}
+    /* на телефоне плитка с пояснением занимает обе колонки, и текст там
+       показывается целиком — обрезать его на узком экране незачем */
+    .cards .card:has(.card-s){grid-column:1/-1}
+    .card-s{font-size:11px;margin-top:2px;white-space:normal;overflow:visible}
     /* плитка с пояснением (сдача недели) — во всю ширину, иначе строка
        «отправлено 16 из 24 • …» рвётся на шесть строк */
     /* на телефоне колонки всего две, поэтому плитка с пояснением занимает
        обе целиком — прижим влево и ширина по содержимому здесь не нужны */
-    .cards .card.card-wide{grid-column:1/-1}
-    .cards .card.card-wide .card-meta{display:block}
-    .cards .card.card-wide .card-s{margin-top:2px}
     /* панели: заголовок и поля потеснее — экономим по 8–10px на каждой */
     .panel h3{padding:12px 14px;font-size:13.5px}
     .panel .body{padding:13px 14px}
@@ -1832,8 +1830,7 @@ function statCardLink(color,ic,label,val,dest,sub,tip){
   // Пояснение показываем не длиннее двух строк (CSS), а полный текст кладём
   // в подсказку: третья строка раздувала высоту всего ряда плиток.
   const subTip = sub ? String(sub).replace(/<[^>]*>/g,'').trim() : '';
-  const wide = subTip.length > 30 ? ' card-wide' : '';
-  return `<div class="card c-${color} click${wide}" onclick="go('${dest}')"${tip?(' title="'+esc(tip)+'"'):''}><div class="card-ic">${ic}</div><div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div>${sub?('<div class="card-s" title="'+esc(subTip)+'">'+sub+'</div>'):''}</div></div>`;
+  return `<div class="card c-${color} click" onclick="go('${dest}')"${tip?(' title="'+esc(tip)+'"'):''}><div class="card-ic">${ic}</div><div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div>${sub?('<div class="card-s" title="'+esc(subTip)+'">'+sub+'</div>'):''}</div></div>`;
 }
 function budMoneyShort(v,cur){return v==null?'':(Math.round(v).toLocaleString('ru-RU')+' '+(cur==='RUB'?'₽':(cur||'')));}
 async function renderDashboard(){
@@ -1847,8 +1844,8 @@ async function renderDashboard(){
   const covCol=cov==null?'slate':(cov>=100?'green':cov>=50?'amber':'red');
   const dlg=d.dialogs||{waiting:0,overdue:0};
   const cards=[
-    statCardLink((bud.critical?'red':'green'),'<svg class="ic"><use href="#i-alert"/></svg>','Бюджеты на исходе',(bud.critical||0),'budgets'),
-    statCardLink((dlg.overdue?'red':(dlg.waiting?'amber':'slate')),'<svg class="ic"><use href="#i-time"/></svg>','Ждут ответа',(dlg.waiting||0),'dialogs'),
+    // сдача недели идёт первой: это главный показатель недели, и её плитка
+    // шире остальных — посреди одинаковых она смотрелась случайной
     statCardLink(covCol,'<svg class="ic"><use href="#i-report"/></svg>',(isObs?'Покрытие агентства':'Твоя сдача недели'),
       (cov==null?'—':(cov+'%')),(isObs?'supervision':'reports'),
       (cov==null?'':('отправлено '+wk.sent+' из '+wk.obligations
@@ -1856,6 +1853,8 @@ async function renderDashboard(){
         +((wk.excused||0)?(' · закрыто '+wk.excused):'')
         +((wk.debt||0)?(' · <b style="color:var(--red)">долг '+wk.debt+'</b>'):''))),
       'Покрытие = выполненные обязательства: отправленные отчёты + клиенты без открута (авто) + долги, закрытые уважительной причиной'),
+    statCardLink((bud.critical?'red':'green'),'<svg class="ic"><use href="#i-alert"/></svg>','Бюджеты на исходе',(bud.critical||0),'budgets'),
+    statCardLink((dlg.overdue?'red':(dlg.waiting?'amber':'slate')),'<svg class="ic"><use href="#i-time"/></svg>','Ждут ответа',(dlg.waiting||0),'dialogs'),
     (!isObs)?statCardLink((d.external_pending?'violet':'slate'),'<svg class="ic"><use href="#i-outbox"/></svg>','Сторонние к сбору',(d.external_pending||0),'external'):'',
     statCardLink('blue','<svg class="ic"><use href="#i-users"/></svg>',(isObs?'Клиентов (все)':'Клиентов'),d.clients,'clients'),
     statCardLink((d.clients_no_chat?'amber':'slate'),'<svg class="ic"><use href="#i-contacts"/></svg>','Без чата',d.clients_no_chat,'clients'),
@@ -2654,7 +2653,7 @@ const CHANGELOG=[
   '<b>Главных кнопок стало ровно столько, сколько главных действий.</b> В «Чатах» залитой синей кнопкой «Сохранить» была отмечена каждая из 22 строк — когда главная кнопка у всех, главной нет ни одной. Действия строк («Сохранить» в чатах, «Копировать» в сторонних, «Досье» в Контроле) теперь фирменного цвета, но без заливки, а залитой остаётся одна кнопка на экран или на панель.',
   '<b>Плитки сводки перестали пустовать.</b> Сетка равняет плитки по самой высокой, а «Твоя сдача недели» с пояснением «отправлено 16 из 18 · нет открута 2» ломалась на три строки и тянула за собой весь ряд — у остальных шести сверху и снизу зияла пустота. Теперь плитка с пояснением занимает две колонки, пояснение встаёт в строку, а высота ряда упала со 152 до 104 пикселей.',
   '<b>Синяя кнопка «Подключить клиента» из меню убрана.</b> Она была единственным залитым блоком в боковом меню и перетягивала внимание на действие, которое делают раз в месяц. Сам пункт остался на месте — обычной строкой в группе «Система», рядом с «Настройками» и «Гайдом». Из палитры команд (Ctrl+K) и из «Ещё» на телефоне он тоже никуда не делся.',
-  '<b>Плитки сводки больше не пустуют.</b> «Твоя сдача недели» с пояснением «отправлено 16 из 18 · нет открута 2» не влезала в одну колонку: пояснение ломалось на три строки и раздувало высоту всего ряда до 152 пикселей, хотя остальным хватает 84–100. Теперь этой плитке отданы две колонки, а пояснение переехало вправо от числа — плитка заполнена целиком, пустого места справа не осталось, и высота ряда стала 99 пикселей вместо 152. Остальные плитки, «Контроль» и «Ждут ответа» не тронуты.',
+  '<b>Плитки сводки выровнены.</b> Раньше пояснение «отправлено 16 из 18 · нет открута 2» не влезало в узкую плитку, ломалось на три строки и раздувало высоту всего ряда до 152 пикселей — сетка равняет плитки по самой высокой, и у остальных шести сверху и снизу зияла пустота. Плитки стали шире (по четыре в ряд вместо семи), пояснение помещается в строку, все плитки одного размера, а высота ряда — 104 пикселя вместо 152. На телефоне плитка с пояснением по-прежнему занимает обе колонки.',
   'Тёмная тема пересобрана целиком по тем же правилам, а не получена инверсией. Разметка, тексты и логика не тронуты — менялись только стили.']},
 {date:'2026-07-31',tag:'ui',title:'Телефон: доводка после первого захода',
  sum:'Сводка влезает в экран, длинный текст читается, строки смахиваются',items:[
