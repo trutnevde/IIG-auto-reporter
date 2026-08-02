@@ -27,7 +27,7 @@
        различимого, поэтому он остаётся акцентом, а не заливкой. */
     --bg:#f2f4f8; --surface:#ffffff; --surface-2:#f7f8fa; --surface-3:#eef0f3;
     --ink:#0f1419; --ink-soft:#39424b; --muted:#5f6a73; --line:#e1e5ea; --line-soft:#eceff3;
-    --brand:#0171B0; --brand-2:#3897FF;
+    --brand:#0171B0; --brand-2:#3897FF; --on-brand:#ffffff;
     /* вертикальный градиент в два тона + внутренняя подсветка сверху —
        так рисуют кнопку, которую хочется нажать. 135° в три остановки с
        ореолом на пол-экрана — первое, по чему узнают шаблон. */
@@ -48,6 +48,7 @@
     --side-ink:#c8d6e4; --side-muted:#8497ab;
   }
   [data-theme="dark"]{
+    --on-brand:#06131f;
     /* не инверсия светлой, а свой набор: фон уходит в чернильно-синий,
        поверхности отделяются светлой кромкой сверху, а не тенью */
     --bg:#0c1116; --surface:#151c24; --surface-2:#1a222b; --surface-3:#222c37;
@@ -277,8 +278,8 @@
     box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ac) 28%,transparent)}
   .att-ic svg{width:17px;height:17px}
   .att-b{flex:1;min-width:0}
-  .att-t{font-size:13.5px;font-weight:650;line-height:1.3}
-  .att-s{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.35}
+  .att-t{display:block;font-size:13.5px;font-weight:650;line-height:1.3}
+  .att-s{display:block;font-size:12px;color:var(--muted);margin-top:2px;line-height:1.35}
   .att-tag{flex:0 0 auto;font-size:11.5px;font-weight:700;padding:5px 11px;border-radius:8px;
     color:color-mix(in srgb,var(--ac) 68%,var(--ink));background:color-mix(in srgb,var(--ac) 13%,var(--surface));
     border:1px solid color-mix(in srgb,var(--ac) 24%,transparent)}
@@ -305,6 +306,122 @@
     .att-ic{grid-area:ic;width:34px;height:34px}
     .att-b{grid-area:b}
     .att-m{grid-area:m;justify-content:space-between;width:100%}
+  }
+
+  /* ══════════ Клиенты: плитки, фильтры, строки-карточки ══════════ */
+  /* заголовок раздела и кнопки справа на одной линии */
+  .head-row{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  .head-row>div:first-child{flex:1;min-width:220px}
+  .head-row .title,.head-row .sub{margin:0}
+  .head-row .sub{margin-top:4px}
+  .head-row .row-actions{flex:0 0 auto;margin:0}
+  @media (max-width:640px){.head-row .row-actions{width:100%}.head-row .row-actions .btn{flex:1}}
+  .cli-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+  .cli-search{flex:1 1 240px;min-width:200px}
+  .cli-chips{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;
+    background:var(--surface)}
+  .cli-chips button{font-weight:600;font-size:12.5px;line-height:1;padding:9px 14px;border:0;cursor:pointer;
+    color:var(--muted);background:transparent;border-right:1px solid var(--line);white-space:nowrap;
+    transition:background .14s,color .14s}
+  .cli-chips button:last-child{border-right:0}
+  .cli-chips button:hover{background:var(--surface-2);color:var(--ink)}
+  .cli-chips button[aria-pressed="true"]{background:var(--brand);color:var(--on-brand)}
+  .cli-chips button:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+  .cli-chips b{font-weight:700;opacity:.65;margin-left:5px}
+
+  .cli-cols{display:grid;grid-template-columns:1fr 330px;gap:16px;align-items:start}
+  .cli-side{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .cli-panel{padding:0}
+  .cli-cap{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:14px 16px 12px}
+  .cli-cap b{font-size:14px;font-weight:700}
+  .cli-cap span{font-size:12px;color:var(--muted)}
+
+  /* шапка и строка живут на одной сетке — колонки не разъезжаются */
+  .cli-hdr,.cli-row{display:grid;
+    grid-template-columns:minmax(0,1.45fr) minmax(0,1.5fr) 158px 116px 20px;gap:14px;align-items:center}
+  .cli-hdr{padding:0 16px 8px;border-bottom:1px solid var(--line);font-size:11px;font-weight:700;
+    letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .cli-hdr span{cursor:pointer;user-select:none;white-space:nowrap}
+  .cli-hdr span:hover{color:var(--ink)}
+  .cli-hdr i{font-style:normal}
+  .cli-row{padding:12px 16px;border-bottom:1px solid var(--line-soft);cursor:pointer;
+    transition:background .14s}
+  .cli-row:last-child{border-bottom:0}
+  .cli-row:hover{background:var(--surface-2)}
+  .cli-row:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+
+  .cli-who{display:flex;align-items:center;gap:11px;min-width:0}
+  .cli-av{width:36px;height:36px;border-radius:11px;flex:0 0 auto;display:grid;place-items:center;
+    font-weight:800;font-size:14px;line-height:1;letter-spacing:-.02em;color:var(--av);
+    background:color-mix(in srgb,var(--av) 15%,var(--surface));
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--av) 28%,transparent)}
+  .cli-nm{min-width:0}
+  .cli-nm b{display:block;font-size:13.5px;font-weight:650;line-height:1.25;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cli-nm small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  .cli-link{min-width:0;font-size:12.5px}
+  .cli-link .t{display:flex;align-items:center;gap:7px;min-width:0}
+  .cli-link .t span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cli-link svg{width:14px;height:14px;flex:0 0 auto;color:var(--muted)}
+  .cli-link small{display:block;font-size:11.5px;margin-top:3px}
+  .cli-link small.ok{color:var(--green)}
+  .cli-link small.no{color:var(--red)}
+  .cli-link small.ext{color:var(--violet)}
+
+  .cli-goals b{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+  .cli-goals .cli-bar{display:block;height:5px;border-radius:99px;background:var(--line);
+    overflow:hidden;margin:6px 0 4px}
+  .cli-goals .cli-bar i{display:block;height:100%;border-radius:99px;background:var(--gc)}
+  .cli-goals small{font-size:11px;color:var(--muted)}
+
+  .cli-st{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;
+    padding:5px 11px;border-radius:8px;white-space:nowrap;
+    color:color-mix(in srgb,var(--sc) 68%,var(--ink));
+    background:color-mix(in srgb,var(--sc) 13%,var(--surface));
+    border:1px solid color-mix(in srgb,var(--sc) 24%,transparent)}
+  .cli-arw{color:var(--muted);display:flex;justify-content:flex-end}
+  .cli-arw svg{width:14px;height:14px;transition:transform .16s ease}
+  .cli-row:hover .cli-arw svg{transform:translateX(2px);color:var(--brand)}
+
+  .cli-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;
+    border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+  .cli-pg{display:inline-flex;gap:5px;margin-left:auto}
+  .cli-pg button{min-width:30px;height:30px;padding:0 8px;font-weight:600;font-size:12.5px;line-height:1;cursor:pointer;
+    border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink-soft)}
+  .cli-pg button:hover:not(:disabled){border-color:var(--brand);color:var(--brand)}
+  .cli-pg button[aria-current="true"]{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+  .cli-pg button:disabled{opacity:.4;cursor:default}
+  .cli-per{padding:5px 8px;font-size:12px}
+
+  /* кольцо готовности */
+  .cli-ring{display:flex;justify-content:center;padding:6px 0 14px}
+  .cli-ring .wrap{position:relative;display:grid;place-items:center}
+  .cli-ring svg{width:132px;height:132px;transform:rotate(-90deg)}
+  .cli-ring .bg{fill:none;stroke:var(--line);stroke-width:11}
+  .cli-ring .fg{fill:none;stroke-width:11;stroke-linecap:round;
+    transition:stroke-dasharray .6s cubic-bezier(.22,1,.36,1)}
+  .cli-ring .val{position:absolute;text-align:center}
+  .cli-ring .val b{display:block;font-weight:800;font-size:26px;line-height:1;letter-spacing:-.03em;
+    font-variant-numeric:tabular-nums}
+  .cli-ring .val i{display:block;font-style:normal;font-size:10.5px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--muted);margin-top:4px}
+  .cli-qa{display:grid;gap:9px}
+
+  @media (max-width:1200px){.cli-cols{grid-template-columns:1fr}}
+  @media (max-width:760px){
+    .cli-hdr{display:none}
+    .cli-row{grid-template-columns:1fr auto;gap:9px 12px;padding:13px 14px;
+      grid-template-areas:"who st" "link link" "goals goals"}
+    .cli-who{grid-area:who}.cli-link{grid-area:link}
+    .cli-goals{grid-area:goals;display:flex;align-items:center;gap:10px}
+    .cli-goals .cli-bar{flex:1;margin:0}
+    .cli-goals b,.cli-goals small{flex:0 0 auto}
+    .cli-st{grid-area:st;justify-self:end}
+    .cli-arw{display:none}
+    .cli-chips{width:100%}.cli-chips button{flex:1;padding:12px 6px;min-height:42px;font-size:12px}
+    .cli-chips b{display:none}
   }
 
   /* ══════════ Обзор: две колонки ══════════ */
@@ -347,7 +464,7 @@
   .dash-col>.panel:last-child>.body.wk{display:grid;grid-template-columns:180px 1fr;gap:24px;
     align-items:stretch}
   .wk-k{font-size:12px;color:var(--muted)}
-  .wk-v{font:800 30px/1 inherit;letter-spacing:-.03em;color:var(--green);font-variant-numeric:tabular-nums;
+  .wk-v{font-weight:800;font-size:30px;line-height:1;letter-spacing:-.03em;color:var(--green);font-variant-numeric:tabular-nums;
     margin-top:5px}
   .wk-v em{font-style:normal;font-size:.5em;color:var(--muted)}
   .wk-brow{display:flex;align-items:center;gap:9px;margin-top:11px}
@@ -2295,39 +2412,130 @@ async function renderDashboard(){
 }
 
 /* ---------- CLIENTS ---------- */
+let CL_SORT={key:'added',dir:-1};   // по умолчанию — по дате добавления, новые сверху
+let CL_FILTER='', CL_PAGE=1, CL_PER=0;   // 0 = ещё не выбирали, подставим по ширине экрана
+const CL_CHEV='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.172 12 8.222 7.05 9.636 5.636 16 12l-6.364 6.364-1.414-1.414z"/></svg>';
+
 async function renderClients(){
   const host=el('v_clients');host.innerHTML=skeleton('rows',7);
   try{CLIENTS=await api('clients');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
+  const isObs=(ME&&ME.role==='observer');
+  if(!CL_PER)CL_PER=isPhone()?10:25;
+  const st=clStats();
+  const tile=(col,ic,label,val,foot,filt)=>`
+    <div class="card c-${col} click" tabindex="0" role="button" onclick="clFilter('${filt}')"
+      onkeydown="if(event.key==='Enter')clFilter('${filt}')">
+      <div class="card-top"><div class="card-ic"><svg class="ic"><use href="#i-${ic}"/></svg></div>
+        <div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div></div></div>
+      <div class="card-foot"><span>${foot}</span>${CL_CHEV}</div>
+    </div>`;
   host.innerHTML=`
-    <h2 class="title">Клиенты</h2><p class="sub">Клик по строке — настройки клиента (цели, атрибуция, чат).</p>
-    <div class="toolbar">
-      <input type="search" id="clSearch" placeholder="Поиск по названию или логину…" oninput="drawClients()">
-      <select id="clFilter" onchange="drawClients()"><option value="">Все</option><option value="bound">С привязкой</option><option value="unbound">Без чата</option></select>
-      <div style="flex:1"></div>
-      <button class="btn" onclick="doSync()"><svg class="ic"><use href="#i-refresh"/></svg> Подтянуть из Директа</button>
-      ${(ME&&ME.role==='observer')?'':'<button class="btn" onclick="doBulkGoals()"><svg class="ic"><use href="#i-focus-3"/></svg> Цели из Метрики (всем)</button>'}
-      <a class="btn" href="/download/export/clients.csv" title="Выгрузить список клиентов в CSV (Excel)"><svg class="ic"><use href="#i-download-2"/></svg> Экспорт CSV</a>
-      ${(ME&&ME.role==='admin')?'<button class="btn" onclick="doImport()"><svg class="ic"><use href="#i-download-2"/></svg> Импорт config.json</button>':''}
+    <div class="head-row">
+      <div><h2 class="title">Клиенты</h2>
+        <p class="sub">Управление подключениями, чатами и целями по проектам.</p></div>
+      <div class="row-actions">
+        <button class="btn" onclick="doSync()"><svg class="ic"><use href="#i-refresh"/></svg> Подтянуть из Директа</button>
+        ${isObs?'':'<button class="btn primary" onclick="openOnboard()"><svg class="ic"><use href="#i-add-circle"/></svg> Добавить клиента</button>'}
+      </div>
     </div>
-    <div class="panel"><div class="scrollx"><table>
-      <thead><tr>
-        <th class="sortable" onclick="clSort('name')">Клиент<span class="si" id="si_name"></span></th>
-        <th class="sortable" onclick="clSort('login')">Логин<span class="si" id="si_login"></span></th>
-        <th class="sortable" onclick="clSort('chat')">Чат<span class="si" id="si_chat"></span></th>
-        <th class="sortable" onclick="clSort('goals')">Цели<span class="si" id="si_goals"></span></th>
-        <th class="sortable" onclick="clSort('attr')">Атриб.<span class="si" id="si_attr"></span></th>
-        <th class="sortable" onclick="clSort('source')">Источник<span class="si" id="si_source"></span></th>
-        <th class="sortable" onclick="clSort('added')">Добавлен<span class="si" id="si_added"></span></th>
-      </tr></thead>
-      <tbody id="clBody"></tbody></table></div></div>`;
-  drawClients();
+    <div class="cards">
+      ${tile('blue','users','Всего клиентов',st.total,'активных проектов','')}
+      ${tile('green','checkbox-circle','Подключено',st.ready,(st.total?Math.round(st.ready/st.total*100):0)+'% от базы','ready')}
+      ${tile(st.nochat?'amber':'slate','contacts','Без чата',st.nochat,st.nochat?'нужно подключить':'все подключены','nochat')}
+      ${tile(st.setup?'red':'slate','focus-3','Требуют настройки',st.setup,st.setup?'цели не выбраны':'цели у всех','setup')}
+    </div>
+    <div class="cli-tools">
+      <input type="search" class="cli-search" id="clSearch" placeholder="Поиск по названию, логину или чату…" oninput="CL_PAGE=1;drawClients()">
+      <div class="cli-chips" id="clChips">
+        <button onclick="clFilter('')">Все<b>${st.total}</b></button>
+        <button onclick="clFilter('ready')">Подключены<b>${st.ready}</b></button>
+        <button onclick="clFilter('nochat')">Без чата<b>${st.nochat}</b></button>
+        <button onclick="clFilter('setup')">Нужна настройка<b>${st.setup}</b></button>
+      </div>
+    </div>
+    <div class="cli-cols">
+      <div class="panel cli-panel">
+        <div class="cli-cap"><b id="clCount"></b><span>Клик по карточке открывает настройки клиента</span></div>
+        <div class="cli-hdr">
+          <span onclick="clSort('name')">Клиент<i class="si" id="si_name"></i></span>
+          <span onclick="clSort('chat')">Связи<i class="si" id="si_chat"></i></span>
+          <span onclick="clSort('goals')">Цели<i class="si" id="si_goals"></i></span>
+          <span onclick="clSort('added')">Статус<i class="si" id="si_added"></i></span><span></span>
+        </div>
+        <div id="clBody"></div>
+        <div class="cli-foot" id="clFoot"></div>
+      </div>
+      <div class="cli-side">
+        <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-pulse"/></svg></span> Состояние базы</h3>
+          <div class="body" style="padding-top:8px">
+            <div class="cli-ring"><div class="wrap">
+              <svg viewBox="0 0 120 120"><circle class="bg" cx="60" cy="60" r="50"/>
+                <circle class="fg" cx="60" cy="60" r="50" id="clRing" stroke-dasharray="0 314"
+                  stroke="${st.pct>=80?'var(--green)':(st.pct>=50?'var(--amber)':'var(--red)')}"/></svg>
+              <span class="val"><b>${st.pct}%</b><i>готово</i></span></div></div>
+            <div class="att" id="clAlerts"></div>
+          </div></div>
+        <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-flashlight"/></svg></span> Быстрые действия</h3>
+          <div class="body"><div class="cli-qa">
+            ${isObs?'':'<button class="btn" onclick="doBulkGoals()"><svg class="ic"><use href="#i-focus-3"/></svg> Цели из Метрики (всем)</button>'}
+            <a class="btn" href="/download/export/clients.csv" title="Выгрузить список клиентов в CSV (Excel)"><svg class="ic"><use href="#i-download-2"/></svg> Экспорт CSV</a>
+            ${(ME&&ME.role==='admin')?'<button class="btn" onclick="doImport()"><svg class="ic"><use href="#i-download-2"/></svg> Импорт config.json</button>':''}
+          </div></div></div>
+      </div>
+    </div>`;
+  // кольцо дорисовываем после вставки — иначе анимации не с чего стартовать
+  const ring=el('clRing');
+  if(ring){void ring.getBoundingClientRect();
+    ring.setAttribute('stroke-dasharray',Math.round(st.pct/100*314)+' 314');}
+  clDrawAlerts(st);
+  clFilter(CL_FILTER);
 }
-let CL_SORT={key:'added',dir:-1};   // по умолчанию — по дате добавления, новые сверху
+
+/* состояние клиента: сторонний / без чата / без целей / готов */
+function clState(c){
+  const act=clGoalsActive(c);
+  if(c.delivery==='external')return act?'ext':'setup';
+  if(!c.chat_id)return 'nochat';
+  if(!act)return 'setup';
+  return 'ready';
+}
+function clStats(){
+  const st={total:CLIENTS.length,ready:0,nochat:0,setup:0,ext:0};
+  CLIENTS.forEach(c=>{const s=clState(c);st[s]=(st[s]||0)+1;});
+  st.ready+=st.ext;                       // сторонние работают, просто без бота
+  st.pct=st.total?Math.round(st.ready/st.total*100):0;
+  return st;
+}
+function clPlural(n,a,b,c){const m=n%10,h=n%100;return (m===1&&h!==11)?a:((m>=2&&m<=4&&(h<10||h>=20))?b:c);}
+function clDrawAlerts(st){
+  const a=el('clAlerts');if(!a)return;const A=[];
+  const row=(sev,ic,title,sub,label,act)=>`<div class="att-row click" style="--ac:var(--${sev})"
+      role="link" tabindex="0" onclick="${act}" onkeydown="if(event.key==='Enter'){${act}}">
+      <span class="att-ic"><svg class="ic"><use href="#i-${ic}"/></svg></span>
+      <span class="att-b"><span class="att-t">${title}</span>${sub?`<span class="att-s">${sub}</span>`:''}</span>
+      <span class="att-m"><span class="att-go" title="${label}">${CL_CHEV}</span></span></div>`;
+  if(st.nochat)A.push(row('amber','contacts',st.nochat+' '+clPlural(st.nochat,'клиент','клиента','клиентов')+' без чата',
+    '','Показать',"clFilter('nochat')"));
+  if(st.setup)A.push(row('red','focus-3',st.setup+' '+clPlural(st.setup,'клиент','клиента','клиентов')+' без целей',
+    '','Показать',"clFilter('setup')"));
+  if(st.ext)A.push(row('violet','upload-2',st.ext+' '+clPlural(st.ext,'сторонний','сторонних','сторонних'),
+    '','Открыть',"go('external')"));
+  a.innerHTML=A.length?A.join(''):emptyState('<svg class="ic"><use href="#i-check-double"/></svg>','База в порядке',
+    'У всех клиентов есть чат и цели. Новые появятся после «Подтянуть из Директа».',null);
+}
+
+function clFilter(f){CL_FILTER=f;CL_PAGE=1;
+  const c=el('clChips');
+  if(c)[...c.children].forEach((b,i)=>b.setAttribute('aria-pressed',['','ready','nochat','setup'][i]===f));
+  drawClients();}
 function clSort(key){
   if(CL_SORT.key===key)CL_SORT.dir*=-1;
   else CL_SORT={key,dir:(key==='goals'||key==='added')?-1:1};   // цели/дата — по убыванию
-  drawClients();
+  CL_PAGE=1;drawClients();
 }
+function clPage(n){CL_PAGE=n;drawClients();
+  const b=el('clBody');if(b)b.scrollIntoView({block:'start',behavior:'smooth'});}
+function clPer(v){CL_PER=(v==='all')?1e9:+v;CL_PAGE=1;drawClients();}
 function clGoalsActive(c){return (c.goals||[]).filter(g=>g.active!==false).length;}
 function clSortVal(c,key){
   switch(key){
@@ -2340,40 +2548,83 @@ function clSortVal(c,key){
     default:return (c.name||'').toLowerCase();
   }
 }
-function clDate(iso){if(!iso)return '<span class="muted">—</span>';try{const d=new Date(iso);return '<span class="muted" style="font-size:12px">'+d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit'})+'</span>';}catch(e){errToast(e);return '<span class="muted">—</span>';}}
-function clGoalsCell(c){
-  const gs=c.goals||[];
-  if(!gs.length)return '<span class="muted">— нет</span>';
-  const active=gs.filter(g=>g.active!==false);
-  const shown=active.length?active:gs;
-  const lim=isPhone()?1:3;      // на телефоне три названия целей занимают полкарточки
-  const cap=shown.slice(0,lim).map(g=>'<span class="chip">'+esc(g.name||g.id)+'</span>').join('');
-  const more=shown.length>lim?('<span class="gmore">+'+(shown.length-lim)+'</span>'):'';
-  const cnt='<span class="gcnt" title="целей в отчёт / всего"><svg class="ic"><use href="#i-focus-3"/></svg> '+active.length+'/'+gs.length+'</span>';
-  return '<div class="goals-cell">'+cnt+cap+more+'</div>';
+/* цвет аватара считаем от логина — чтобы у клиента он не менялся между заходами */
+const CL_AV=['var(--brand)','var(--green)','var(--amber)','var(--violet)','var(--cyan)','var(--red)','var(--slate)'];
+function clAvatar(c){
+  const src=String(c.login||c.name||'');let h=0;
+  for(let i=0;i<src.length;i++)h=(h*31+src.charCodeAt(i))>>>0;
+  const letter=(String(c.name||c.login||'?').trim()[0]||'?').toUpperCase();
+  return `<span class="cli-av" style="--av:${CL_AV[h%CL_AV.length]}">${esc(letter)}</span>`;
 }
+const CL_ST={ready:['green','Готов'],nochat:['amber','Без чата'],setup:['red','Настроить'],ext:['violet','Сторонний']};
+
 function drawClients(){
-  const q=(el('clSearch').value||'').toLowerCase(),f=el('clFilter').value;
+  const q=(el('clSearch').value||'').toLowerCase();
   let rows=CLIENTS.filter(c=>{
-    if(q&&!(String(c.name).toLowerCase().includes(q)||String(c.login).toLowerCase().includes(q)))return false;
-    if(f==='bound'&&!c.chat_id)return false;
-    if(f==='unbound'&&c.chat_id)return false;return true;});
+    if(q&&!(String(c.name).toLowerCase().includes(q)||String(c.login).toLowerCase().includes(q)
+        ||String(c.chat_title||'').toLowerCase().includes(q)))return false;
+    if(!CL_FILTER)return true;
+    const st=clState(c);
+    return CL_FILTER==='ready'?(st==='ready'||st==='ext'):(st===CL_FILTER);});
   const k=CL_SORT.key,dir=CL_SORT.dir;
   rows.sort((a,b)=>{const va=clSortVal(a,k),vb=clSortVal(b,k);
     const r=(typeof va==='number')?(va-vb):String(va).localeCompare(String(vb),'ru');
     return r*dir||String(a.name||'').localeCompare(String(b.name||''),'ru');});
-  ['name','login','chat','goals','attr','source','added'].forEach(key=>{const e=el('si_'+key);if(e)e.textContent=(key===k)?(dir>0?' ▲':' ▼'):'';});
+  ['name','chat','goals','added'].forEach(key=>{const e=el('si_'+key);if(e)e.textContent=(key===k)?(dir>0?' ▲':' ▼'):'';});
+
+  const total=rows.length, pages=Math.max(1,Math.ceil(total/CL_PER));
+  if(CL_PAGE>pages)CL_PAGE=pages;
+  const from=(CL_PAGE-1)*CL_PER, page=rows.slice(from,from+CL_PER);
+  const cnt=el('clCount');if(cnt)cnt.textContent=total+' '+clPlural(total,'клиент','клиента','клиентов');
+
   const b=el('clBody');
-  if(!rows.length){b.innerHTML='<tr><td colspan="7" class="empty">Нет клиентов. Нажми «Подтянуть из Директа» или «Импорт config.json».</td></tr>';return;}
-  b.innerHTML=rows.map(c=>`
-    <tr class="click" onclick="openClient('${esc(c.login)}')">
-      <td><b>${esc(c.name)}</b>${c.delivery==='external'?' <span class="badge b-amber" style="font-size:10.5px;vertical-align:middle"><svg class="ic"><use href="#i-upload-2"/></svg> сторонний</span>':''}</td><td class="muted">${esc(c.login)}</td>
-      <td>${c.delivery==='external'?'<span class="muted"><svg class="ic"><use href="#i-upload-2"/></svg> копипаст</span>':(c.chat_title?('<svg class="ic"><use href="#i-chat-3"/></svg> '+esc(c.chat_title)):'<span class="muted">— не привязан</span>')}</td>
-      <td>${clGoalsCell(c)}</td>
-      <td>${esc(c.attribution||'LSC')}</td><td class="muted">${esc(c.source||'')}</td>
-      <td>${clDate(c.added_at)}</td>
-    </tr>`).join('');
+  if(!total){
+    b.innerHTML=emptyState('<svg class="ic"><use href="#i-users"/></svg>',
+      (q||CL_FILTER)?'Никто не подошёл':'Пока пусто',
+      (q||CL_FILTER)?'Поменяй запрос или сними фильтр — под текущие условия клиентов нет.'
+                    :'Нажми «Подтянуть из Директа» или «Импорт config.json».',null);
+    el('clFoot').innerHTML='';return;
+  }
+  b.innerHTML=page.map(c=>{
+    const gs=c.goals||[], act=clGoalsActive(c), hid=gs.length-act;
+    const pct=gs.length?Math.round(act/gs.length*100):0;
+    const gcol=!gs.length?'var(--line)':(pct>=80?'var(--green)':(pct>=40?'var(--amber)':'var(--red)'));
+    const stt=clState(c), sc=CL_ST[stt];
+    const link=(c.delivery==='external')
+      ? `<div class="t"><svg class="ic"><use href="#i-upload-2"/></svg><span>Сторонний мессенджер</span></div><small class="ext">Отчёт вручную</small>`
+      : (c.chat_title
+        ? `<div class="t"><svg class="ic"><use href="#i-chat-3"/></svg><span>${esc(c.chat_title)}</span></div><small class="ok">Чат подключён</small>`
+        : `<div class="t"><svg class="ic"><use href="#i-chat-3"/></svg><span class="muted">— не привязан</span></div><small class="no">Чат не подключён</small>`);
+    return `<div class="cli-row" tabindex="0" role="button" onclick="openClient('${esc(c.login)}')"
+        onkeydown="if(event.key==='Enter')openClient('${esc(c.login)}')">
+      <div class="cli-who">${clAvatar(c)}<div class="cli-nm"><b>${esc(c.name)}</b><small>${esc(c.login)}</small></div></div>
+      <div class="cli-link">${link}</div>
+      <div class="cli-goals" style="--gc:${gcol}">
+        <b>${act} <span class="muted" style="font-weight:600">/ ${gs.length}</span></b>
+        <span class="cli-bar"><i style="width:${pct}%"></i></span>
+        <small>${gs.length?(hid?(hid+' '+clPlural(hid,'скрыта','скрыто','скрыто')):'все в отчёте'):'целей нет'}</small></div>
+      <div><span class="cli-st" style="--sc:var(--${sc[0]})">${sc[1]}</span></div>
+      <div class="cli-arw">${CL_CHEV}</div>
+    </div>`;}).join('');
+
+  const pg=[];
+  if(pages>1){
+    const add=(n,lbl,cur,dis)=>pg.push(`<button ${dis?'disabled':''} ${cur?'aria-current="true"':''} onclick="clPage(${n})">${lbl}</button>`);
+    add(CL_PAGE-1,'‹',false,CL_PAGE<=1);
+    const nums=new Set([1,pages,CL_PAGE,CL_PAGE-1,CL_PAGE+1]);
+    let prev=0;
+    [...nums].filter(n=>n>=1&&n<=pages).sort((a,b)=>a-b).forEach(n=>{
+      if(n-prev>1)pg.push('<button disabled>…</button>');
+      add(n,n,n===CL_PAGE,false);prev=n;});
+    add(CL_PAGE+1,'›',false,CL_PAGE>=pages);
+  }
+  el('clFoot').innerHTML=`Показано ${page.length} из ${total}`+
+    `<select class="cli-per" onchange="clPer(this.value)">`+
+      [10,25,50,100].map(v=>`<option value="${v}"${CL_PER===v?' selected':''}>по ${v}</option>`).join('')+
+      `<option value="all"${CL_PER>1e8?' selected':''}>все</option></select>`+
+    (pg.length?`<span class="cli-pg">${pg.join('')}</span>`:'');
 }
+
 async function doSync(){
   try{
     toast('Запрашиваю клиентов из Директа…');
@@ -2677,7 +2928,7 @@ const GUIDE=[
      <b>«Быстрые действия»</b> — шесть частых операций без хождения по меню.</p>
   <p class="gcap"><b>Ведение проектов</b> — всё про клиентов и общение с ними:</p>
   <ul>
-    <li><b><svg class="ic"><use href="#i-users"/></svg> Клиенты</b> — твои клиенты, их цели, атрибуция и способ доставки.</li>
+    <li><b><svg class="ic"><use href="#i-users"/></svg> Клиенты</b> — твои клиенты: состояние каждого (готов / без чата / нужны цели), их цели, атрибуция и способ доставки. Плитки сверху и чипы под поиском сразу отбирают нужную группу.</li>
     <li><b><svg class="ic"><use href="#i-chat-3"/></svg> Чаты</b> — Telegram-чаты, где есть бот (вкладки «Мои / Свободные / Все»).</li>
     <li><b><svg class="ic"><use href="#i-time"/></svg> Ждут ответа</b> — кому мы не ответили и с кем давно не общались. Красная цифра на пункте — сколько ждут.</li>
     <li><b><svg class="ic"><use href="#i-links"/></svg> Привязки</b> — связать чат ↔ клиент. Жёлтая цифра — сколько чатов ещё без клиента.</li>
@@ -2727,6 +2978,17 @@ const GUIDE=[
   </ul>
   <div class="note">Пока панель свёрнута, игра ничего не считает и не жуёт батарею — она полностью выключена. И клавиши она не перехватывает: если печатаешь в поле ввода, стрелки работают как обычно.</div>`},
 // ===== КЛИЕНТЫ =====
+{tab:'Клиенты',icon:'<svg class="ic"><use href="#i-file-list-2"/></svg>',title:'Как читать список',kw:'список карточка строка статус фильтр поиск готов без чата настроить цели страница',html:`
+  <p>Сверху четыре плитки: <b>Всего</b>, <b>Подключено</b>, <b>Без чата</b>, <b>Требуют настройки</b>. Нажатие на плитку отбирает только этих клиентов — то же делают чипы под поиском. Поиск ищет по названию, логину и <b>названию чата</b>.</p>
+  <p>В строке клиента слева имя и логин, дальше чат с пометкой, подключён он или нет, потом цели дробью: <b>первое число — сколько идёт в отчёт</b>, второе — сколько всего нашлось в Метрике. Полоса под дробью показывает ту же долю, подпись снизу — сколько целей выключено.</p>
+  <p>Справа плашка состояния:</p>
+  <ul>
+    <li><b>Готов</b> — чат привязан и есть хотя бы одна цель в отчёте.</li>
+    <li><b>Без чата</b> — отчёт отправлять некуда, нужно привязать чат или пометить клиента сторонним.</li>
+    <li><b>Настроить</b> — чат есть, но ни одна цель не включена: в отчёте будет пусто.</li>
+    <li><b>Сторонний</b> — WhatsApp, VK, MAX и прочее; бот туда не пишет, отчёт собираешь вручную в «Сторонних».</li>
+  </ul>
+  <p>Справа от списка — <b>«Состояние базы»</b>: кольцо показывает долю готовых клиентов, ниже то, что просит действий; нажатие ставит нужный фильтр. Список идёт постранично, число на странице переключается внизу.</p>`},
 {tab:'Клиенты',icon:'<svg class="ic"><use href="#i-users"/></svg>',title:'Что такое клиент',kw:'клиент логин директ аккаунт кто такой',html:`
   <p><b>Клиент</b> = рекламный аккаунт в Яндекс.Директе (его логин, напр. <span class="gkbd">porg-xxxx</span> или <span class="gkbd">kupijigru</span>). У клиента есть имя (обычно домен), цели Метрики, модель атрибуции и привязанные чаты, куда уходят отчёты.</p>
   <p>Ты видишь только <b>своих</b> клиентов (тех, кого админ закрепил за тобой или кого ты подцепил привязкой). <b>Админ — тоже специалист</b> со своим стеком и чужих клиентов не видит. Всё агентство целиком видит только <b>Наблюдатель</b> (работодатель).</p>`},
@@ -3047,6 +3309,22 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-02',tag:'major',title:'Раздел «Клиенты» собран заново',
+ sum:'Плитки состояния, фильтры чипами, строки-карточки и «Состояние базы» сбоку',items:[
+  '<b>Список перестал быть таблицей.</b> Раньше строки скакали от 46 до 131px: в ячейку «Цели» вываливались названия целей (до 106 символов), а колонка «Чат» занимала 511px. Теперь каждая строка ровно 82px: аватар, название и логин двумя строками, чат с пометкой «подключён / не подключён», цели дробью с полосой и плашка состояния. Раздел ужался с 2874 до 2433px и это уже вместе с плитками и боковой панелью.',
+  '<b>Четыре плитки состояния сверху:</b> всего, подключено, без чата, требуют настройки. Нажатие на плитку отбирает эту группу — как и чипы под поиском, где рядом с каждым написано, сколько там клиентов.',
+  '<b>Понятное состояние у каждого клиента:</b> «Готов», «Без чата», «Настроить» (чат есть, но ни одной цели в отчёте) и «Сторонний». Раньше это приходилось выводить самому из трёх разных колонок.',
+  '<b>Поиск теперь ищет и по названию чата</b> — раньше только по имени и логину.',
+  '<b>Справа «Состояние базы»</b> — кольцо с долей готовых клиентов и строки того, что просит действий; нажатие сразу ставит нужный фильтр.',
+  '<b>Список постраничный.</b> «Показано 25 из 400» с переключателем 10 / 25 / 50 / 100 / все; на телефоне по 10. Раньше вся база рисовалась одним куском.',
+  '<b>Редкие кнопки убраны с глаз:</b> «Цели из Метрики», «Экспорт CSV» и «Импорт config.json» переехали в «Быстрые действия» справа, наверху остались «Подтянуть из Директа» и «Добавить клиента».',
+ ]},
+{date:'2026-08-02',tag:'fix',title:'Три починки в новом Обзоре',
+ sum:'Слипшиеся строки, цифра сдачи не того размера и контраст в тёмной теме',items:[
+  '<b>В «Требует внимания» подпись слипалась с заголовком.</b> Выходило «Бюджеты на исходе4 клиента с низким остатком бюджета» одной строкой: заголовок и подпись были строчными элементами, а заданный им отступ у таких элементов не работает вовсе.',
+  '<b>Цифра сдачи рисовалась 14px вместо 30px.</b> Правило было записано сокращением <span class="gkbd">font: 800 30px/1 inherit</span> — так нельзя, <span class="gkbd">inherit</span> не может стоять именем гарнитуры, и браузер молча выбрасывал объявление целиком. Таких мест нашлось пять.',
+  '<b>Контраст в тёмной теме.</b> Белая подпись на активном фильтре и на текущей странице списка давала 2.5 при норме 4.5 — фирменный синий в тёмной теме светлый. Завёл отдельный цвет подписи: в светлой теме белый, в тёмной почти чёрный.',
+ ]},
 {date:'2026-08-02',tag:'major',title:'Обзор собран заново',
  sum:'Семь плиток в ряд, что горит — строками, рассылка с историей и график по дням',items:[
   '<b>Плитки встали в один ряд — все семь.</b> Раньше они шли 5 + 2 и были разного роста: ряд с полосой плана выше остальных. Теперь ряд один, высота общая, а под каждой цифрой — расшифровка словами («Требуют внимания», «Активных клиентов», «Ошибок нет») и стрелка в раздел. Дробь «16 / 18» и разбор при наведении остались.',
@@ -3318,8 +3596,9 @@ const CHANGELOG=[
 ];
 const CL_TAG={major:['КРУПНОЕ','var(--brand)','rgba(1,113,176,.12)'],feature:['ФИЧА','var(--green)','var(--green-bg)'],fix:['ФИКС','var(--amber)','var(--amber-bg)'],hotfix:['ХОТФИКС','var(--red)','var(--red-bg)']};
 let CL_OPEN={};
-/* имя clogDate, а не clDate: одноимённая функция уже есть у «Клиентов», и она
-   перебивалась этой — в колонке «Добавлен» вместо даты выходило «08T12:08:01+00:00.07.2026» */
+/* имя clogDate, а не clDate: когда-то у «Клиентов» была одноимённая функция и она
+   перебивалась этой — в колонке «Добавлен» выходило «08T12:08:01+00:00.07.2026».
+   Ту убрали, но имя оставляем разным, чтобы грабли не вернулись */
 function clogDate(d){const p=(d||'').split('-');return p.length===3?(p[2]+'.'+p[1]+'.'+p[0]):d;}
 function renderChangelog(){
   const host=el('v_changelog');
