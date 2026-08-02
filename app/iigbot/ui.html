@@ -156,7 +156,7 @@
      оставалась одинокая. При 200 сетка сама даёт 5+2, подписи умещаются
      в строку (плитка 84px вместо 100), а пустого места справа вдвое меньше,
      чем если задать ровно четыре колонки — там плитка раздувается до 303. */
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));grid-auto-rows:1fr;gap:14px;margin-bottom:20px}
   /* на узком десктопе сетка сама даёт три колонки, и семь плиток ложатся
      3+3+1 — внизу опять одинокая. Здесь фиксируем четыре: 4+3. */
   @media (max-width:1240px) and (min-width:901px){
@@ -205,9 +205,10 @@
   .card{--cc:var(--brand);--cc-bg:var(--slate-bg);
     background:var(--surface);
     background:linear-gradient(180deg,color-mix(in srgb,var(--cc) 5%,var(--surface)) 0%,var(--surface) 52%);
-    border:1px solid var(--line);border-radius:var(--radius);padding:16px;
-    box-shadow:var(--shadow-sm);display:flex;align-items:center;gap:13px;
+    border:1px solid var(--line);border-radius:var(--radius);padding:14px 15px;
+    box-shadow:var(--shadow-sm);display:flex;flex-direction:column;
     transition:transform .16s ease,box-shadow .16s ease;position:relative;overflow:hidden}
+  .card-top{display:flex;align-items:center;gap:12px}
   .card::before{content:"";position:absolute;left:16px;right:16px;top:0;height:2px;border-radius:0 0 2px 2px;
     background:linear-gradient(90deg,transparent,var(--cc),transparent);opacity:.6}
   .card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
@@ -236,6 +237,174 @@
 
   /* Remix Fill: залитые значки, цвет наследуют у строки, размер — от кегля */
   svg.ic{width:1.2em;height:1.2em;flex:0 0 auto;vertical-align:-.2em;fill:currentColor}
+
+  /* ══════════ Обзор: плитка с нижней строкой-действием ══════════ */
+  /* Обзор: семь плиток одним рядом. Отдельный класс — .cards живёт ещё и в «Контроле» */
+  .cards-7{grid-template-columns:repeat(7,1fr)}
+  @media (max-width:1460px){.cards-7{grid-template-columns:repeat(4,1fr)}}
+  @media (max-width:1000px){.cards-7{grid-template-columns:repeat(3,1fr)}}
+  @media (max-width:680px){.cards-7{grid-template-columns:repeat(2,1fr)}}
+  .cards-7{gap:11px}
+  .cards-7 .card{padding:14px 10px}
+  .cards-7 .card-top{gap:8px}
+  .cards-7 .card-ic{width:34px;height:34px;border-radius:9px;font-size:16px}
+  .cards-7 .card-v{font-size:25px}
+  /* на широком экране подпись ложится в строку, на узком переносится на вторую;
+     ряд всё равно ровный — grid-auto-rows:1fr равняет плитки по самой высокой */
+  .cards-7 .card-k{font-size:11.5px}
+  .cards-7 .card-foot{font-size:11px}
+  .card-foot{margin-top:auto;padding-top:9px;border-top:1px solid var(--line-soft);
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    font-size:11.5px;color:var(--muted);line-height:1.3}
+  .card:hover .card-foot{color:var(--cc)}
+  .card-foot svg{width:12px;height:12px;flex:0 0 auto;transition:transform .16s ease}
+  .card:hover .card-foot svg{transform:translateX(2px)}
+  /* полоса выполнения у плитки сдачи */
+  .card-bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:10px}
+  .card-bar i{display:block;height:100%;border-radius:99px;background:var(--cc);
+    transition:width .5s cubic-bezier(.22,1,.36,1)}
+
+  /* ══════════ Обзор: «Требует внимания» строками ══════════ */
+  .dnote{font-size:12px;color:var(--muted);line-height:1.5}
+  .att{display:flex;flex-direction:column;gap:10px}
+  .att-row{--ac:var(--slate);display:flex;align-items:center;gap:13px;padding:12px 15px;
+    border:1px solid color-mix(in srgb,var(--ac) 20%,var(--line));border-left:3px solid var(--ac);
+    border-radius:11px;
+    background:linear-gradient(96deg,color-mix(in srgb,var(--ac) 9%,var(--surface)) 0%,var(--surface) 78%)}
+  .att-row.ok{--ac:var(--green)}
+  .att-ic{width:36px;height:36px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
+    color:var(--ac);background:color-mix(in srgb,var(--ac) 15%,var(--surface));
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ac) 28%,transparent)}
+  .att-ic svg{width:17px;height:17px}
+  .att-b{flex:1;min-width:0}
+  .att-t{font-size:13.5px;font-weight:650;line-height:1.3}
+  .att-s{font-size:12px;color:var(--muted);margin-top:2px;line-height:1.35}
+  .att-tag{flex:0 0 auto;font-size:11.5px;font-weight:700;padding:5px 11px;border-radius:8px;
+    color:color-mix(in srgb,var(--ac) 68%,var(--ink));background:color-mix(in srgb,var(--ac) 13%,var(--surface));
+    border:1px solid color-mix(in srgb,var(--ac) 24%,transparent)}
+  /* ссылка действия нейтральная — цветом в строке командует плашка срочности */
+  .att-row.click{cursor:pointer;transition:border-color .14s,box-shadow .14s}
+  .att-row.click:hover{border-color:color-mix(in srgb,var(--ac) 42%,var(--line));box-shadow:var(--shadow-sm)}
+  .att-row.click:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+  /* сама подпись не ловит клики — нажимается вся строка */
+  .att-go{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;
+    color:var(--muted);pointer-events:none;white-space:nowrap;transition:color .14s}
+  .att-go svg{width:12px;height:12px;transition:transform .16s ease}
+  .att-row.click:hover .att-go{color:var(--ac)}
+  .att-row.click:hover .att-go svg{transform:translateX(2px)}
+  .h3-tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;
+    padding:4px 10px;border-radius:99px;color:color-mix(in srgb,var(--ac) 68%,var(--ink));
+    background:color-mix(in srgb,var(--ac) 13%,var(--surface));
+    border:1px solid color-mix(in srgb,var(--ac) 26%,transparent)}
+  .h3-tag svg{width:12px;height:12px}
+  .att-m{flex:0 0 auto;display:flex;align-items:center;gap:12px}
+  /* на телефоне плашка и ссылка не влезают в строку — переносим их под текст */
+  @media (max-width:600px){
+    .att-row{display:grid;grid-template-columns:auto 1fr;grid-template-areas:"ic b" "m m";
+      gap:10px 11px;align-items:center;padding:12px 13px}
+    .att-ic{grid-area:ic;width:34px;height:34px}
+    .att-b{grid-area:b}
+    .att-m{grid-area:m;justify-content:space-between;width:100%}
+  }
+
+  /* ══════════ Обзор: две колонки ══════════ */
+  /* панели живут своей высотой; недобор в короткой колонке отдаём последней
+     панели — она растягивает содержимое, а не оставляет белую дыру внутри */
+  .dash-cols{display:grid;grid-template-columns:1.17fr 1fr;gap:16px;margin-top:16px}
+  .dash-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .dash-col>.panel:last-child{flex:1;display:flex;flex-direction:column}
+  .dash-col>.panel:last-child>.body{flex:1;display:flex;flex-direction:column}
+  @media (max-width:900px){.dash-cols{grid-template-columns:1fr}}
+
+  /* ══════════ Обзор: рассылка ══════════ */
+  .ok-note{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:10px;margin-top:12px;
+    border:1px solid color-mix(in srgb,var(--green) 22%,transparent);
+    background:linear-gradient(96deg,color-mix(in srgb,var(--green) 10%,var(--surface)),var(--surface) 70%)}
+  .ok-note svg{width:19px;height:19px;color:var(--green);flex:0 0 auto}
+  .ok-note b{display:block;font-size:13px;font-weight:700}
+  .ok-note span{font-size:12px;color:var(--muted)}
+  .runs{margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft)}
+  .runs-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px}
+  .runs-h b{font-size:12.5px;font-weight:700}
+  .runs-h a{font-size:12px}
+  .run{display:flex;align-items:center;gap:11px;padding:6px 0;font-size:12.5px}
+  .run > svg{width:16px;height:16px;flex:0 0 auto}
+  .run .rt{color:var(--muted);min-width:78px}
+  .run .rn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .run .rc{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .run .rb{font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;
+    color:color-mix(in srgb,var(--green) 68%,var(--ink));background:color-mix(in srgb,var(--green) 13%,var(--surface));
+    border:1px solid color-mix(in srgb,var(--green) 24%,transparent)}
+  .run .rb.gray{color:var(--muted);background:var(--surface-2);border-color:var(--line)}
+  .run .rb.bad{color:color-mix(in srgb,var(--red) 68%,var(--ink));background:color-mix(in srgb,var(--red) 12%,var(--surface));
+    border-color:color-mix(in srgb,var(--red) 26%,transparent)}
+  @media (max-width:600px){.run .rc{display:none}.run{gap:9px}.run .rt{min-width:64px}}
+
+  /* ══════════ Обзор: активность за неделю ══════════ */
+  /* .body задаёт display:flex и стоит в файле ниже — поэтому селектор двойной,
+     а для последней панели колонки нужен ещё и более сильный вариант */
+  .body.wk,
+  .dash-col>.panel:last-child>.body.wk{display:grid;grid-template-columns:180px 1fr;gap:24px;
+    align-items:stretch}
+  .wk-k{font-size:12px;color:var(--muted)}
+  .wk-v{font:800 30px/1 inherit;letter-spacing:-.03em;color:var(--green);font-variant-numeric:tabular-nums;
+    margin-top:5px}
+  .wk-v em{font-style:normal;font-size:.5em;color:var(--muted)}
+  .wk-brow{display:flex;align-items:center;gap:9px;margin-top:11px}
+  .wk-bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden;flex:1}
+  .wk-bar i{display:block;height:100%;background:var(--green);border-radius:99px}
+  .wk-pc{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .wk-cap{font-size:12px;color:var(--muted);margin-top:14px}
+
+  /* высота поля задаётся колонкой, столбики считаются в процентах — график
+     растягивается вместе с панелью и не оставляет пустоты снизу */
+  .wk-right{display:flex;flex-direction:column;min-width:0}
+  .wk-plot{display:flex;gap:9px;flex:1;min-height:150px}
+  .wk-ax{position:relative;width:20px;flex:0 0 auto}
+  .wk-ax span{position:absolute;right:0;transform:translateY(50%);font-size:10.5px;color:var(--muted);
+    font-variant-numeric:tabular-nums;line-height:1}
+  .wk-area{position:relative;flex:1;min-width:0}
+  .wk-area u{position:absolute;left:0;right:0;height:0;border-top:1px solid var(--line-soft)}
+  .wk-plan{position:absolute;left:0;right:0;height:0;
+    border-top:1px dashed color-mix(in srgb,var(--brand) 55%,transparent)}
+  .wk-plan em{position:absolute;right:0;bottom:3px;font-style:normal;font-size:10.5px;font-weight:600;
+    color:var(--brand);background:var(--surface);padding:0 3px;border-radius:3px}
+  .wk-chart{position:absolute;inset:0;display:grid;grid-template-columns:repeat(7,1fr);gap:9px;
+    align-items:end}
+  .wk-col{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%}
+  .wk-col b{font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink-soft);line-height:1}
+  .wk-col i{display:block;width:100%;max-width:40px;border-radius:5px 5px 2px 2px;
+    background:linear-gradient(180deg,color-mix(in srgb,var(--green) 74%,#fff),var(--green));
+    transform-origin:bottom;animation:wkGrow .5s cubic-bezier(.22,1,.36,1) both}
+  .wk-col.none i{background:var(--line);animation:none}
+  .wk-col.none b{color:var(--muted)}
+  .wk-days{display:grid;grid-template-columns:repeat(7,1fr);gap:9px;margin-top:7px;padding-left:29px}
+  .wk-days span{font-size:11px;color:var(--muted);text-align:center}
+  .wk-days span.today{color:var(--amber);font-weight:700}
+  @keyframes wkGrow{from{transform:scaleY(.05);opacity:.4}to{transform:none;opacity:1}}
+  @media (prefers-reduced-motion:reduce){.wk-col i{animation:none}}
+  .wk-chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;
+    color:var(--ink-soft);padding:5px 11px;border-radius:99px;border:1px solid var(--line);
+    background:var(--surface-2);white-space:nowrap}
+  @media (max-width:900px){
+    .body.wk,.dash-col>.panel:last-child>.body.wk{grid-template-columns:1fr;gap:16px}
+    .wk-chip{display:none}            /* даты не влезают в заголовок и ломают его на две строки */
+  }
+
+  /* ══════════ Обзор: быстрые действия ══════════ */
+  .qa{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;
+    flex:1;grid-auto-rows:minmax(56px,1fr)}
+  .qa-b{display:flex;align-items:center;gap:10px;padding:12px 13px;border-radius:11px;cursor:pointer;
+    border:1px solid var(--line);background:var(--surface);box-shadow:0 1px 1px rgba(16,24,40,.04);
+    font-size:12.5px;font-weight:600;color:var(--ink);text-align:left;font-family:inherit;
+    transition:transform .14s ease,box-shadow .14s ease,border-color .14s}
+  .qa-b:hover{transform:translateY(-1px);box-shadow:var(--shadow-sm);border-color:color-mix(in srgb,var(--qc,var(--brand)) 34%,var(--line))}
+  .qa-ic{width:32px;height:32px;border-radius:9px;flex:0 0 auto;display:grid;place-items:center;
+    color:var(--qc,var(--brand));
+    background:linear-gradient(180deg,color-mix(in srgb,var(--qc,var(--brand)) 17%,var(--surface)),
+                                      color-mix(in srgb,var(--qc,var(--brand)) 8%,var(--surface)));
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--qc,var(--brand)) 24%,transparent)}
+  .qa-ic svg{width:16px;height:16px}
 
   /* ---------- panels ---------- */
   .grid2{display:grid;grid-template-columns:1.45fr 1fr;gap:16px}
@@ -334,7 +503,6 @@
   .conf.hi{color:var(--green)}.conf.mid{color:var(--amber)}.conf.lo{color:var(--muted)}
   .src{font-weight:650}.src small{display:block;color:var(--muted);font-weight:400;margin-top:2px}
   .card.click{cursor:pointer}
-  .dash-health{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
   /* changelog / патчноуты */
   .cl-list{display:flex;flex-direction:column;gap:10px}
   .cl-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-sm);overflow:hidden}
@@ -907,7 +1075,6 @@
     .row-actions{gap:8px}
     .row-actions .btn{flex:1 1 40%;justify-content:center;min-height:42px}
     .row-actions .btn.primary{flex:1 1 100%}
-    .dash-health{font-size:11.5px;line-height:1.55;margin-top:12px}
     /* плавающая кнопка игры перекрывала текст; на телефоне игра живёт в «Ещё» */
     .gm-fab{display:none!important}
   }
@@ -1872,12 +2039,22 @@ function statCard(color,ic,label,val){
 /* Плитка сводки. pop — разбор показателя: он всплывает под плиткой при
    наведении (см. cardPop), поэтому в самой плитке остаются только подпись
    и число, и ряд не разъезжает. Вся плитка ведёт в свой раздел. */
-function statCardLink(color,ic,label,val,dest,pop){
+const CHEV='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.172 12 8.222 7.05 9.636 5.636 16 12l-6.364 6.364-1.414-1.414z"/></svg>';
+/* Плитка сводки: сверху значок, подпись и число, снизу — строка-действие
+   («Требуют внимания ›») или полоса выполнения. pop — разбор, всплывающий
+   при наведении, поэтому подробности не занимают место в самой плитке. */
+function statCardLink(color,ic,label,val,dest,pop,foot,bar){
   const go = '<span class="card-go"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.172 11 10.808 5.636 12.222 4.222 20 12l-7.778 7.778-1.414-1.414L16.172 13H4v-2z"/></svg></span>';
+  const bottom = bar
+    ? `<div class="card-bar"><i style="width:${Math.max(0,Math.min(100,bar.pct))}%"></i></div>
+       <div class="card-foot"><span>${bar.text}</span></div>`
+    : (foot?`<div class="card-foot"><span>${foot}</span>${CHEV}</div>`:'');
   return `<div class="card c-${color} click" tabindex="0" role="link"
     onclick="go('${dest}')" onkeydown="if(event.key==='Enter')go('${dest}')"
-    ${pop?('data-pop="'+esc(JSON.stringify(pop))+'"'):''}>${go}<div class="card-ic">${ic}</div>
-    <div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div></div></div>`;
+    ${pop?('data-pop="'+esc(JSON.stringify(pop))+'"'):''}>${go}
+    <div class="card-top"><div class="card-ic">${ic}</div>
+      <div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div></div></div>
+    ${bottom}</div>`;
 }
 /* ---------- всплывающая справка по плитке ----------
    Не браузерный title: он появляется через секунду, выглядит системно и не
@@ -1939,7 +2116,7 @@ async function renderDashboard(){
   const plural=(n,a,b,c)=>{const m=n%10,h=n%100;return n+' '+(m===1&&h!==11?a:(m>=2&&m<=4&&(h<10||h>=20)?b:c));};
   const cards=[
     // сдача недели: дробь «16 / 18» вместо процента — она объясняет себя сама
-    statCardLink(covCol,I('report'),(isObs?'Покрытие агентства':'Твоя сдача недели'),
+    statCardLink(covCol,I('report'),(isObs?'Покрытие агентства':'Сдача недели'),
       (wk.obligations==null?'—':(wk.sent+'<span class="card-of">&thinsp;/&thinsp;'+wk.obligations+'</span>')),
       (isObs?'supervision':'reports'),
       {title:(isObs?'Покрытие агентства':'Сдача недели'),ic:I('report'),rows:[
@@ -1948,14 +2125,16 @@ async function renderDashboard(){
         ['Закрыто уважительной',(wk.excused||0)],
         ['Осталось сдать',(wk.debt||0)],
         ['Покрытие',(cov==null?'—':cov+'%')]],
-       note:'Покрытие считает выполненные обязательства: отправленные отчёты плюс клиенты без открута и долги, закрытые причиной.'}),
+       note:'Покрытие считает выполненные обязательства: отправленные отчёты плюс клиенты без открута и долги, закрытые причиной.'},
+      null,{pct:(cov==null?0:cov),text:(cov==null?'Нет обязательств':(cov+'% от плана'))}),
     statCardLink((bud.critical?'red':'green'),I('alert'),'Бюджеты на исходе',(bud.critical||0),'budgets',
       {title:'Деньги клиентов',ic:I('alert'),rows:[
         ['Критично (меньше 3 дней)',(bud.critical||0)],
         ['Под наблюдением',(bud.warning||0)]
        ].concat((bud.top||[]).slice(0,3).map(t=>[esc(t.name||t.login),
           (t.days_left==null?'—':(Math.round(t.days_left*10)/10+' дн'))])),
-       note:(bud.updated?('Обновлено '+fmtWhen(bud.updated)+'. '):'')+'Клик открывает «Бюджеты».'}),
+       note:(bud.updated?('Обновлено '+fmtWhen(bud.updated)+'. '):'')+'Клик открывает «Бюджеты».'},
+      (bud.critical?'Требуют внимания':'Всё под контролем')),
     statCardLink((dlg.overdue?'red':(dlg.waiting?'amber':'slate')),I('time'),'Ждут ответа',(dlg.waiting||0),'dialogs',
       {title:'Клиенты ждут ответа',ic:I('time'),rows:[
         ['Всего ждут',(dlg.waiting||0)],
@@ -1963,62 +2142,156 @@ async function renderDashboard(){
         ['Молчат давно',(dlg.silent||0)]
        ].concat((dlg.top||[]).slice(0,3).map(t=>[esc(t.name||'клиент'),
           (t.wait_h==null?'—':(t.wait_h+' ч'))])),
-       note:'Считается по живой переписке: отчёт бота ответом не считается.'}),
+       note:'Считается по живой переписке: отчёт бота ответом не считается.'},
+      (dlg.waiting?(dlg.overdue?('Дольше суток: '+dlg.overdue):'Новых запросов'):'Всем ответили')),
     (!isObs)?statCardLink((d.external_pending?'violet':'slate'),I('outbox'),'Сторонние к сбору',(d.external_pending||0),'external',
       {title:'Сторонний мессенджер',ic:I('outbox'),rows:[
         ['Ждут ручного сбора',(d.external_pending||0)]],
-       note:'Клиенты в WhatsApp, VK или MAX: бот туда не пишет, отчёт собираешь и отправляешь сам.'}):'',
+       note:'Клиенты в WhatsApp, VK или MAX: бот туда не пишет, отчёт собираешь и отправляешь сам.'},
+      'На этой неделе'):'',
     statCardLink('blue',I('users'),(isObs?'Клиентов (все)':'Клиентов'),d.clients,'clients',
       {title:(isObs?'Все клиенты агентства':'Твои клиенты'),ic:I('users'),rows:[
         ['Всего',d.clients],
         ['С привязанным чатом',Math.max(0,d.clients-(d.clients_no_chat||0))],
         ['Без чата',(d.clients_no_chat||0)],
-        ['Чатов у бота',(d.chats||0)]],
-       note:'Клик открывает список клиентов с целями и атрибуцией.'}),
+        ['Чатов у бота',(d.chats||0)],
+        ['Обновлено из Директа',(hl.autosync?fmtWhen(hl.autosync):'ещё не было')]],
+       note:'Клик открывает список клиентов с целями и атрибуцией.'},
+      'Активных клиентов'),
     statCardLink((d.clients_no_chat?'amber':'slate'),I('contacts'),'Без чата',d.clients_no_chat,'clients',
       {title:'Клиенты без чата',ic:I('contacts'),rows:[
         ['Не подключены',(d.clients_no_chat||0)],
         ['Свободных чатов у бота',(d.unbound_chats||0)]],
-       note:'Отчёт таким клиентам отправлять некуда. Добавь бота в их чат или пометь клиента сторонним.'}),
-    statCardLink((d.errors?'red':'slate'),I('pulse'),'Ошибок в истории',d.errors,'reports',
+       note:'Отчёт таким клиентам отправлять некуда. Добавь бота в их чат или пометь клиента сторонним.'},
+      (d.clients_no_chat?'Нужен чат':'Все подключены')),
+    statCardLink((d.errors?'red':'slate'),I('pulse'),'Ошибки в истории',d.errors,'reports',
       {title:'Ошибки отправки',ic:I('pulse'),rows:[
         ['Всего за всё время',(d.errors||0)]],
-       note:'Обычно бот выкинут из чата или чат удалён. Открой «Отчёты» и посмотри историю — оттуда же можно переотправить.'}),
+       note:'Обычно бот выкинут из чата или чат удалён. Открой «Отчёты» и посмотри историю — оттуда же можно переотправить.'},
+      (d.errors?'Требуют проверки':'Ошибок нет')),
   ].filter(Boolean).join('');
 
-  const health=`<div class="dash-health"><svg class="ic"><use href="#i-refresh"/></svg> автосинк: <b>${hl.autosync?fmtWhen(hl.autosync):'ещё не было'}</b> · <svg class="ic"><use href="#i-wallet-3"/></svg> бюджеты: <b>${hl.budgets?fmtWhen(hl.budgets):'ещё не собирали'}</b></div>`;
+  // ══ график по дням недели: ось слева, пунктир плана, столбики в пикселях ══
+  const DN=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+  const days=(d.week_days||[]);
+  const maxDay=Math.max(0,...days.map(x=>x.sent||0));
+  const hi=Math.max(wk.obligations||0,maxDay,1);
+  const topv=hi*1.16;                               // запас сверху, чтобы плашка плана не липла к краю
+  const step=[1,2,5,10,20,25,50,100,200,500].find(c=>hi/c<=5)||Math.ceil(hi/5);
+  const ticks=[];for(let t=0;t<=hi;t+=step)ticks.push(t);
+  const ypc=v=>Math.round(v/topv*1000)/10;   // доля высоты поля, %
+  const todayIso=new Date().toISOString().slice(0,10);
+  const chartHtml=days.map((x,i)=>{
+    const has=x.sent!=null;
+    const hp=has?Math.max(x.sent?2:1.5,ypc(x.sent)):1.5;
+    return `<div class="wk-col${has?'':' none'}"><b>${has?x.sent:'—'}</b><i style="height:${hp}%"></i></div>`;
+  }).join('');
+  const axisHtml=ticks.map(t=>`<span style="bottom:${ypc(t)}%">${t}</span>`).join('');
+  const gridHtml=ticks.map(t=>`<u style="bottom:${ypc(t)}%"></u>`).join('');
+  const planHtml=(wk.obligations||0)>0
+    ? `<div class="wk-plan" style="bottom:${ypc(wk.obligations)}%"><em>План: ${wk.obligations}</em></div>` : '';
+  const daysHtml=days.map((x,i)=>`<span${x.day===todayIso?' class="today"':''}>${DN[i]}</span>`).join('');
+  const weekLabel=days.length?(fmtDay(days[0].day)+' — '+fmtDay(days[6].day)):'';
+
+  // ══ последние рассылки ══
+  const runsHtml=(d.recent||[]).length?`<div class="runs">
+    <div class="runs-h"><b>История рассылок</b><a onclick="go('reports')">Смотреть всё</a></div>
+    ${d.recent.map(r=>{
+      const bad=r.err>0, only=r.skip===r.n&&r.n>0;
+      return `<div class="run">
+        <svg class="ic" style="color:${bad?'var(--red)':(only?'var(--muted)':'var(--green)')}"><use href="#i-${bad?'close-circle':(only?'flask':'checkbox-circle')}"/></svg>
+        <span class="rt">${fmtWhen(r.at)}</span>
+        <span class="rn">${only?'Проба':'Рассылка'}</span>
+        <span class="rc">${plural(r.n,'клиент','клиента','клиентов')}</span>
+        <span class="rb${bad?' bad':(only?' gray':'')}">${bad?'Сбой':(only?'Проба':'Успешно')}</span></div>`;
+    }).join('')}</div>`:'';
+
+  // ══ быстрые действия ══
+  const QA=[
+    ['add-circle','Добавить клиента','var(--brand)',"openOnboard()"],
+    ['links','Сопоставить чаты','var(--violet)',"go('match')"],
+    ['wallet-3','Проверить бюджеты','var(--amber)',"go('budgets')"],
+    ['report','Все отчёты','var(--green)',"go('reports')"],
+    ['download-2','Экспорт данных','var(--cyan)',"location.href='/download/export/clients.csv'"],
+    ['pulse','Журнал событий','var(--slate)',(ME&&ME.role==='admin')?"go('errlog')":"go('reports')"],
+  ];
+  const quickHtml=QA.map(([ic,label,col,act])=>
+    `<button class="qa-b" type="button" style="--qc:${col}" onclick="${act}">
+      <span class="qa-ic"><svg class="ic"><use href="#i-${ic}"/></svg></span>${esc(label)}</button>`).join('');
+
   host.innerHTML=`
     <h2 class="title">Обзор</h2><p class="sub">${isObs?'Кокпит работодателя — по всему агентству.':'Твоя сводка: деньги клиентов, сдача недели, что требует действий.'}</p>
-    <div class="cards">${cards}</div>
-    <div class="grid2">
-      <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-notification-3"/></svg></span> Требует внимания</h3><div class="body" id="dashAlerts"></div></div>
-      <div class="panel hero"><h3><span class="h3-ic">${isObs?'<svg class="ic"><use href="#i-eye"/></svg>':'<svg class="ic"><use href="#i-send-plane"/></svg>'}</span> ${isObs?'Контроль':'Рассылка'}</h3><div class="body">
-        ${isObs?`<p class="muted">Режим наблюдателя — отправка недоступна. Смотри покрытие обязательств и состояния по всему агентству.</p>
-        <div class="row-actions"><button class="btn primary" onclick="go('supervision')"><svg class="ic"><use href="#i-eye"/></svg> Контроль</button><button class="btn" onclick="go('budgets')"><svg class="ic"><use href="#i-wallet-3"/></svg> Бюджеты</button></div>`
-        :`<p class="muted">Сформировать и отправить отчёты в чаты ваших клиентов за прошлую неделю.</p>
-        <div class="row-actions">
-          <button class="btn primary" onclick="runWeekly()"><svg class="ic"><use href="#i-send-plane"/></svg> Запустить рассылку сейчас</button>
-          <button class="btn" onclick="runDry()" title="Собрать отчёты с прогрессом, но клиентам НЕ отправлять — проверка перед боевым запуском"><svg class="ic"><use href="#i-flask"/></svg> Проба (без отправки)</button>
-          <button class="btn" onclick="go('reports')">История</button>
-        </div>`}
-        ${health}
-      </div></div>
+    <div class="cards cards-7">${cards}</div>
+    <div class="dash-cols">
+      <div class="dash-col">
+        <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-notification-3"/></svg></span> Требует внимания
+          <span id="dashAlertTag" style="margin-left:auto"></span></h3>
+          <div class="att" id="dashAlerts"></div></div>
+        <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-bar-chart"/></svg></span> Активность за неделю
+          <span class="wk-chip" style="margin-left:auto" title="Текущая неделя">${esc(weekLabel)}</span></h3>
+          <div class="body wk">
+            <div>
+              <div class="wk-k">Сдача отчётов</div>
+              <div class="wk-v">${wk.sent}<em> / ${wk.obligations}</em></div>
+              <div class="wk-brow"><span class="wk-bar"><i style="width:${cov==null?0:cov}%"></i></span>
+                <span class="wk-pc">${cov==null?'—':(cov+'%')}</span></div>
+              <div class="wk-cap">Динамика по дням</div>
+            </div>
+            <div class="wk-right">
+              <div class="wk-plot">
+                <div class="wk-ax">${axisHtml}</div>
+                <div class="wk-area">${gridHtml}${planHtml}<div class="wk-chart">${chartHtml}</div></div>
+              </div>
+              <div class="wk-days">${daysHtml}</div>
+            </div>
+          </div></div>
+      </div>
+      <div class="dash-col">
+        <div class="panel"><h3><span class="h3-ic">${isObs?'<svg class="ic"><use href="#i-eye"/></svg>':'<svg class="ic"><use href="#i-send-plane"/></svg>'}</span> ${isObs?'Контроль':'Рассылка'}</h3><div class="body">
+          ${isObs?`<p class="muted">Режим наблюдателя — отправка недоступна. Смотри покрытие обязательств и состояния по всему агентству.</p>
+          <div class="row-actions"><button class="btn primary" onclick="go('supervision')"><svg class="ic"><use href="#i-eye"/></svg> Контроль</button><button class="btn" onclick="go('budgets')"><svg class="ic"><use href="#i-wallet-3"/></svg> Бюджеты</button></div>`
+          :`<p class="muted">Сформировать и отправить отчёты в чаты ваших клиентов за прошлую неделю.</p>
+          <div class="row-actions">
+            <button class="btn primary" onclick="runWeekly()"><svg class="ic"><use href="#i-send-plane"/></svg> Запустить рассылку сейчас</button>
+            <button class="btn" onclick="runDry()" title="Собрать отчёты с прогрессом, но клиентам НЕ отправлять — проверка перед боевым запуском"><svg class="ic"><use href="#i-flask"/></svg> Проба (без отправки)</button>
+          </div>
+          ${(wk.debt||0)===0&&(wk.obligations||0)>0?`<div class="ok-note"><svg class="ic"><use href="#i-checkbox-circle"/></svg>
+            <div><b>Готово к отправке</b><span>Долгов за неделю нет: ${wk.sent} отправлено, ${wk.no_spend||0} без открута.</span></div></div>`:''}
+          ${runsHtml}`}
+        </div></div>
+        <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-flashlight"/></svg></span> Быстрые действия</h3>
+          <div class="body"><div class="qa">${quickHtml}</div></div></div>
+      </div>
     </div>`;
-  const a=el('dashAlerts');let h='';
-  if((bud.critical||0)>0){
-    const top=(bud.top||[]).slice(0,3).map(t=>`<div class="mini-2" style="margin-top:2px"><svg class="ic"><use href="#i-error-warning"/></svg> ${esc(t.name)}${t.days_left!=null?(' — ~'+t.days_left+' дн.'):''}${t.balance!=null?(', '+budMoneyShort(t.balance,t.currency)):''}</div>`).join('');
-    h+=`<div class="alert red"><svg class="ic"><use href="#i-wallet"/></svg> <div><b>${bud.critical} клиент(ов): бюджет на исходе</b> <a onclick="go('budgets')">Бюджеты →</a>${top}</div></div>`;
-  }
-  if((dlg.waiting||0)>0){
-    const top=(dlg.top||[]).map(t=>`<div class="mini-2" style="margin-top:2px"><svg class="ic"><use href="#i-time"/></svg> ${esc(t.name||'—')} — ждёт ${t.wait_h>=48?Math.round(t.wait_h/24)+' дн':Math.round(t.wait_h)+' ч'}</div>`).join('');
-    h+=`<div class="alert ${dlg.overdue?'red':'amber'}"><svg class="ic"><use href="#i-time"/></svg> <div><b>${dlg.waiting} клиент(ов) ждут ответа</b>${dlg.overdue?(' · дольше суток: '+dlg.overdue):''} <a onclick="go('dialogs')">Открыть →</a>${top}</div></div>`;
-  }
-  if((wk.debt||0)>0)h+=`<div class="alert amber"><svg class="ic"><use href="#i-report"/></svg> <div><b>${wk.debt} ${isObs?'несданных по агентству':'клиент(ов) без отчёта на этой неделе'}</b>${isObs?(' (покрытие '+cov+'%)'):(' из '+wk.obligations)}. <a onclick="go('${isObs?'supervision':'reports'}')">${isObs?'Контроль':'Отчёты'} →</a></div></div>`;
-  if(!isObs&&(d.external_pending||0)>0)h+=`<div class="alert grey"><svg class="ic"><use href="#i-outbox"/></svg> <div><b>${d.external_pending} сторонн. клиент(ов) ждут сбора</b> отчёта. <a onclick="go('external')">Собрать →</a></div></div>`;
-  if(d.unbound_chats>0)h+=`<div class="alert amber"><svg class="ic"><use href="#i-warn"/></svg> <div><b>${d.unbound_chats} чат(ов) без привязки</b> — бот добавлен, но не знает клиента. <a onclick="go('match')">Сопоставить →</a></div></div>`;
-  if(!isObs&&d.clients_no_chat>0)h+=`<div class="alert grey"><svg class="ic"><use href="#i-contacts"/></svg> <div><b>${d.clients_no_chat} клиент(ов) без чата</b> (не сторонние). <a onclick="openOnboard()">Подключить →</a> или пометь сторонними.</div></div>`;
-  if(d.errors>0)h+=`<div class="alert red"><svg class="ic"><use href="#i-x"/></svg> <div><b>${d.errors}</b> ошибок отправки в истории. <a onclick="go('reports')">Открыть →</a></div></div>`;
-  a.innerHTML=h||'<div class="ok-empty">Всё в порядке <svg class="ic"><use href="#i-checkbox-circle"/></svg></div>';
+  const a=el('dashAlerts');const A=[];
+  // нажимается вся строка: на телефоне ссылка в 19px пальцем не берётся
+  const attRow=(sev,ic,title,sub,label,act)=>`<div class="att-row${sev==='ok'?' ok':''}${act?' click':''}"
+      style="--ac:var(--${sev==='ok'?'green':(sev==='crit'?'red':(sev==='warn'?'amber':'slate'))})"
+      ${act?`role="link" tabindex="0" onclick="${act[1]}" onkeydown="if(event.key==='Enter'){${act[1]}}"`:''}>
+      <span class="att-ic"><svg class="ic"><use href="#i-${ic}"/></svg></span>
+      <span class="att-b"><span class="att-t">${title}</span><span class="att-s">${sub}</span></span>
+      <span class="att-m">${label?`<span class="att-tag">${label}</span>`:''}${act?`<span class="att-go">${act[0]}${CHEV}</span>`:''}</span></div>`;
+  if((bud.critical||0)>0)A.push(attRow('crit','alert','Бюджеты на исходе',
+    plural(bud.critical,'клиент','клиента','клиентов')+' с низким остатком бюджета','Критично',['Смотреть',"go('budgets')"]));
+  if((dlg.waiting||0)>0)A.push(attRow(dlg.overdue?'crit':'warn','time','Клиенты ждут ответа',
+    plural(dlg.waiting,'клиент','клиента','клиентов')+' ждут ответа'+(dlg.overdue?(', дольше суток: '+dlg.overdue):''),
+    dlg.overdue?'Критично':'Важно',['Открыть',"go('dialogs')"]));
+  if((d.unbound_chats||0)>0)A.push(attRow('warn','links','Чаты без привязки',
+    plural(d.unbound_chats,'чат','чата','чатов')+' без привязки к клиентам','Важно',['Сопоставить',"go('match')"]));
+  if(!isObs&&(d.clients_no_chat||0)>0)A.push(attRow('info','contacts','Клиенты без чата',
+    plural(d.clients_no_chat,'клиент','клиента','клиентов')+' без чата (не сторонние)','Инфо',['Подключить',"openOnboard()"]));
+  if(!isObs&&(d.external_pending||0)>0)A.push(attRow('info','outbox','Сторонние к сбору',
+    plural(d.external_pending,'клиент','клиента','клиентов')+' ждут ручного сбора отчёта','Инфо',['Открыть',"go('external')"]));
+  if((d.errors||0)>0)A.push(attRow('crit','close-circle','Ошибки отправки в истории',
+    plural(d.errors,'ошибка','ошибки','ошибок')+' в истории отправки сообщений','Критично',['Открыть',"go('reports')"]));
+  if((wk.debt||0)>0)A.push(attRow('crit','file-list-2','Долги по отчётам',
+    plural(wk.debt,'проект','проекта','проектов')+' не сдано за прошлую неделю','Критично',['Разобрать',"go('reports')"]));
+  a.innerHTML=A.length?A.join(''):emptyState('<svg class="ic"><use href="#i-check-double"/></svg>','Всё спокойно',
+    'Бюджеты в порядке, клиентам отвечено, отчёты сданы. Заходи сюда утром — здесь появится то, что требует действий.',null);
+  const tag=el('dashAlertTag');
+  if(tag){const crit=A.filter(x=>x.includes('var(--red)')).length;
+    tag.innerHTML=crit?`<span class="h3-tag" style="--ac:var(--red)"><svg class="ic"><use href="#i-alert"/></svg>критично</span>`
+      :(A.length?`<span class="h3-tag" style="--ac:var(--amber)"><svg class="ic"><use href="#i-time"/></svg>${A.length}</span>`:'');}
 }
 
 /* ---------- CLIENTS ---------- */
@@ -2394,9 +2667,14 @@ const GUIDE=[
   </ul>`},
 {tab:'Начало',icon:'<svg class="ic"><use href="#i-home-5"/></svg>',title:'Разделы кабинета',kw:'меню разделы навигация интерфейс сайдбар вкладки столпы группы',html:`
   <p>Меню слева разбито на четыре смысловых блока — сверху то, чем пользуешься каждый день.</p>
-  <p><b><svg class="ic"><use href="#i-home-5"/></svg> Обзор</b> — сводка, тревожные плашки и кнопки рассылки. Точка входа.
-     Плитки сводки кликабельные: нажатие открывает нужный раздел, а если задержать на плитке курсор — под ней
-     всплывает разбор с цифрами (какие клиенты горят, кто сколько ждёт, сколько отправлено).</p>
+  <p><b><svg class="ic"><use href="#i-home-5"/></svg> Обзор</b> — точка входа. Сверху ряд из семи плиток
+     (сдача недели, деньги клиентов, кто ждёт ответа, клиенты, чаты, ошибки): нажатие открывает нужный раздел,
+     а если задержать курсор — под плиткой всплывает разбор с цифрами. Ниже четыре панели:
+     <b>«Требует внимания»</b> — строки того, что просит действий, с пометкой срочности; нажимается вся строка
+     и уводит туда, где это чинят. <b>«Рассылка»</b> — кнопки запуска и пробы, отметка готовности и три
+     последних запуска: когда, сколько клиентов, чем кончилось. <b>«Активность за неделю»</b> — сдача отчётов
+     и столбики по дням с пунктиром плана: видно, в какие дни работа шла, а в какие стояла.
+     <b>«Быстрые действия»</b> — шесть частых операций без хождения по меню.</p>
   <p class="gcap"><b>Ведение проектов</b> — всё про клиентов и общение с ними:</p>
   <ul>
     <li><b><svg class="ic"><use href="#i-users"/></svg> Клиенты</b> — твои клиенты, их цели, атрибуция и способ доставки.</li>
@@ -2769,6 +3047,16 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-02',tag:'major',title:'Обзор собран заново',
+ sum:'Семь плиток в ряд, что горит — строками, рассылка с историей и график по дням',items:[
+  '<b>Плитки встали в один ряд — все семь.</b> Раньше они шли 5 + 2 и были разного роста: ряд с полосой плана выше остальных. Теперь ряд один, высота общая, а под каждой цифрой — расшифровка словами («Требуют внимания», «Активных клиентов», «Ошибок нет») и стрелка в раздел. Дробь «16 / 18» и разбор при наведении остались.',
+  '<b>«Требует внимания» переехало со сплошного списка на отдельные карточки.</b> У каждой цветной левый край по срочности, круглый значок, короткое объяснение и переход. Нажимается вся строка целиком, а не подпись «Смотреть» — на телефоне в неё было не попасть пальцем (19px против 107 сейчас).',
+  '<b>В «Рассылке» появилась история запусков.</b> Три последних: когда, проба это была или боевая отправка, сколько клиентов и чем кончилось — «Успешно», «Проба» или «Сбой». Раньше, чтобы понять, ушло ли вчера, приходилось лезть в «Отчёты».',
+  '<b>Новая панель «Активность за неделю».</b> Слева сдача отчётов и процент, справа столбики по дням недели с осью и пунктиром плана. Сегодняшний день подсвечен, будущие дни — прочерком. Видно не только «сколько сдано», но и <i>когда</i> сдавали.',
+  '<b>Новая панель «Быстрые действия»</b> — добавить клиента, сопоставить чаты, проверить бюджеты, все отчёты, экспорт, журнал. Шесть кнопок вместо блужданий по меню.',
+  '<b>Панели больше не растягиваются друг под друга.</b> Обзор разложен на две самостоятельные колонки; недобор высоты в короткой колонке добирает последняя панель — график становится выше, кнопки крупнее. Раньше в «Требует внимания» пустовало до 223px белого поля.',
+  '<b>Мелочи:</b> строка «автосинк / бюджеты» убрана из «Рассылки», время обновления из Директа теперь в подсказке плитки «Клиентов». Плашки «Критично / Инфо / Сбой» стали контрастнее (было 3.6–3.9 при норме 4.5). На телефоне даты недели прячутся из заголовка — они ломали его на две строки.',
+ ]},
 {date:'2026-08-01',tag:'major',title:'Новый визуал кабинета',
  sum:'Тот же кабинет, но выделанный: свет вместо пуха, цвет по делу',items:[
   '<b>Синий перестал заливать экран.</b> Раньше в фирменный #0171B0 были подкрашены фон, поверхности, линии и даже тени — от этого он переставал читаться как цвет агентства. Теперь фон и линии нейтральные, а синий появляется там, куда нужно смотреть: главная кнопка, активный раздел, ссылки.',
@@ -3970,6 +4258,9 @@ function applyUser(){
 /* ---------- КОНТРОЛЬ: наблюдатель/админ ---------- */
 const SUP_ST={ok:{t:'<svg class="ic"><use href="#i-checkbox-circle"/></svg> всё сдал',c:'var(--green)',bg:'var(--green-bg)'},partial:{t:'<svg class="ic"><use href="#i-error-warning"/></svg> частично',c:'var(--amber)',bg:'var(--amber-bg)'},miss:{t:'<svg class="ic"><use href="#i-close-circle"/></svg> не сдал',c:'var(--red)',c2:1,bg:'var(--red-bg)'},none:{t:'— нет клиентов',c:'var(--muted)',bg:'var(--surface-3)'}};
 function covBar(p){if(p==null)return '<span class="muted">—</span>';const col=p>=100?'var(--green)':p>=50?'var(--amber)':'var(--red)';return '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:8px;border-radius:99px;background:var(--surface-3);overflow:hidden;min-width:70px"><div style="height:100%;width:'+p+'%;background:'+col+'"></div></div><b style="font-size:12.5px">'+p+'%</b></div>';}
+/* «27 июля» — короткая дата для подписей графика */
+function fmtDay(iso){try{return new Date(iso+'T00:00:00')
+  .toLocaleDateString('ru-RU',{day:'numeric',month:'long'});}catch(e){return iso||'';}}
 function fmtWhen(iso){
   // «2 часа назад» читается мгновенно; точная дата — в подсказке при наведении
   if(!iso)return 'нет отправок';

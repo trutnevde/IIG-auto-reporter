@@ -264,6 +264,41 @@ class Api:
         # сторонние, по которым на этой неделе ещё не собирали отчёт (нет ни sent, ни skipped)
         ext_pending = sorted(external_logins - sent_this - skip_this)
 
+        # динамика по дням текущей недели — для графика на Обзоре
+        week_days = []
+        for i in range(7):
+            day = mon + _dt.timedelta(days=i)
+            if day > today:
+                week_days.append({"day": day.isoformat(), "sent": None})   # ещё не наступил
+                continue
+            got = self.db.sent_logins_between(_iso(day), _iso(day + _dt.timedelta(days=1)))
+            week_days.append({"day": day.isoformat(), "sent": len(obligations & got)})
+
+        # последние рассылки: группируем строки лога по минуте отправки
+        if owned is None:
+            hrows = self.db.conn.execute(
+                "SELECT sent_at,status FROM send_log ORDER BY id DESC LIMIT 400").fetchall()
+        elif owned:
+            ph = ",".join("?" * len(owned))
+            hrows = self.db.conn.execute(
+                "SELECT sent_at,status FROM send_log WHERE login IN (%s) "
+                "ORDER BY id DESC LIMIT 400" % ph, tuple(owned)).fetchall()
+        else:
+            hrows = []
+        runs, order = {}, []
+        for r in hrows:
+            key = (r["sent_at"] or "")[:16]          # до минуты
+            if not key:
+                continue
+            if key not in runs:
+                runs[key] = {"at": r["sent_at"], "n": 0, "sent": 0, "err": 0, "skip": 0}
+                order.append(key)
+            g = runs[key]; g["n"] += 1
+            if r["status"] == "sent": g["sent"] += 1
+            elif r["status"] == "error": g["err"] += 1
+            elif r["status"] == "skipped": g["skip"] += 1
+        recent = [runs[k] for k in order[:3]]
+
         # бюджеты в моём скоупе
         visible = {c["login"] for c in clients}
         brows = [r for r in self.db.list_budgets() if r["login"] in visible]
@@ -309,6 +344,8 @@ class Api:
             "week": week,
             "dialogs": dialogs,
             "external_pending": len(ext_pending),
+            "week_days": week_days,
+            "recent": recent,
             "budgets": budgets,
             "health": health,
             "alerts": {
