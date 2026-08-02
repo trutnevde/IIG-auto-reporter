@@ -152,15 +152,47 @@
      пробовал ради «широкой» плитки, давала рваные ширины: в первом ряду 200px,
      в последнем 420. Высоту ряда решаем не шириной, а самим пояснением:
      оно ограничено двумя строками, полный текст остаётся в подсказке. */
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px;margin-bottom:8px}
-  /* Расшифровка сдачи недели живёт строкой под плитками, а не внутри одной из
-     них. Внутри она либо ломалась на три строки и раздувала высоту всего ряда,
-     либо требовала широкой колонки — и тогда у коротких плиток пустовало
-     полплитки. Снаружи она никому не мешает и видна целиком. */
-  .cards-note{display:flex;align-items:center;gap:8px;margin:0 0 20px;padding:0 2px;
-    font-size:12.5px;color:var(--muted);line-height:1.45}
-  .cards-note svg{color:var(--muted);opacity:.8}
-  .cards-note b{color:var(--ink-soft);font-weight:650}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px;margin-bottom:20px}
+  /* Дробь «16 / 18» вместо процента: она объясняет себя сама, и плитке не нужна
+     ни третья строка, ни лишняя ширина — весь ряд остаётся ровным. */
+  .card-of{font-size:.52em;font-weight:700;color:var(--muted);letter-spacing:0;margin-left:1px}
+  /* Стрелка в углу — признак, что плитка ведёт в раздел. Появляется под курсором. */
+  .card .card-go{position:absolute;right:11px;top:11px;width:19px;height:19px;border-radius:6px;
+    display:grid;place-items:center;color:var(--cc);background:color-mix(in srgb,var(--cc) 12%,transparent);
+    opacity:0;transform:translate(-3px,3px);transition:opacity .16s ease,transform .16s ease;z-index:2}
+  .card .card-go svg{width:12px;height:12px}
+  .card:hover .card-go,.card:focus-visible .card-go{opacity:1;transform:none}
+
+  /* ---------- всплывающая справка по плитке ---------- */
+  .cpop{position:fixed;z-index:95;min-width:230px;max-width:330px;pointer-events:none;
+    background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    box-shadow:var(--shadow-md);padding:12px 14px;
+    opacity:0;transform:translateY(6px) scale(.985);transform-origin:top center;
+    transition:opacity .16s ease,transform .18s cubic-bezier(.22,1,.36,1)}
+  .cpop.on{opacity:1;transform:none}
+  .cpop::before{content:"";position:absolute;top:-6px;left:var(--ax,24px);width:11px;height:11px;
+    background:var(--surface);border-left:1px solid var(--line);border-top:1px solid var(--line);
+    transform:rotate(45deg);border-radius:2px 0 0 0}
+  .cpop-h{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;
+    padding-bottom:8px;margin-bottom:8px;border-bottom:1px solid var(--line-soft)}
+  .cpop-h svg{width:15px;height:15px;color:var(--cc,var(--brand))}
+  .cpop-r{display:flex;align-items:baseline;justify-content:space-between;gap:14px;
+    font-size:12.5px;padding:3px 0;color:var(--muted)}
+  .cpop-r b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .cpop-r.wide{display:block;color:var(--ink-soft);line-height:1.45}
+  .cpop-x{margin-top:9px;padding-top:8px;border-top:1px solid var(--line-soft);
+    font-size:11.5px;color:var(--muted);line-height:1.45}
+  /* строки въезжают лесенкой — 30мс на строку, движение едва заметное */
+  .cpop.on .cpop-r,.cpop.on .cpop-x{animation:cpopIn .26s cubic-bezier(.22,1,.36,1) both}
+  .cpop.on .cpop-r:nth-child(2){animation-delay:.03s}
+  .cpop.on .cpop-r:nth-child(3){animation-delay:.06s}
+  .cpop.on .cpop-r:nth-child(4){animation-delay:.09s}
+  .cpop.on .cpop-r:nth-child(5){animation-delay:.12s}
+  .cpop.on .cpop-x{animation-delay:.15s}
+  @keyframes cpopIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){
+    .cpop,.cpop.on .cpop-r,.cpop.on .cpop-x{transition:none;animation:none}}
+  @media (max-width:640px){.cpop{display:none}}
 
   .card{--cc:var(--brand);--cc-bg:var(--slate-bg);
     background:var(--surface);
@@ -1829,12 +1861,61 @@ async function loadBadges(){
 function statCard(color,ic,label,val){
   return `<div class="card c-${color}"><div class="card-ic">${ic}</div><div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div></div></div>`;
 }
-function statCardLink(color,ic,label,val,dest,sub,tip){
-  // Пояснение показываем не длиннее двух строк (CSS), а полный текст кладём
-  // в подсказку: третья строка раздувала высоту всего ряда плиток.
-  const subTip = sub ? String(sub).replace(/<[^>]*>/g,'').trim() : '';
-  return `<div class="card c-${color} click" onclick="go('${dest}')"${tip?(' title="'+esc(tip)+'"'):''}><div class="card-ic">${ic}</div><div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div>${sub?('<div class="card-s" title="'+esc(subTip)+'">'+sub+'</div>'):''}</div></div>`;
+/* Плитка сводки. pop — разбор показателя: он всплывает под плиткой при
+   наведении (см. cardPop), поэтому в самой плитке остаются только подпись
+   и число, и ряд не разъезжает. Вся плитка ведёт в свой раздел. */
+function statCardLink(color,ic,label,val,dest,pop){
+  const go = '<span class="card-go"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.172 11 10.808 5.636 12.222 4.222 20 12l-7.778 7.778-1.414-1.414L16.172 13H4v-2z"/></svg></span>';
+  return `<div class="card c-${color} click" tabindex="0" role="link"
+    onclick="go('${dest}')" onkeydown="if(event.key==='Enter')go('${dest}')"
+    ${pop?('data-pop="'+esc(JSON.stringify(pop))+'"'):''}>${go}<div class="card-ic">${ic}</div>
+    <div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div></div></div>`;
 }
+/* ---------- всплывающая справка по плитке ----------
+   Не браузерный title: он появляется через секунду, выглядит системно и не
+   умеет показывать цифры строками. Свой поповер строится из data-pop. */
+let CPOP=null, CPOP_T=null;
+function cardPopEl(){
+  if(!CPOP){CPOP=document.createElement('div');CPOP.className='cpop';document.body.appendChild(CPOP);}
+  return CPOP;
+}
+function cardPopShow(card){
+  let d; try{d=JSON.parse(card.dataset.pop);}catch(e){return;}
+  const el=cardPopEl();
+  const rows=(d.rows||[]).map(r=>Array.isArray(r)
+    ? `<div class="cpop-r"><span>${r[0]}</span><b>${r[1]}</b></div>`
+    : `<div class="cpop-r wide">${r}</div>`).join('');
+  el.innerHTML=`<div class="cpop-h">${d.ic||''}${esc(d.title||'')}</div>${rows}`
+    +(d.note?`<div class="cpop-x">${d.note}</div>`:'');
+  el.style.setProperty('--cc',getComputedStyle(card).getPropertyValue('--cc'));
+  el.classList.remove('on');
+  const r=card.getBoundingClientRect();
+  el.style.left='0px';el.style.top='0px';           // измеряем в естественном размере
+  const w=el.offsetWidth,h=el.offsetHeight;
+  let left=r.left+r.width/2-w/2;
+  left=Math.max(10,Math.min(left,innerWidth-w-10));
+  let top=r.bottom+9;
+  if(top+h>innerHeight-10)top=Math.max(10,r.top-h-9);   // не влезает снизу — показываем сверху
+  el.style.left=left+'px';el.style.top=top+'px';
+  el.style.setProperty('--ax',Math.max(12,Math.min(r.left+r.width/2-left-5,w-22))+'px');
+  void el.offsetWidth;              // форсируем пересчёт, чтобы анимация стартовала
+  el.classList.add('on');
+}
+function cardPopHide(){clearTimeout(CPOP_T);if(CPOP)CPOP.classList.remove('on');}
+document.addEventListener('mouseover',e=>{
+  const c=e.target.closest&&e.target.closest('.card[data-pop]');
+  if(!c||isPhone())return;
+  clearTimeout(CPOP_T);CPOP_T=setTimeout(()=>cardPopShow(c),110);
+});
+document.addEventListener('mouseout',e=>{
+  const c=e.target.closest&&e.target.closest('.card[data-pop]');
+  if(c&&!c.contains(e.relatedTarget))cardPopHide();
+});
+document.addEventListener('focusin',e=>{
+  const c=e.target.closest&&e.target.closest('.card[data-pop]');
+  if(c&&!isPhone())cardPopShow(c); else cardPopHide();
+});
+window.addEventListener('scroll',cardPopHide,{passive:true});
 function budMoneyShort(v,cur){return v==null?'':(Math.round(v).toLocaleString('ru-RU')+' '+(cur==='RUB'?'₽':(cur||'')));}
 async function renderDashboard(){
   // в разметке заглушка помечена class="empty" (по центру, приглушённо) — после
@@ -1846,33 +1927,61 @@ async function renderDashboard(){
   const cov=wk.coverage;
   const covCol=cov==null?'slate':(cov>=100?'green':cov>=50?'amber':'red');
   const dlg=d.dialogs||{waiting:0,overdue:0};
+  const I=n=>'<svg class="ic"><use href="#i-'+n+'"/></svg>';
+  const plural=(n,a,b,c)=>{const m=n%10,h=n%100;return n+' '+(m===1&&h!==11?a:(m>=2&&m<=4&&(h<10||h>=20)?b:c));};
   const cards=[
-    // сдача недели идёт первой: это главный показатель недели, и её плитка
-    // шире остальных — посреди одинаковых она смотрелась случайной
-    statCardLink(covCol,'<svg class="ic"><use href="#i-report"/></svg>',(isObs?'Покрытие агентства':'Твоя сдача недели'),
-      (cov==null?'—':(cov+'%')),(isObs?'supervision':'reports'),
-      '',
-      'Покрытие = выполненные обязательства: отправленные отчёты + клиенты без открута (авто) + долги, закрытые уважительной причиной'),
-    statCardLink((bud.critical?'red':'green'),'<svg class="ic"><use href="#i-alert"/></svg>','Бюджеты на исходе',(bud.critical||0),'budgets'),
-    statCardLink((dlg.overdue?'red':(dlg.waiting?'amber':'slate')),'<svg class="ic"><use href="#i-time"/></svg>','Ждут ответа',(dlg.waiting||0),'dialogs'),
-    (!isObs)?statCardLink((d.external_pending?'violet':'slate'),'<svg class="ic"><use href="#i-outbox"/></svg>','Сторонние к сбору',(d.external_pending||0),'external'):'',
-    statCardLink('blue','<svg class="ic"><use href="#i-users"/></svg>',(isObs?'Клиентов (все)':'Клиентов'),d.clients,'clients'),
-    statCardLink((d.clients_no_chat?'amber':'slate'),'<svg class="ic"><use href="#i-contacts"/></svg>','Без чата',d.clients_no_chat,'clients'),
-    statCardLink((d.errors?'red':'slate'),'<svg class="ic"><use href="#i-pulse"/></svg>','Ошибок в истории',d.errors,'reports'),
+    // сдача недели: дробь «16 / 18» вместо процента — она объясняет себя сама
+    statCardLink(covCol,I('report'),(isObs?'Покрытие агентства':'Твоя сдача недели'),
+      (wk.obligations==null?'—':(wk.sent+'<span class="card-of">&thinsp;/&thinsp;'+wk.obligations+'</span>')),
+      (isObs?'supervision':'reports'),
+      {title:(isObs?'Покрытие агентства':'Сдача недели'),ic:I('report'),rows:[
+        ['Отправлено отчётов',wk.sent+' из '+wk.obligations],
+        ['Нет открута (зачтено)',(wk.no_spend||0)],
+        ['Закрыто уважительной',(wk.excused||0)],
+        ['Осталось сдать',(wk.debt||0)],
+        ['Покрытие',(cov==null?'—':cov+'%')]],
+       note:'Покрытие считает выполненные обязательства: отправленные отчёты плюс клиенты без открута и долги, закрытые причиной.'}),
+    statCardLink((bud.critical?'red':'green'),I('alert'),'Бюджеты на исходе',(bud.critical||0),'budgets',
+      {title:'Деньги клиентов',ic:I('alert'),rows:[
+        ['Критично (меньше 3 дней)',(bud.critical||0)],
+        ['Под наблюдением',(bud.warning||0)]
+       ].concat((bud.top||[]).slice(0,3).map(t=>[esc(t.name||t.login),
+          (t.days_left==null?'—':(Math.round(t.days_left*10)/10+' дн'))])),
+       note:(bud.updated?('Обновлено '+fmtWhen(bud.updated)+'. '):'')+'Клик открывает «Бюджеты».'}),
+    statCardLink((dlg.overdue?'red':(dlg.waiting?'amber':'slate')),I('time'),'Ждут ответа',(dlg.waiting||0),'dialogs',
+      {title:'Клиенты ждут ответа',ic:I('time'),rows:[
+        ['Всего ждут',(dlg.waiting||0)],
+        ['Дольше суток',(dlg.overdue||0)],
+        ['Молчат давно',(dlg.silent||0)]
+       ].concat((dlg.top||[]).slice(0,3).map(t=>[esc(t.name||'клиент'),
+          (t.wait_h==null?'—':(t.wait_h+' ч'))])),
+       note:'Считается по живой переписке: отчёт бота ответом не считается.'}),
+    (!isObs)?statCardLink((d.external_pending?'violet':'slate'),I('outbox'),'Сторонние к сбору',(d.external_pending||0),'external',
+      {title:'Сторонний мессенджер',ic:I('outbox'),rows:[
+        ['Ждут ручного сбора',(d.external_pending||0)]],
+       note:'Клиенты в WhatsApp, VK или MAX: бот туда не пишет, отчёт собираешь и отправляешь сам.'}):'',
+    statCardLink('blue',I('users'),(isObs?'Клиентов (все)':'Клиентов'),d.clients,'clients',
+      {title:(isObs?'Все клиенты агентства':'Твои клиенты'),ic:I('users'),rows:[
+        ['Всего',d.clients],
+        ['С привязанным чатом',Math.max(0,d.clients-(d.clients_no_chat||0))],
+        ['Без чата',(d.clients_no_chat||0)],
+        ['Чатов у бота',(d.chats||0)]],
+       note:'Клик открывает список клиентов с целями и атрибуцией.'}),
+    statCardLink((d.clients_no_chat?'amber':'slate'),I('contacts'),'Без чата',d.clients_no_chat,'clients',
+      {title:'Клиенты без чата',ic:I('contacts'),rows:[
+        ['Не подключены',(d.clients_no_chat||0)],
+        ['Свободных чатов у бота',(d.unbound_chats||0)]],
+       note:'Отчёт таким клиентам отправлять некуда. Добавь бота в их чат или пометь клиента сторонним.'}),
+    statCardLink((d.errors?'red':'slate'),I('pulse'),'Ошибок в истории',d.errors,'reports',
+      {title:'Ошибки отправки',ic:I('pulse'),rows:[
+        ['Всего за всё время',(d.errors||0)]],
+       note:'Обычно бот выкинут из чата или чат удалён. Открой «Отчёты» и посмотри историю — оттуда же можно переотправить.'}),
   ].filter(Boolean).join('');
-  // расшифровка сдачи недели — отдельной строкой под плитками
-  const weekNote = (cov==null?'':`<div class="cards-note">
-    <svg class="ic"><use href="#i-report"/></svg>
-    <span>${isObs?'Покрытие агентства':'Сдача недели'}: отправлено <b>${wk.sent} из ${wk.obligations}</b>`
-    +((wk.no_spend||0)?(` · нет открута <b>${wk.no_spend}</b>`):'')
-    +((wk.excused||0)?(` · закрыто <b>${wk.excused}</b>`):'')
-    +((wk.debt||0)?(` · <b style="color:var(--red)">долг ${wk.debt}</b>`):'')
-    +'</span></div>');
+
   const health=`<div class="dash-health"><svg class="ic"><use href="#i-refresh"/></svg> автосинк: <b>${hl.autosync?fmtWhen(hl.autosync):'ещё не было'}</b> · <svg class="ic"><use href="#i-wallet-3"/></svg> бюджеты: <b>${hl.budgets?fmtWhen(hl.budgets):'ещё не собирали'}</b></div>`;
   host.innerHTML=`
     <h2 class="title">Обзор</h2><p class="sub">${isObs?'Кокпит работодателя — по всему агентству.':'Твоя сводка: деньги клиентов, сдача недели, что требует действий.'}</p>
     <div class="cards">${cards}</div>
-    ${weekNote}
     <div class="grid2">
       <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-notification-3"/></svg></span> Требует внимания</h3><div class="body" id="dashAlerts"></div></div>
       <div class="panel hero"><h3><span class="h3-ic">${isObs?'<svg class="ic"><use href="#i-eye"/></svg>':'<svg class="ic"><use href="#i-send-plane"/></svg>'}</span> ${isObs?'Контроль':'Рассылка'}</h3><div class="body">
@@ -2662,7 +2771,9 @@ const CHANGELOG=[
   '<b>Главных кнопок стало ровно столько, сколько главных действий.</b> В «Чатах» залитой синей кнопкой «Сохранить» была отмечена каждая из 22 строк — когда главная кнопка у всех, главной нет ни одной. Действия строк («Сохранить» в чатах, «Копировать» в сторонних, «Досье» в Контроле) теперь фирменного цвета, но без заливки, а залитой остаётся одна кнопка на экран или на панель.',
   '<b>Плитки сводки перестали пустовать.</b> Сетка равняет плитки по самой высокой, а «Твоя сдача недели» с пояснением «отправлено 16 из 18 · нет открута 2» ломалась на три строки и тянула за собой весь ряд — у остальных шести сверху и снизу зияла пустота. Теперь плитка с пояснением занимает две колонки, пояснение встаёт в строку, а высота ряда упала со 152 до 104 пикселей.',
   '<b>Синяя кнопка «Подключить клиента» из меню убрана.</b> Она была единственным залитым блоком в боковом меню и перетягивала внимание на действие, которое делают раз в месяц. Сам пункт остался на месте — обычной строкой в группе «Система», рядом с «Настройками» и «Гайдом». Из палитры команд (Ctrl+K) и из «Ещё» на телефоне он тоже никуда не делся.',
-  '<b>Плитки сводки выровнены.</b> Расшифровка «отправлено 16 из 18 · нет открута 2» сидела внутри плитки «Твоя сдача недели». В узкой плитке она ломалась на три строки и раздувала высоту всего ряда до 152 пикселей — сетка равняет плитки по самой высокой. Стоило расширить плитки, чтобы она влезла, как пустовать начинали короткие («Клиентов 31»). Теперь расшифровка стоит отдельной строкой под рядом: плитки все одного размера и высоты, ряд похудел со 152 до 100 пикселей, а цифры видны целиком.',
+  '<b>Сводка: дробь вместо процента и разбор при наведении.</b> Плитка сдачи показывает «16 / 18» — дробь объясняет себя сама, и расшифровка внутри плитки больше не нужна: раньше она ломалась на три строки и раздувала высоту всего ряда со 100 до 152 пикселей.',
+  '<b>У каждой плитки появился разбор.</b> Наведи курсор — под плиткой всплывает справка с цифрами: у бюджетов три самых горящих клиента с остатком дней, у ожидания — кто именно ждёт и сколько часов, у сдачи — сколько отправлено, сколько без открута, сколько закрыто причиной. Строки въезжают лесенкой, справка сама переворачивается вверх, если внизу мало места, и не мешает клику.',
+  '<b>Плитки кликабельны и говорят об этом.</b> Под курсором в углу проступает стрелка, а нажатие открывает нужный раздел: бюджеты, ожидающих ответа, клиентов, отчёты. Работает и с клавиатуры — плитка получает фокус, Enter открывает раздел, справка показывается при фокусе.',
   'Тёмная тема пересобрана целиком по тем же правилам, а не получена инверсией. Разметка, тексты и логика не тронуты — менялись только стили.']},
 {date:'2026-07-31',tag:'ui',title:'Телефон: доводка после первого захода',
  sum:'Сводка влезает в экран, длинный текст читается, строки смахиваются',items:[
