@@ -988,6 +988,32 @@ class Api:
         return {"sent": sent}
 
     @safe
+    def dossier(self, login, date_from=None, date_to=None, attribution=None, goal_ids=None):
+        """Досье по проекту за период: итоги, сравнение с прошлым периодом, драйверы, готовый текст."""
+        self._require_owned(login)
+        from . import dossier as DS
+        token = load_secrets()["yandex_oauth_token"]
+        c = self.db.get_client(login)
+        if not c:
+            raise RuntimeError("Клиент {} не найден".format(login))
+        if goal_ids is not None:
+            goal_defs = report.goal_defs_from_client(c, only_ids=goal_ids)
+        else:
+            goal_defs = report.goal_defs_from_client(c)
+        if not date_from or not date_to:
+            per = report.period()
+            date_from = date_from or per["date_from"]
+            date_to = date_to or per["date_to"]
+        if date_from > date_to:
+            date_from, date_to = date_to, date_from
+        return DS.build(token, login, c["name"] or login, date_from, date_to,
+                        attribution or default_attribution(), goal_defs)
+
+    # Отправка досье клиенту появится, когда режим выйдет из демо. Метода намеренно нет:
+    # диспетчер /api/<method> вызывает по имени, поэтому «просто не показать кнопку» мало —
+    # пока функции не существует, в чат клиента ничего уйти не может.
+
+    @safe
     def report_export_xlsx(self, login, level="campaign", date_from=None, date_to=None, attribution=None,
                            limit=1000, segments=None, date_grain="day", campaign=None, goal_ids=None):
         """Строит отчёт и сохраняет .xlsx в подпапку reports/ рядом с программой. Ничего не отправляет."""

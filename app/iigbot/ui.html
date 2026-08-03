@@ -308,6 +308,63 @@
     .att-m{grid-area:m;justify-content:space-between;width:100%}
   }
 
+  /* ══════════ Досье: отписка клиенту за период ══════════ */
+  .ds-pre{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;
+    background:var(--surface);flex-wrap:wrap}
+  .ds-pre button{font-weight:600;font-size:12.5px;line-height:1;padding:9px 13px;border:0;cursor:pointer;
+    color:var(--muted);background:transparent;border-right:1px solid var(--line);white-space:nowrap;
+    font-family:inherit;transition:background .14s,color .14s}
+  .ds-pre button:last-child{border-right:0}
+  .ds-pre button:hover{background:var(--surface-2);color:var(--ink)}
+  .ds-pre button[aria-pressed="true"]{background:var(--brand);color:var(--on-brand)}
+  .ds-pre button:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
+
+  /* дельта к прошлому периоду: форма важнее цвета — стрелка читается и без него */
+  .ds-d{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;
+    font-variant-numeric:tabular-nums}
+  .ds-d.up{color:var(--green)} .ds-d.down{color:var(--red)} .ds-d.flat{color:var(--muted)}
+  .ds-d svg{width:11px;height:11px}
+  .ds-was{font-size:11px;color:var(--muted)}
+
+  .ds-hl{display:flex;flex-direction:column;gap:9px}
+  .ds-hl .r{display:flex;align-items:flex-start;gap:11px;padding:11px 13px;border-radius:10px;
+    border:1px solid color-mix(in srgb,var(--hc) 20%,var(--line));border-left:3px solid var(--hc);
+    background:linear-gradient(96deg,color-mix(in srgb,var(--hc) 8%,var(--surface)) 0%,var(--surface) 78%);
+    font-size:13px;line-height:1.45}
+  .ds-hl .r svg{width:16px;height:16px;flex:0 0 auto;color:var(--hc);margin-top:1px}
+  .ds-hl .good{--hc:var(--green)} .ds-hl .bad{--hc:var(--red)} .ds-hl .flat{--hc:var(--slate)}
+
+  .ds-chart{display:grid;gap:6px;align-items:end;height:150px;margin-top:4px}
+  .ds-col{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;height:100%}
+  .ds-col i{display:block;width:100%;max-width:38px;border-radius:5px 5px 2px 2px;
+    background:linear-gradient(180deg,color-mix(in srgb,var(--brand) 68%,#fff),var(--brand))}
+  .ds-col b{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink-soft);line-height:1}
+  .ds-days{display:grid;gap:6px;margin-top:7px}
+  .ds-days span{font-size:10.5px;color:var(--muted);text-align:center;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+
+  .ds-txt{width:100%;min-height:320px;resize:vertical;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:12.5px;line-height:1.55;white-space:pre;overflow-wrap:normal;overflow-x:auto}
+  .ds-act{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  /* пометка «в разработке»: заметная, но не тревожная */
+  .ds-demo{display:flex;align-items:flex-start;gap:11px;padding:12px 14px;border-radius:11px;margin-top:16px;
+    border:1px solid color-mix(in srgb,var(--violet) 26%,transparent);
+    background:linear-gradient(96deg,color-mix(in srgb,var(--violet) 11%,var(--surface)),var(--surface) 72%)}
+  .ds-demo svg{width:19px;height:19px;flex:0 0 auto;color:var(--violet);margin-top:1px}
+  .ds-demo b{display:block;font-size:13px;font-weight:700;
+    color:color-mix(in srgb,var(--violet) 68%,var(--ink))}
+  .ds-demo span{display:block;font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.45}
+  .t-demo{margin-left:7px;font-size:9.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;
+    padding:2px 6px;border-radius:5px;vertical-align:1px;
+    color:color-mix(in srgb,var(--violet) 70%,var(--ink));
+    background:color-mix(in srgb,var(--violet) 15%,var(--surface));
+    border:1px solid color-mix(in srgb,var(--violet) 28%,transparent)}
+  @media (max-width:600px){
+    .ds-pre{width:100%}
+    .ds-pre button{flex:1;min-height:42px;padding:12px 6px;font-size:12px}
+    .ds-act .btn{flex:1 1 45%;justify-content:center;min-height:42px}
+  }
+
   /* ══════════ Клиенты: плитки, фильтры, строки-карточки ══════════ */
   /* заголовок раздела и кнопки справа на одной линии */
   .head-row{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:18px}
@@ -2411,6 +2468,171 @@ async function renderDashboard(){
       :(A.length?`<span class="h3-tag" style="--ac:var(--amber)"><svg class="ic"><use href="#i-time"/></svg>${A.length}</span>`:'');}
 }
 
+/* ---------- ДОСЬЕ: отписка клиенту за произвольный период ---------- */
+let DS_RES=null, DS_PRESET=14;
+const DS_UP='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 7.828V20h-2V7.828l-5.364 5.364-1.414-1.414L12 4l7.778 7.778-1.414 1.414z"/></svg>';
+const DS_DN='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 16.172l5.364-5.364 1.414 1.414L12 20l-7.778-7.778 1.414-1.414L11 16.172V4h2z"/></svg>';
+const DS_EQ='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 11h14v2H5z"/></svg>';
+
+/* в плитках расход показываем целыми рублями: «62 833,94 ₽» не влезает в 228px */
+function dsMoney(n){return Math.round(Number(n)||0).toLocaleString('ru-RU')+' ₽';}
+function dsFmtDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function dsPreset(days){
+  DS_PRESET=days;
+  const to=new Date();to.setDate(to.getDate()-1);            // по вчера: сегодняшний день ещё неполный
+  const from=new Date(to);from.setDate(to.getDate()-days+1);
+  el('dsFrom').value=dsFmtDate(from);el('dsTo').value=dsFmtDate(to);
+  const box=el('dsPre');if(box)[...box.children].forEach(b=>b.setAttribute('aria-pressed',+b.dataset.d===days));
+}
+function dsCustom(){DS_PRESET=0;const box=el('dsPre');if(box)[...box.children].forEach(b=>b.setAttribute('aria-pressed',false));}
+
+function renderDossier(clientOpts){
+  const isObs=(ME&&ME.role==='observer');
+  el('rpane').innerHTML=`
+    <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-file-list-2"/></svg></span> Досье по проекту</h3><div class="body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="field"><label>Клиент</label><select id="dsClient">${clientOpts||'<option>нет клиентов</option>'}</select></div>
+        <div class="field"><label>Период</label>
+          <div class="ds-pre" id="dsPre">
+            <button type="button" data-d="7" onclick="dsPreset(7)">Неделя</button>
+            <button type="button" data-d="14" onclick="dsPreset(14)">2 недели</button>
+            <button type="button" data-d="21" onclick="dsPreset(21)">3 недели</button>
+            <button type="button" data-d="30" onclick="dsPreset(30)">Месяц</button>
+            <button type="button" data-d="90" onclick="dsPreset(90)">Квартал</button>
+          </div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4px">
+        <div class="field"><label>С</label><input type="date" id="dsFrom" onchange="dsCustom()"></div>
+        <div class="field"><label>По</label><input type="date" id="dsTo" onchange="dsCustom()"></div>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+        <button class="btn primary" id="dsGo" onclick="doDossier()"><svg class="ic"><use href="#i-sparkling-2"/></svg> Собрать досье</button>
+      </div>
+      <div class="ds-demo"><svg class="ic"><use href="#i-flask"/></svg>
+        <div><b>Демо-режим</b><span>Функция в активной разработке: считает по-настоящему, но выводы ещё
+        обкатываются. Отправка клиенту прямо из кабинета отключена — текст копируешь и отправляешь сам.</span></div></div>
+      <div class="note" style="margin-top:12px">Считается три выгрузки из Директа: выбранный период, предыдущий такой же длины
+        и разбивка по датам. Сравнение и выводы — автоматически. Занимает от 20 секунд до минуты.</div>
+    </div></div>
+    <div id="dsOut"></div>`;
+  dsPreset(DS_PRESET||14);
+  if(isObs)el('dsGo').insertAdjacentHTML('afterend',
+    '<span class="muted" style="align-self:center;font-size:12.5px">Режим наблюдателя: отправка клиенту недоступна</span>');
+}
+
+async function doDossier(){
+  const login=el('dsClient').value, from=el('dsFrom').value, to=el('dsTo').value;
+  if(!login){toast('Выбери клиента','err');return;}
+  if(!from||!to){toast('Укажи обе даты','err');return;}
+  const out=el('dsOut');
+  out.innerHTML=`<div class="panel"><div class="body">${skeleton('rows',5)}
+    <p class="muted" style="margin-top:10px">Тяну данные из Директа: период, предыдущий период и разбивку по датам…</p></div></div>`;
+  const btn=el('dsGo');btn.disabled=true;
+  try{
+    DS_RES=await api('dossier',login,from,to);
+    dsRender(DS_RES);
+  }catch(e){out.innerHTML=errBlock(e,()=>doDossier());}
+  finally{btn.disabled=false;}
+}
+
+function dsDelta(d,goodUp){
+  if(d.pct===null||d.pct===undefined)return '<span class="ds-d flat">'+DS_EQ+'нет базы</span>';
+  const flat=Math.abs(d.pct)<8;
+  const cls=flat?'flat':((d.pct>0)===goodUp?'up':'down');
+  const ic=flat?DS_EQ:(d.pct>0?DS_UP:DS_DN);
+  return '<span class="ds-d '+cls+'">'+ic+Math.abs(d.pct).toFixed(0)+'%</span>';
+}
+function dsTile(color,ic,label,val,d,goodUp,wasText){
+  return `<div class="card c-${color}">
+    <div class="card-top"><div class="card-ic"><svg class="ic"><use href="#i-${ic}"/></svg></div>
+      <div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div></div></div>
+    <div class="card-foot"><span class="ds-was">${wasText}</span>${dsDelta(d,goodUp)}</div></div>`;
+}
+
+function dsRender(r){
+  const T=r.totals, conv=r.has_conv;
+  // пустой период: иначе клиенту уедет отписка с нулями во всех строках
+  if(!T.cost.now&&!T.cost.was&&!T.clicks.now&&!T.clicks.was){
+    el('dsOut').innerHTML='<div class="panel" style="margin-top:16px"><div class="body">'+
+      emptyState('<svg class="ic"><use href="#i-cactus"/></svg>','За этот период рекламы не было',
+        'У «'+esc(r.client_name)+'» с '+esc(r.date_from)+' по '+esc(r.date_to)+' нет ни показов, ни расхода. '+
+        'Возьми другой период или проверь, работали ли кампании.',null)+'</div></div>';
+    return;
+  }
+  const tiles=[
+    dsTile('blue','wallet-3','Расход',dsMoney(T.cost.now),T.cost,true,'было '+dsMoney(T.cost.was)),
+    dsTile('cyan','cursor','Клики',fmtInt(T.clicks.now),T.clicks,true,'было '+fmtInt(T.clicks.was)),
+    conv?dsTile('green','focus-3','Заявки',fmtInt(T.conv.now),T.conv,true,'было '+fmtInt(T.conv.was)):
+         dsTile('slate','eye','Показы',fmtInt(T.imp.now),T.imp,true,'было '+fmtInt(T.imp.was)),
+    conv?dsTile((T.cpa.pct!==null&&T.cpa.pct>8)?'red':'violet','price-tag-3','Цена заявки',fmtMoney(T.cpa.now),T.cpa,false,'было '+fmtMoney(T.cpa.was)):
+         dsTile('violet','percent','CTR',T.ctr.now.toFixed(2)+'%',T.ctr,true,'было '+T.ctr.was.toFixed(2)+'%'),
+  ].join('');
+
+  const hl=(r.highlights||[]).map(h=>{
+    const ic=h.tone==='good'?'checkbox-circle':(h.tone==='bad'?'alert':'question');
+    return `<div class="r ${h.tone}"><svg class="ic"><use href="#i-${ic}"/></svg><span>${esc(h.text)}</span></div>`;}).join('');
+
+  const S=r.series||[];
+  const key=r.compare_by;
+  const mx=Math.max(1,...S.map(x=>x[key]||0));
+  const cols='repeat('+Math.max(1,S.length)+',1fr)';
+  const chart=S.map(x=>{const h=Math.max(3,Math.round((x[key]||0)/mx*118));
+    return `<div class="ds-col" title="${esc(x.label)}: ${fmtInt(x[key])}"><b>${fmtInt(x[key])}</b><i style="height:${h}px"></i></div>`;}).join('');
+  const days=S.map(x=>`<span title="${esc(x.label)}">${esc(dsShortLabel(x.label,r.grain))}</span>`).join('');
+
+  const rows=(r.campaigns||[]).filter(c=>c.now.cost>0||c.was.cost>0).map(c=>{
+    const d={now:c.now[key],was:c.was[key],pct:(c.was[key]?((c.now[key]-c.was[key])/c.was[key]*100):(c.now[key]?100:null))};
+    return `<tr>
+      <td><b>${esc(c.name)}</b>${c.started?' <span class="badge b-green" style="font-size:10.5px">новая</span>':''}${c.stopped?' <span class="badge b-grey" style="font-size:10.5px">остановлена</span>':''}</td>
+      <td>${fmtMoney(c.now.cost)}</td>
+      ${conv?`<td>${fmtInt(c.now.conv)}</td><td>${c.now.cpa?fmtMoney(c.now.cpa):'<span class="muted">—</span>'}</td>`:''}
+      <td>${fmtInt(c.now.clicks)}</td>
+      <td>${dsDelta(d,true)}</td></tr>`;}).join('');
+
+  el('dsOut').innerHTML=`
+    <div class="cards" style="margin-top:16px">${tiles}</div>
+    <div class="dash-cols">
+      <div class="dash-col">
+        <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-sparkling-2"/></svg></span> Что происходило
+          <span class="wk-chip" style="margin-left:auto">против ${esc(r.prev_from)} — ${esc(r.prev_to)}</span></h3>
+          <div class="body"><div class="ds-hl">${hl||'<span class="muted">Изменений, достойных отдельной строки, не нашлось.</span>'}</div></div></div>
+        <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-bar-chart"/></svg></span> Динамика
+          <span class="wk-chip" style="margin-left:auto">${r.grain==='day'?'по дням':(r.grain==='week'?'по неделям':'по месяцам')}</span></h3>
+          <div class="body">
+            <div class="ds-chart" style="grid-template-columns:${cols}">${chart}</div>
+            <div class="ds-days" style="grid-template-columns:${cols}">${days}</div>
+            <div class="dnote" style="margin-top:10px">${conv?'Заявки':'Клики'} внутри периода.${r.peak?(' Лучший отрезок — '+esc(dsShortLabel(r.peak.label,r.grain))+'.'):''}</div>
+          </div></div>
+      </div>
+      <div class="dash-col">
+        <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-send-plane"/></svg></span> Текст для клиента</h3>
+          <div class="body">
+            <textarea class="ds-txt" id="dsText">${esc(r.text)}</textarea>
+            <div class="ds-act">
+              <button class="btn primary" onclick="copyToClip(el('dsText').value,'Текст скопирован',this)"><svg class="ic"><use href="#i-file-copy-2"/></svg> Скопировать</button>
+            </div>
+            <div class="note" style="margin-top:12px">Текст собран из цифр — правь как хочешь и отправляй клиенту сам.
+              Отправка прямо из кабинета появится, когда досье выйдет из демо-режима.</div>
+          </div></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h3><span class="h3-ic"><svg class="ic"><use href="#i-equalizer"/></svg></span> Кампании
+      <span class="wk-chip" style="margin-left:auto">${fmtInt(r.n_campaigns)} всего</span></h3>
+      <div class="scrollx"><table>
+        <thead><tr><th>Кампания</th><th>Расход</th>${conv?'<th>Заявки</th><th>Цена заявки</th>':''}<th>Клики</th><th>${conv?'Заявки':'Клики'} к прошлому</th></tr></thead>
+        <tbody>${rows||'<tr><td colspan="6" class="empty">За период не было расхода.</td></tr>'}</tbody></table></div></div>`;
+}
+
+function dsShortLabel(v,grain){
+  if(!v)return '';
+  if(grain==='month'){const p=String(v).split('-');
+    const M=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+    return p.length>1?(M[+p[1]-1]||v):v;}
+  const p=String(v).split('-');
+  return p.length>=3?(p[2]+'.'+p[1]):v;
+}
+
+
 /* ---------- CLIENTS ---------- */
 let CL_SORT={key:'added',dir:-1};   // по умолчанию — по дате добавления, новые сверху
 let CL_FILTER='', CL_PAGE=1, CL_PER=0;   // 0 = ещё не выбирали, подставим по ширине экрана
@@ -2978,6 +3200,16 @@ const GUIDE=[
   </ul>
   <div class="note">Пока панель свёрнута, игра ничего не считает и не жуёт батарею — она полностью выключена. И клавиши она не перехватывает: если печатаешь в поле ввода, стрелки работают как обычно.</div>`},
 // ===== КЛИЕНТЫ =====
+{tab:'Рассылка',icon:'<svg class="ic"><use href="#i-flask"/></svg>',title:'Досье по проекту (демо)',kw:'досье отписка период произвольный сравнение итоги неделя две три месяц квартал текст клиенту',html:`
+  <p><b>Отчёты → Досье</b> — собрать отписку клиенту за любой период, а не только за прошлую неделю. Выбираешь проект, жмёшь <b>Неделя / 2 недели / 3 недели / Месяц / Квартал</b> или ставишь свои даты — и получаешь готовый текст.</p>
+  <p>Считается три выгрузки из Директа: выбранный период, <b>предыдущий такой же длины</b> и разбивка по датам. Поэтому в досье есть не только цифры, но и сравнение: что выросло, что просело и за счёт каких кампаний.</p>
+  <ul>
+    <li><b>Плитки</b> — расход, клики, заявки, цена заявки. Под каждой «было столько-то» и стрелка с процентом; изменения меньше 8% помечаются серым как шум.</li>
+    <li><b>«Что происходило»</b> — выводы словами: драйверы роста и падения, кампании, которые тратят без заявок, самая дешёвая по цене заявки, что запускали и останавливали.</li>
+    <li><b>Динамика</b> — по дням для короткого периода, по неделям для среднего, по месяцам для длинного.</li>
+    <li><b>Текст для клиента</b> — правь прямо в поле и копируй.</li>
+  </ul>
+  <div class="note"><b>Демо-режим.</b> Функция в активной разработке: цифры настоящие, но формулировки выводов ещё обкатываются — перечитывай текст перед отправкой. Отправка прямо из кабинета пока отключена, только копирование. Сбор занимает 20–60 секунд на проект: это три полноценных отчёта Директа, а он их ставит в очередь.</div>`},
 {tab:'Клиенты',icon:'<svg class="ic"><use href="#i-file-list-2"/></svg>',title:'Как читать список',kw:'список карточка строка статус фильтр поиск готов без чата настроить цели страница',html:`
   <p>Сверху четыре плитки: <b>Всего</b>, <b>Подключено</b>, <b>Без чата</b>, <b>Требуют настройки</b>. Нажатие на плитку отбирает только этих клиентов — то же делают чипы под поиском. Поиск ищет по названию, логину и <b>названию чата</b>.</p>
   <p>В строке клиента слева имя и логин, дальше чат с пометкой, подключён он или нет, потом цели дробью: <b>первое число — сколько идёт в отчёт</b>, второе — сколько всего нашлось в Метрике. Полоса под дробью показывает ту же долю, подпись снизу — сколько целей выключено.</p>
@@ -3309,6 +3541,16 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-03',tag:'major',title:'Досье по проекту за любой период',
+ sum:'Выбрал проект и даты — получил готовую отписку клиенту со сравнением и разбором причин',items:[
+  '<b>Новая вкладка «Отчёты → Досье».</b> Раньше отчёт умел только «прошлую неделю», а конструктор отдавал таблицу, из которой выводы надо было делать самому. Теперь: выбираешь проект, жмёшь «Неделя / 2 недели / 3 недели / Месяц / Квартал» или ставишь свои даты — и получаешь готовый текст для клиента.',
+  '<b>Сравнение с предыдущим периодом делается само.</b> Берётся отрезок такой же длины, заканчивающийся за день до начала выбранного, и по каждой метрике считается изменение. Колебания меньше 8% помечаются серым как шум — чтобы случайный скачок не выдавался за результат.',
+  '<b>Разбор причин, а не только цифры.</b> Система находит кампании, за счёт которых результат изменился, отдельно показывает те, что потратили деньги и не дали ни одной заявки, называет самую дешёвую по цене заявки и замечает, что запускали и что останавливали за период. Если одну кампанию заменили другой — так и пишет: «перестроили структуру».',
+  '<b>Динамика внутри периода</b> — столбиками: по дням для короткого отрезка, по неделям для среднего, по месяцам для квартала. Подписан лучший день.',
+  '<b>Текст собирается из цифр, без внешних сервисов</b> — не нужен ключ, не стоит денег и на одних и тех же данных всегда даёт один и тот же результат. Правится прямо в поле перед отправкой.',
+  '<b>Пустой период не отдаёт нули.</b> Если за выбранные даты не было ни показов, ни расхода — вместо таблицы с нулями честная плашка «за этот период рекламы не было», чтобы такая отписка случайно не ушла клиенту.',
+  '<b>Пока демо-режим.</b> Цифры настоящие, но формулировки ещё обкатываются, поэтому отправка клиенту прямо из кабинета отключена — только «Скопировать». Перечитывай текст перед отправкой.',
+ ]},
 {date:'2026-08-02',tag:'major',title:'Раздел «Клиенты» собран заново',
  sum:'Плитки состояния, фильтры чипами, строки-карточки и «Состояние базы» сбоку',items:[
   '<b>Список перестал быть таблицей.</b> Раньше строки скакали от 46 до 131px: в ячейку «Цели» вываливались названия целей (до 106 символов), а колонка «Чат» занимала 511px. Теперь каждая строка ровно 82px: аватар, название и логин двумя строками, чат с пометкой «подключён / не подключён», цели дробью с полосой и плашка состояния. Раздел ужался с 2874 до 2433px и это уже вместе с плитками и боковой панелью.',
@@ -3642,7 +3884,7 @@ async function renderReports(){
   const opts=cls.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})${c.chat_id?'':' • без чата'}</option>`).join('');
   host.innerHTML=`
     <h2 class="title">Отчёты</h2><p class="sub">Предпросмотр сообщения, конструктор и история рассылок. <svg class="ic"><use href="#i-table"/></svg> — открыть Google-таблицу клиента.</p>
-    <div class="tabs"><div class="t ${RTAB==='prev'?'on':''}" onclick="setRtab('prev')">Предпросмотр</div><div class="t ${RTAB==='build'?'on':''}" onclick="setRtab('build')">Конструктор</div><div class="t ${RTAB==='hist'?'on':''}" onclick="setRtab('hist')">История</div></div>
+    <div class="tabs"><div class="t ${RTAB==='prev'?'on':''}" onclick="setRtab('prev')">Предпросмотр</div><div class="t ${RTAB==='dos'?'on':''}" onclick="setRtab('dos')">Досье<span class="t-demo">демо</span></div><div class="t ${RTAB==='build'?'on':''}" onclick="setRtab('build')">Конструктор</div><div class="t ${RTAB==='hist'?'on':''}" onclick="setRtab('hist')">История</div></div>
     <div id="rpSheets" style="margin-bottom:12px"></div>
     <div id="rpane"></div>`;
   loadSheetLinks();
@@ -3659,6 +3901,8 @@ async function renderReports(){
       </div></div>
       <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-smartphone"/></svg></span> Как увидит клиент</h3><div class="body"><div class="tg"><div class="bubble" id="rpBubble"><span class="muted">Нажми «Сформировать превью».</span></div><div class="meta" id="rpMeta"></div></div></div></div>
     </div>`;
+  }else if(RTAB==='dos'){
+    renderDossier(opts);
   }else if(RTAB==='build'){
     await renderBuilder(opts);
   }else{
