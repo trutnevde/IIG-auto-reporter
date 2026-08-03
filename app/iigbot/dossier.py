@@ -1,47 +1,64 @@
 # -*- coding: utf-8 -*-
-"""Досье по проекту за произвольный период — готовая отписка клиенту.
+"""Досье по проекту: сравнение двух периодов — «что сделано» и «что случилось».
 
-Отличие от конструктора: тот отдаёт таблицу, а тут собирается СМЫСЛ.
-Три запроса к Reports API:
-  1) кампании за выбранный период;
-  2) кампании за предыдущий равный период — чтобы было с чем сравнивать;
-  3) аккаунт с разбивкой по датам — динамика внутри периода.
-Дальше на правилах считаются выводы: что выросло, что упало и за счёт каких
-кампаний, где деньги тратятся зря, что запустили и что остановили.
+Всё в модуле построено на паре периодов A и B, которые задаются снаружи:
+A — то, что смотрим, B — то, с чем сравниваем. Они не обязаны идти подряд и
+не обязаны быть одной длины: можно сравнить неделю с той же неделей год назад,
+месяц с прошлым месяцем или два любых куска. Кабинет считает даты сам и
+присылает готовые — здесь никакой «магии по умолчанию».
 
-Никакой внешней модели: текст собирается детерминированно из цифр, поэтому
-работает без ключей, бесплатно и одинаково на одних и тех же данных.
+Запросы к Reports API:
+  1) кампании за A;
+  2) кампании за B;
+  3) аккаунт с разбивкой по датам за A — динамика внутри периода;
+  4) по паре запросов на каждый включённый разрез (устройства, сеть, гео,
+     возраст, пол, поисковые запросы) — тоже A против B.
+
+Выводы считаются на правилах, без внешних моделей: результат детерминированный,
+не требует ключей и не стоит денег.
 """
 from datetime import date as _date, timedelta as _td
 
 from . import report as R
 from . import report_custom as RC
 
-# Порог, ниже которого изменение считаем шумом и не выносим в выводы
+# Ниже этого порога изменение считаем шумом и не выносим в выводы
 NOISE_PCT = 8.0
-# Сколько кампаний-драйверов показывать в каждую сторону
+# Сколько строк показывать в каждую сторону
 TOP_DRIVERS = 3
+
+# Разрезы: ключ -> (уровень, сегмент, заголовок, отдаёт ли Директ конверсии).
+# У поисковых запросов конверсий нет — Директ их для этого отчёта не считает,
+# поэтому там сравниваем по кликам и честно об этом пишем.
+CUTS = {
+    "device":      ("account", "device",  "Устройства",        True),
+    "network":     ("account", "network", "Поиск и РСЯ",       True),
+    "geo":         ("account", "geo",     "География",         True),
+    "age":         ("account", "age",     "Возраст",           True),
+    "gender":      ("account", "gender",  "Пол",               True),
+    "searchquery": ("searchquery", None,  "Поисковые запросы", False),
+}
+CUT_ORDER = ["network", "device", "geo", "age", "gender", "searchquery"]
+
+
+def cut_options():
+    return [{"key": k, "label": CUTS[k][2], "has_conv": CUTS[k][3]} for k in CUT_ORDER]
 
 
 def _d(s):
     return _date(int(s[0:4]), int(s[5:7]), int(s[8:10]))
 
 
-def prev_period(date_from, date_to):
-    """Предыдущий период той же длины, заканчивающийся за день до начала текущего."""
-    a, b = _d(date_from), _d(date_to)
-    days = (b - a).days + 1
-    pb = a - _td(days=1)
-    pa = pb - _td(days=days - 1)
-    return pa.isoformat(), pb.isoformat()
+def _days(a, b):
+    return (_d(b) - _d(a)).days + 1
 
 
 def pick_grain(date_from, date_to):
     """Дни для короткого периода, недели для среднего, месяцы для длинного."""
-    days = (_d(date_to) - _d(date_from)).days + 1
-    if days <= 31:
+    n = _days(date_from, date_to)
+    if n <= 31:
         return "day"
-    if days <= 120:
+    if n <= 120:
         return "week"
     return "month"
 
@@ -58,7 +75,7 @@ def _delta(now, was):
 
 
 def _rows_by_name(res):
-    """Кампании из результата конструктора: имя -> метрики."""
+    """Строки отчёта: читаемое имя -> метрики (одноимённые складываем)."""
     out = {}
     for r in res.get("rows") or []:
         name = " / ".join(str(d) for d in (r.get("dims") or []) if d) or "—"
@@ -66,7 +83,7 @@ def _rows_by_name(res):
         cur = out.get(name)
         if cur is None:
             out[name] = dict(m)
-        else:                       # одинаковые имена кампаний встречаются — складываем
+        else:
             for k in ("imp", "clicks", "cost", "conv"):
                 cur[k] += m[k]
     return out
@@ -77,103 +94,159 @@ def _remetric(m):
     return RC._metrics(m["imp"], m["clicks"], m["cost"], m["conv"])
 
 
-def build(token, login, client_name, date_from, date_to,
-          attribution=None, goal_defs=None, _post=None, _sleep=None):
-    grain = pick_grain(date_from, date_to)
-    pf, pt = prev_period(date_from, date_to)
+def _pair(a_rows, b_rows, key):
+    """Сопоставить строки двух периодов по имени."""
+    out = []
+    for name in set(list(a_rows.keys()) + list(b_rows.keys())):
+        m_now = a_rows.get(name) or {"imp": 0, "clicks": 0, "cost": 0, "conv": 0}
+        m_was = b_rows.get(name) or {"imp": 0, "clicks": 0, "cost": 0, "conv": 0}
+        out.append({
+            "name": name,
+            "now": _remetric(m_now), "was": _remetric(m_was),
+            "d_key": m_now[key] - m_was[key],
+            "d_cost": m_now["cost"] - m_was["cost"],
+            "started": (name not in b_rows) and m_now["cost"] > 0,
+            "stopped": (name not in a_rows) and m_was["cost"] > 0,
+        })
+    out.sort(key=lambda c: -c["now"]["cost"])
+    return out
 
+
+def build(token, login, client_name, a_from, a_to, b_from, b_to,
+          attribution=None, goal_defs=None, cuts=None,
+          client_note=None, signature=None, sheet_url=None, today=None,
+          _post=None, _sleep=None):
+    grain = pick_grain(a_from, a_to)
     kw = dict(attribution=attribution, goal_defs=goal_defs, _post=_post, _sleep=_sleep)
-    cur = RC.build(token, login, "campaign", date_from, date_to, limit=500, **kw)
-    prev = RC.build(token, login, "campaign", pf, pt, limit=500, **kw)
-    dyn = RC.build(token, login, "account", date_from, date_to,
+
+    cur = RC.build(token, login, "campaign", a_from, a_to, limit=500, **kw)
+    prev = RC.build(token, login, "campaign", b_from, b_to, limit=500, **kw)
+    dyn = RC.build(token, login, "account", a_from, a_to,
                    segments=["date"], date_grain=grain, limit=500, **kw)
 
     t_now, t_was = cur["totals"], prev["totals"]
     totals = {k: _delta(t_now[k], t_was[k])
               for k in ("imp", "clicks", "cost", "conv", "ctr", "cpc", "cr", "cpa")}
 
-    a, b = _rows_by_name(cur), _rows_by_name(prev)
     has_conv = (t_now["conv"] > 0) or (t_was["conv"] > 0)
-    key = "conv" if has_conv else "clicks"      # без конверсий сравниваем по кликам
+    key = "conv" if has_conv else "clicks"
 
-    camps = []
-    for name in set(list(a.keys()) + list(b.keys())):
-        m_now = a.get(name) or {"imp": 0, "clicks": 0, "cost": 0, "conv": 0}
-        m_was = b.get(name) or {"imp": 0, "clicks": 0, "cost": 0, "conv": 0}
-        camps.append({
-            "name": name,
-            "now": _remetric(m_now), "was": _remetric(m_was),
-            "d_key": m_now[key] - m_was[key],
-            "d_cost": m_now["cost"] - m_was["cost"],
-            "started": (name not in b) and m_now["cost"] > 0,     # появилась в этом периоде
-            "stopped": (name not in a) and m_was["cost"] > 0,     # была и пропала
-        })
-    camps.sort(key=lambda c: -c["now"]["cost"])
+    camps = _pair(_rows_by_name(cur), _rows_by_name(prev), key)
 
+    # ── ЧТО СДЕЛАНО: запуски, остановки, перекладка бюджета
+    started = [c for c in camps if c["started"]]
+    stopped = [c for c in camps if c["stopped"]]
+    mix = []
+    if t_now["cost"] and t_was["cost"]:
+        for c in camps:
+            if c["started"] or c["stopped"]:
+                continue                      # про них уже сказано отдельно
+            s_now = c["now"]["cost"] / t_now["cost"] * 100
+            s_was = c["was"]["cost"] / t_was["cost"] * 100
+            if abs(s_now - s_was) >= 5:       # доли меньше 5 п.п. — не перекладка, а колебание
+                mix.append({"name": c["name"], "share_now": s_now, "share_was": s_was,
+                            "d": s_now - s_was})
+        mix.sort(key=lambda x: -abs(x["d"]))
+        mix = mix[:4]
+
+    # ── ЧТО СЛУЧИЛОСЬ: драйверы, эффективность, слив
     ups = sorted([c for c in camps if c["d_key"] > 0], key=lambda c: -c["d_key"])[:TOP_DRIVERS]
     downs = sorted([c for c in camps if c["d_key"] < 0], key=lambda c: c["d_key"])[:TOP_DRIVERS]
-
-    # эффективность: считаем только там, где набралась статистика
     scored = [c for c in camps if c["now"]["conv"] >= 3]
     best = min(scored, key=lambda c: c["now"]["cpa"]) if scored else None
-    # деньги без результата: тратили заметно, но не принесли ни одной конверсии
     spend_cut = max(500.0, t_now["cost"] * 0.03)
-    wasted = [c for c in camps if c["now"]["conv"] == 0 and c["now"]["cost"] >= spend_cut]
-    wasted.sort(key=lambda c: -c["now"]["cost"])
+    wasted = sorted([c for c in camps if c["now"]["conv"] == 0 and c["now"]["cost"] >= spend_cut],
+                    key=lambda c: -c["now"]["cost"])[:TOP_DRIVERS]
 
+    # ── цели по отдельности: не только «сколько заявок», но и каких именно
+    goals = []
+    gt_now, gt_was = cur.get("goal_totals") or {}, prev.get("goal_totals") or {}
+    for g in (cur.get("goals") or []):
+        n, w = gt_now.get(g["id"], 0), gt_was.get(g["id"], 0)
+        if n or w:
+            goals.append({"id": g["id"], "name": g["name"], **_delta(n, w)})
+    goals.sort(key=lambda x: -x["now"])
+
+    # ── динамика внутри периода
     series = []
     for r in dyn.get("rows") or []:
-        label = (r.get("dims") or ["—"])[0]
-        series.append({"label": label, **r["m"]})
+        series.append({"label": (r.get("dims") or ["—"])[0], **r["m"]})
     series.sort(key=lambda x: x["label"])
     peak = max(series, key=lambda x: x[key]) if series else None
 
+    # ── прогноз: только когда период A — это текущий месяц с начала и по вчера.
+    #    Иначе пришлось бы догадываться, сколько уже накоплено с 1-го числа.
+    forecast = None
+    today = _d(today) if today else _date.today()
+    a1, a2 = _d(a_from), _d(a_to)
+    if a1.day == 1 and a1.year == today.year and a1.month == today.month and a2 <= today:
+        gone = (a2 - a1).days + 1
+        nxt = a2 + _td(days=1)
+        month_end = (_date(a2.year + (a2.month == 12), (a2.month % 12) + 1, 1) - _td(days=1))
+        left = (month_end - a2).days
+        if gone >= 3 and left > 0:
+            rate_conv = t_now["conv"] / gone
+            rate_cost = t_now["cost"] / gone
+            forecast = {
+                "days_gone": gone, "days_left": left,
+                "from": nxt.isoformat(), "to": month_end.isoformat(),
+                "conv": t_now["conv"] + rate_conv * left,
+                "cost": t_now["cost"] + rate_cost * left,
+                "per_day_conv": rate_conv, "per_day_cost": rate_cost,
+            }
+
+    # ── дополнительные разрезы: тоже A против B
+    cut_res = []
+    for ck in (cuts or []):
+        if ck not in CUTS:
+            continue
+        level, seg, label, cut_conv = CUTS[ck]
+        segs = [seg] if seg else None
+        ca = RC.build(token, login, level, a_from, a_to, segments=segs, limit=200, **kw)
+        cb = RC.build(token, login, level, b_from, b_to, segments=segs, limit=200, **kw)
+        ckey = key if cut_conv else "clicks"
+        rows = _pair(_rows_by_name(ca), _rows_by_name(cb), ckey)
+        rows = [r for r in rows if r["now"]["cost"] > 0 or r["was"]["cost"] > 0][:12]
+        cut_res.append({"key": ck, "label": label, "has_conv": cut_conv and has_conv,
+                        "compare_by": ckey, "rows": rows})
+
     res = {
         "login": login, "client_name": client_name or login,
-        "date_from": date_from, "date_to": date_to,
-        "prev_from": pf, "prev_to": pt,
-        "days": (_d(date_to) - _d(date_from)).days + 1,
+        "a_from": a_from, "a_to": a_to, "b_from": b_from, "b_to": b_to,
+        "a_days": _days(a_from, a_to), "b_days": _days(b_from, b_to),
+        "same_length": _days(a_from, a_to) == _days(b_from, b_to),
         "grain": grain, "attribution": cur.get("attribution"),
-        "goals": cur.get("goals") or [], "goal_totals": cur.get("goal_totals") or {},
         "has_conv": has_conv, "compare_by": key,
-        "totals": totals, "campaigns": camps[:25], "n_campaigns": len(camps),
-        "ups": ups, "downs": downs,
-        "best": best, "wasted": wasted[:TOP_DRIVERS],
-        "started": [c["name"] for c in camps if c["started"]][:5],
-        "stopped": [c["name"] for c in camps if c["stopped"]][:5],
-        "series": series, "peak": peak,
+        "totals": totals, "goals": goals,
+        "campaigns": camps[:25], "n_campaigns": len(camps),
+        "started": started, "stopped": stopped, "mix": mix,
+        "ups": ups, "downs": downs, "best": best, "wasted": wasted,
+        "series": series, "peak": peak, "forecast": forecast, "cuts": cut_res,
+        "client_note": (client_note or "").strip(),
+        "signature": (signature or "").strip(),
+        "sheet_url": sheet_url or "",
     }
-    res["highlights"] = highlights(res)
+    res["done"] = done_items(res)
+    res["happened"] = happened_items(res)
     res["text"] = to_text(res)
     return res
 
 
-def _ru_date(iso):
+# ────────────────────────────── формулировки ──────────────────────────────
+
+def _ru_date(iso, with_year=False):
     M = ["января", "февраля", "марта", "апреля", "мая", "июня",
          "июля", "августа", "сентября", "октября", "ноября", "декабря"]
     d = _d(iso)
-    return "{} {}".format(d.day, M[d.month - 1])
+    return "{} {}{}".format(d.day, M[d.month - 1], " " + str(d.year) if with_year else "")
 
 
-def period_label(res):
-    a, b = _d(res["date_from"]), _d(res["date_to"])
-    if a.year == b.year:
-        return "{} — {} {}".format(_ru_date(res["date_from"]), _ru_date(res["date_to"]), b.year)
-    return "{} {} — {} {}".format(_ru_date(res["date_from"]), a.year, _ru_date(res["date_to"]), b.year)
-
-
-def _sign(pct, good_up=True):
-    """Метка настроения для подсветки в кабинете."""
-    if pct is None or abs(pct) < NOISE_PCT:
-        return "flat"
-    up = pct > 0
-    return "good" if (up == good_up) else "bad"
-
-
-def _chg(pct, up_word="больше", down_word="меньше"):
-    if pct is None:
-        return ""
-    return "на {:.0f}% {}".format(abs(pct), up_word if pct > 0 else down_word)
+def period_label(a, b):
+    """«20 июля — 2 августа 2026»; год пишем один раз, если он общий."""
+    da, db = _d(a), _d(b)
+    if da.year == db.year:
+        return "{} — {} {}".format(_ru_date(a), _ru_date(b), db.year)
+    return "{} — {}".format(_ru_date(a, True), _ru_date(b, True))
 
 
 def _plural(n, one, few, many):
@@ -197,102 +270,184 @@ def _short(name, limit=48):
     return name if len(name) <= limit else name[:limit - 1].rstrip() + "…"
 
 
-def highlights(res):
-    """Выводы человеческим языком: что случилось и из-за чего."""
-    T, out = res["totals"], []
-    conv, cost, cpa = T["conv"], T["cost"], T["cpa"]
-    started, stopped = res["started"], res["stopped"]
+def _sign(pct, good_up=True):
+    if pct is None or abs(pct) < NOISE_PCT:
+        return "flat"
+    return "good" if ((pct > 0) == good_up) else "bad"
 
-    # 1. Главный результат периода
+
+def _chg(pct, up_word="больше", down_word="меньше"):
+    if pct is None:
+        return ""
+    return "на {:.0f}% {}".format(abs(pct), up_word if pct > 0 else down_word)
+
+
+def done_items(res):
+    """ЧТО СДЕЛАНО — действия за период, а не следствия."""
+    out = []
+    st, sp, mix = res["started"], res["stopped"], res["mix"]
+
+    if st and sp:
+        out.append({"tone": "flat", "icon": "refresh", "text": "Перестроили структуру: остановили {}, запустили {}.".format(
+            ", ".join("«" + _short(c["name"]) + "»" for c in sp),
+            ", ".join("«" + _short(c["name"]) + "»" for c in st))})
+    else:
+        if st:
+            out.append({"tone": "good", "icon": "add-circle", "text": "Запустили {}: {}.".format(
+                _plural(len(st), "кампанию", "кампании", "кампаний"),
+                ", ".join("«" + _short(c["name"]) + "»" for c in st))})
+        if sp:
+            out.append({"tone": "flat", "icon": "forbid-2", "text": "Остановили {}: {}.".format(
+                _plural(len(sp), "кампанию", "кампании", "кампаний"),
+                ", ".join("«" + _short(c["name"]) + "»" for c in sp))})
+
+    for m in mix:
+        word = "увеличили" if m["d"] > 0 else "сократили"
+        out.append({"tone": "flat", "icon": "wallet-3",
+                    "text": "Долю «{}» в бюджете {} с {:.0f}% до {:.0f}%.".format(
+                        _short(m["name"]), word, m["share_was"], m["share_now"])})
+
+    if res["client_note"]:
+        out.append({"tone": "flat", "icon": "draft", "text": res["client_note"]})
+
+    if not out:
+        out.append({"tone": "flat", "icon": "checkbox-circle",
+                    "text": "Структура кампаний не менялась — работали с тем, что было: ставки, площадки, минус-слова."})
+    return out
+
+
+def happened_items(res):
+    """ЧТО СЛУЧИЛОСЬ — результат периода."""
+    T, out = res["totals"], []
+    conv, cost, cpa, clicks = T["conv"], T["cost"], T["cpa"], T["clicks"]
+
     if res["has_conv"]:
         if conv["pct"] is None or abs(conv["pct"]) < NOISE_PCT:
-            out.append({"tone": "flat", "text": "Заявок примерно столько же, сколько в прошлый период: {} против {}.".format(
-                R.fmt_int(conv["now"]), R.fmt_int(conv["was"]))})
+            out.append({"tone": "flat", "icon": "equalizer",
+                        "text": "Заявок примерно столько же: {} против {}.".format(
+                            R.fmt_int(conv["now"]), R.fmt_int(conv["was"]))})
         else:
-            out.append({"tone": _sign(conv["pct"]), "text": "Заявок {}: {} против {} в прошлый период.".format(
-                _chg(conv["pct"]), R.fmt_int(conv["now"]), R.fmt_int(conv["was"]))})
+            out.append({"tone": _sign(conv["pct"]), "icon": "focus-3",
+                        "text": "Заявок {}: {} против {}.".format(
+                            _chg(conv["pct"]), R.fmt_int(conv["now"]), R.fmt_int(conv["was"]))})
         if cpa["was"] and cpa["now"] and abs(cpa["pct"] or 0) >= NOISE_PCT:
-            out.append({"tone": _sign(cpa["pct"], good_up=False),
+            out.append({"tone": _sign(cpa["pct"], good_up=False), "icon": "wallet",
                         "text": "Цена заявки {}: {} против {}.".format(
-                            _chg(cpa["pct"], "выше", "ниже"), R.fmt_money(cpa["now"]), R.fmt_money(cpa["was"]))})
+                            _chg(cpa["pct"], "выше", "ниже"),
+                            R.fmt_money(cpa["now"]), R.fmt_money(cpa["was"]))})
     else:
-        out.append({"tone": _sign(T["clicks"]["pct"]), "text": "Переходов на сайт: {}{}.".format(
-            R.fmt_int(T["clicks"]["now"]),
-            (", " + _chg(T["clicks"]["pct"])) if T["clicks"]["pct"] is not None else "")})
+        out.append({"tone": _sign(clicks["pct"]), "icon": "links",
+                    "text": "Переходов на сайт: {}{}.".format(
+                        R.fmt_int(clicks["now"]),
+                        (", " + _chg(clicks["pct"])) if clicks["pct"] is not None else "")})
 
-    # 2. Деньги
     if cost["pct"] is not None and abs(cost["pct"]) >= NOISE_PCT:
-        out.append({"tone": "flat", "text": "Расход {}: {} против {}.".format(
+        out.append({"tone": "flat", "icon": "wallet-3", "text": "Расход {}: {} против {}.".format(
             _chg(cost["pct"]), R.fmt_money(cost["now"]), R.fmt_money(cost["was"]))})
 
-    # 3. Перезапуск кампаний — одной фразой, иначе одна и та же кампания попадёт
-    #    и в «запустили», и в «больше всего добавила», и выйдет каша
-    if started and stopped:
-        out.append({"tone": "flat", "text": "Перестроили структуру: остановили {}, вместо неё запустили {}.".format(
-            ", ".join("«" + _short(n) + "»" for n in stopped),
-            ", ".join("«" + _short(n) + "»" for n in started))})
-    elif started:
-        out.append({"tone": "flat", "text": "Запустили: {}.".format(
-            ", ".join("«" + _short(n) + "»" for n in started))})
-    elif stopped:
-        out.append({"tone": "flat", "text": "Остановили: {}.".format(
-            ", ".join("«" + _short(n) + "»" for n in stopped))})
-
-    # 4. За счёт чего изменился результат — только среди кампаний, работавших оба периода:
-    #    у новых и остановленных изменение объясняется самим фактом запуска или остановки
+    # драйверы считаем среди кампаний, работавших в обоих периодах: у запущенных
+    # и остановленных изменение объясняется самим фактом запуска или остановки
     ups = [c for c in res["ups"] if not c["started"]]
     downs = [c for c in res["downs"] if not c["stopped"]]
     if ups:
         c = ups[0]
-        out.append({"tone": "good", "text": "Лучше других сработала «{}»: на {} {} больше.".format(
-            _short(c["name"]), R.fmt_int(c["d_key"]), _units(res, c["d_key"]))})
+        out.append({"tone": "good", "icon": "checkbox-circle",
+                    "text": "Лучше других сработала «{}»: на {} {} больше.".format(
+                        _short(c["name"]), R.fmt_int(c["d_key"]), _units(res, c["d_key"]))})
     if downs:
         c = downs[0]
-        out.append({"tone": "bad", "text": "Просела «{}»: на {} {} меньше.".format(
-            _short(c["name"]), R.fmt_int(abs(c["d_key"])), _units(res, c["d_key"]))})
+        out.append({"tone": "bad", "icon": "alert",
+                    "text": "Просела «{}»: на {} {} меньше.".format(
+                        _short(c["name"]), R.fmt_int(abs(c["d_key"])), _units(res, c["d_key"]))})
 
-    # 5. Где деньги уходят впустую
+    # цели: что именно изменилось в характере заявок
+    for g in res["goals"][:4]:
+        if g["pct"] is not None and abs(g["pct"]) >= 25 and (g["now"] >= 3 or g["was"] >= 3):
+            out.append({"tone": _sign(g["pct"]), "icon": "focus-3",
+                        "text": "{}: {} — {} против {}.".format(
+                            g["name"], _chg(g["pct"]), R.fmt_int(g["now"]), R.fmt_int(g["was"]))})
+
     if res["wasted"]:
         w = res["wasted"][0]
-        out.append({"tone": "bad", "text": "«{}» израсходовала {} и не дала ни одной заявки — разбираем.".format(
-            _short(w["name"]), R.fmt_money(w["now"]["cost"]))})
+        out.append({"tone": "bad", "icon": "error-warning",
+                    "text": "«{}» израсходовала {} и не дала ни одной заявки — разбираем.".format(
+                        _short(w["name"]), R.fmt_money(w["now"]["cost"]))})
 
-    # 6. Что работает лучше всего
     if res["best"] and res["best"]["now"]["cpa"]:
         b = res["best"]
-        out.append({"tone": "good", "text": "Дешевле всего заявки даёт «{}» — {} при {} {}.".format(
-            _short(b["name"]), R.fmt_money(b["now"]["cpa"]), R.fmt_int(b["now"]["conv"]),
-            _plural(b["now"]["conv"], "заявке", "заявках", "заявках"))})
+        out.append({"tone": "good", "icon": "wallet",
+                    "text": "Дешевле всего заявки даёт «{}» — {} при {} {}.".format(
+                        _short(b["name"]), R.fmt_money(b["now"]["cpa"]), R.fmt_int(b["now"]["conv"]),
+                        _plural(b["now"]["conv"], "заявке", "заявках", "заявках"))})
+
+    f = res["forecast"]
+    if f:
+        out.append({"tone": "flat", "icon": "line-chart",
+                    "text": "При текущем темпе ({} в день) к концу месяца выйдет около {} {} при расходе ~{}.".format(
+                        round(f["per_day_conv"], 1), R.fmt_int(f["conv"]),
+                        _plural(f["conv"], "заявки", "заявок", "заявок"), R.fmt_money(f["cost"]))})
     return out
 
 
+def cut_summary(res, cut):
+    """Одна фраза по разрезу: кто главный и кто дороже."""
+    rows = [r for r in cut["rows"] if r["now"]["cost"] > 0]
+    if not rows:
+        return ""
+    kk = cut["compare_by"]
+    top = max(rows, key=lambda r: r["now"][kk])
+    total = sum(r["now"][kk] for r in rows) or 1
+    share = top["now"][kk] / total * 100
+    unit = "заявок" if kk == "conv" else "переходов"
+    txt = "Больше всего {} даёт «{}» — {:.0f}% от всех".format(unit, _short(top["name"], 30), share)
+    if cut["has_conv"]:
+        scored = [r for r in rows if r["now"]["conv"] >= 3]
+        if len(scored) > 1:
+            cheap = min(scored, key=lambda r: r["now"]["cpa"])
+            dear = max(scored, key=lambda r: r["now"]["cpa"])
+            if dear["now"]["cpa"] and cheap["now"]["cpa"] and dear["now"]["cpa"] > cheap["now"]["cpa"] * 1.3:
+                txt += "; дешевле всего заявка в «{}» ({}), дороже всего в «{}» ({})".format(
+                    _short(cheap["name"], 24), R.fmt_money(cheap["now"]["cpa"]),
+                    _short(dear["name"], 24), R.fmt_money(dear["now"]["cpa"]))
+    return txt + "."
+
+
 def to_text(res):
-    """Готовый текст для отправки клиенту — правится руками перед отправкой."""
+    """Готовый текст для клиента: сначала что сделали, потом что получилось."""
     T = res["totals"]
-    L = ["{} — итоги за {}".format(res["client_name"], period_label(res)), ""]
-    L.append("Расход: {}".format(R.fmt_money(T["cost"]["now"])))
-    L.append("Показы: {}   Клики: {}   CTR: {}".format(
+    L = ["{} — отчёт за {}".format(res["client_name"], period_label(res["a_from"], res["a_to"])), ""]
+    L.append("Сравнение с периодом {}{}.".format(
+        period_label(res["b_from"], res["b_to"]),
+        "" if res["same_length"] else " (другой длины, поэтому сравниваем характер, а не объём)"))
+    L.append("")
+
+    L.append("ЧТО СДЕЛАЛИ")
+    for d in res["done"]:
+        L.append("  " + d["text"])
+    L.append("")
+
+    L.append("ЧТО ПОЛУЧИЛОСЬ")
+    for h in res["happened"]:
+        L.append("  " + h["text"])
+    L.append("")
+
+    L.append("ЦИФРЫ ЗА ПЕРИОД")
+    L.append("  Расход: {}".format(R.fmt_money(T["cost"]["now"])))
+    L.append("  Показы: {}   Клики: {}   CTR: {}".format(
         R.fmt_int(T["imp"]["now"]), R.fmt_int(T["clicks"]["now"]), R.fmt_pct(T["ctr"]["now"])))
     if res["has_conv"]:
-        L.append("Заявки: {}   Цена заявки: {}".format(
+        L.append("  Заявки: {}   Цена заявки: {}".format(
             R.fmt_int(T["conv"]["now"]), R.fmt_money(T["cpa"]["now"])))
-        goals = res.get("goals") or []
-        gt = res.get("goal_totals") or {}
-        named = [(g["name"], gt.get(g["id"], 0)) for g in goals if gt.get(g["id"], 0) > 0]
-        if named:
+        if res["goals"]:
             L.append("")
-            L.append("По целям:")
-            for name, v in named:
-                L.append("  {} — {}".format(name, R.fmt_int(v)))
-    L.append("")
-    L.append("Сравнение с предыдущим периодом ({} — {}):".format(
-        _ru_date(res["prev_from"]), _ru_date(res["prev_to"])))
-    for h in res["highlights"]:
-        L.append("  " + h["text"])
+            L.append("  По целям (сейчас / было):")
+            for g in res["goals"]:
+                L.append("    {} — {} / {}".format(g["name"], R.fmt_int(g["now"]), R.fmt_int(g["was"])))
+
     top = [c for c in res["campaigns"] if c["now"]["cost"] > 0][:5]
     if top:
         L.append("")
-        L.append("Крупнейшие кампании периода:")
+        L.append("КРУПНЕЙШИЕ КАМПАНИИ")
         for c in top:
             line = "  {} — {}".format(c["name"], R.fmt_money(c["now"]["cost"]))
             if res["has_conv"]:
@@ -300,4 +455,28 @@ def to_text(res):
                 if c["now"]["cpa"]:
                     line += " по {}".format(R.fmt_money(c["now"]["cpa"]))
             L.append(line)
+
+    for cut in res["cuts"]:
+        s = cut_summary(res, cut)
+        if not s:
+            continue
+        L.append("")
+        L.append(cut["label"].upper())
+        L.append("  " + s)
+        for r in cut["rows"][:6]:
+            if not r["now"]["cost"]:
+                continue
+            line = "    {} — {}".format(_short(r["name"], 40), R.fmt_money(r["now"]["cost"]))
+            if cut["has_conv"]:
+                line += ", заявок {}".format(R.fmt_int(r["now"]["conv"]))
+            else:
+                line += ", переходов {}".format(R.fmt_int(r["now"]["clicks"]))
+            L.append(line)
+
+    if res["sheet_url"]:
+        L.append("")
+        L.append("Подробная таблица: {}".format(res["sheet_url"]))
+    if res["signature"]:
+        L.append("")
+        L.append(res["signature"])
     return "\n".join(L)

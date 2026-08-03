@@ -988,8 +988,16 @@ class Api:
         return {"sent": sent}
 
     @safe
-    def dossier(self, login, date_from=None, date_to=None, attribution=None, goal_ids=None):
-        """Досье по проекту за период: итоги, сравнение с прошлым периодом, драйверы, готовый текст."""
+    def dossier_options(self):
+        """Справочник разрезов для вкладки «Досье»."""
+        from . import dossier as DS
+        return {"cuts": DS.cut_options()}
+
+    @safe
+    def dossier(self, login, a_from=None, a_to=None, b_from=None, b_to=None,
+                attribution=None, goal_ids=None, cuts=None, sheet_url=None):
+        """Досье: период A против периода B. Даты обоих периодов считает кабинет
+        и присылает готовыми — здесь ничего не достраивается по умолчанию."""
         self._require_owned(login)
         from . import dossier as DS
         token = load_secrets()["yandex_oauth_token"]
@@ -1000,14 +1008,18 @@ class Api:
             goal_defs = report.goal_defs_from_client(c, only_ids=goal_ids)
         else:
             goal_defs = report.goal_defs_from_client(c)
-        if not date_from or not date_to:
-            per = report.period()
-            date_from = date_from or per["date_from"]
-            date_to = date_to or per["date_to"]
-        if date_from > date_to:
-            date_from, date_to = date_to, date_from
-        return DS.build(token, login, c["name"] or login, date_from, date_to,
-                        attribution or default_attribution(), goal_defs)
+        if not (a_from and a_to and b_from and b_to):
+            raise RuntimeError("Нужны даты обоих периодов")
+        if a_from > a_to:
+            a_from, a_to = a_to, a_from
+        if b_from > b_to:
+            b_from, b_to = b_to, b_from
+        note = c["note"] if "note" in c.keys() else None
+        u = self.db.get_user(self.user["id"]) if self.user else None
+        signature = (u["note"] if u and "note" in u.keys() else None) or ""
+        return DS.build(token, login, c["name"] or login, a_from, a_to, b_from, b_to,
+                        attribution or default_attribution(), goal_defs, cuts or [],
+                        client_note=note, signature=signature, sheet_url=sheet_url)
 
     # Отправка досье клиенту появится, когда режим выйдет из демо. Метода намеренно нет:
     # диспетчер /api/<method> вызывает по имени, поэтому «просто не показать кнопку» мало —

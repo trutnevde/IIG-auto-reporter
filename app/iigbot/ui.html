@@ -365,6 +365,50 @@
     .ds-act .btn{flex:1 1 45%;justify-content:center;min-height:42px}
   }
 
+  /* два периода рядом: A — что смотрим, B — с чем сравниваем */
+  .ds-per{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .ds-box{border:1px solid var(--line);border-radius:12px;padding:13px 14px;background:var(--surface-2)}
+  .ds-box.b{--pc:var(--slate)}
+  .ds-box>h4{margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--muted);display:flex;align-items:center;gap:8px}
+  .ds-box>h4 b{font-size:11px;font-weight:800;padding:2px 7px;border-radius:5px;letter-spacing:.04em;
+    color:var(--on-brand);background:var(--brand)}
+  .ds-box.b>h4 b{background:var(--slate)}
+  .ds-dates{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+  .ds-cnt{font-size:11.5px;color:var(--muted);margin-top:9px}
+  .ds-cuts{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+  .ds-cut{display:inline-flex;align-items:center;gap:7px;padding:8px 12px;border-radius:9px;cursor:pointer;
+    border:1px solid var(--line);background:var(--surface);font-size:12.5px;user-select:none;
+    transition:border-color .14s,background .14s}
+  .ds-cut:hover{background:var(--surface-2)}
+  .ds-cut input{margin:0}
+  .ds-cut:has(input:checked){border-color:color-mix(in srgb,var(--brand) 45%,var(--line));
+    background:color-mix(in srgb,var(--brand) 8%,var(--surface))}
+
+  /* «что сделано» и «что случилось» — две колонки одного разговора */
+  .ds-two{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+  @media (max-width:1100px){.ds-two{grid-template-columns:1fr}.ds-per{grid-template-columns:1fr}}
+
+  .ds-goals{display:grid;gap:8px}
+  .ds-goal{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;
+    padding:9px 12px;border-radius:9px;background:var(--surface-2);font-size:12.5px}
+  .ds-goal b{font-variant-numeric:tabular-nums;font-weight:700}
+  .ds-goal .was{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+  .ds-fc{display:flex;align-items:flex-start;gap:11px;padding:12px 14px;border-radius:11px;margin-top:14px;
+    border:1px solid color-mix(in srgb,var(--cyan) 24%,transparent);
+    background:linear-gradient(96deg,color-mix(in srgb,var(--cyan) 10%,var(--surface)),var(--surface) 74%)}
+  .ds-fc svg{width:18px;height:18px;color:var(--cyan);flex:0 0 auto;margin-top:1px}
+  .ds-fc b{display:block;font-size:13px;font-weight:700}
+  .ds-fc span{display:block;font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.45}
+  @media (max-width:600px){
+    /* галочки разрезов съедали по 89px: мобильное правило тянет ЛЮБОЙ input до 46px,
+       и чекбокс распирал строку. Ставим в столбик и возвращаем чекбоксу его размер */
+    .ds-cuts{display:grid;grid-template-columns:1fr;gap:7px}
+    .ds-cut{min-height:44px}
+    .ds-cut input[type="checkbox"]{width:20px;height:20px;min-height:20px;flex:0 0 auto}
+  }
+
   /* ══════════ Клиенты: плитки, фильтры, строки-карточки ══════════ */
   /* заголовок раздела и кнопки справа на одной линии */
   .head-row{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:18px}
@@ -2468,68 +2512,132 @@ async function renderDashboard(){
       :(A.length?`<span class="h3-tag" style="--ac:var(--amber)"><svg class="ic"><use href="#i-time"/></svg>${A.length}</span>`:'');}
 }
 
-/* ---------- ДОСЬЕ: отписка клиенту за произвольный период ---------- */
-let DS_RES=null, DS_PRESET=14;
+/* ---------- ДОСЬЕ: сравнение двух периодов ---------- */
+let DS_RES=null, DS_OPT=null, DS_CMP='prev';
 const DS_UP='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 7.828V20h-2V7.828l-5.364 5.364-1.414-1.414L12 4l7.778 7.778-1.414 1.414z"/></svg>';
 const DS_DN='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 16.172l5.364-5.364 1.414 1.414L12 20l-7.778-7.778 1.414-1.414L11 16.172V4h2z"/></svg>';
 const DS_EQ='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 11h14v2H5z"/></svg>';
 
-/* в плитках расход показываем целыми рублями: «62 833,94 ₽» не влезает в 228px */
+/* в плитках расход показываем целыми рублями: с копейками не влезает */
 function dsMoney(n){return Math.round(Number(n)||0).toLocaleString('ru-RU')+' ₽';}
-function dsFmtDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
-function dsPreset(days){
-  DS_PRESET=days;
-  const to=new Date();to.setDate(to.getDate()-1);            // по вчера: сегодняшний день ещё неполный
-  const from=new Date(to);from.setDate(to.getDate()-days+1);
-  el('dsFrom').value=dsFmtDate(from);el('dsTo').value=dsFmtDate(to);
-  const box=el('dsPre');if(box)[...box.children].forEach(b=>b.setAttribute('aria-pressed',+b.dataset.d===days));
+function dsF(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function dsP(v){const p=String(v||'').split('-');return new Date(+p[0],+p[1]-1,+p[2]);}
+function dsDays(a,b){return Math.round((dsP(b)-dsP(a))/86400000)+1;}
+/* сдвиг на месяцы/годы: 31 июля минус месяц в JS даёт 1 июля (31 июня не бывает),
+   поэтому день подрезаем до последнего дня целевого месяца */
+function dsShift(d,months,years){
+  const y=d.getFullYear()+(years||0), m=d.getMonth()+(months||0);
+  const last=new Date(y,m+1,0).getDate();
+  return new Date(y,m,Math.min(d.getDate(),last));
 }
-function dsCustom(){DS_PRESET=0;const box=el('dsPre');if(box)[...box.children].forEach(b=>b.setAttribute('aria-pressed',false));}
 
-function renderDossier(clientOpts){
-  const isObs=(ME&&ME.role==='observer');
+/* ══ период A: сколько дней по вчерашний день, либо календарный месяц ══ */
+function dsSetA(kind){
+  const t=new Date();t.setDate(t.getDate()-1);         // по вчера: сегодня ещё не закрыт
+  let from,to;
+  if(kind==='thismonth'){from=new Date(t.getFullYear(),t.getMonth(),1);to=t;}
+  else if(kind==='lastmonth'){from=new Date(t.getFullYear(),t.getMonth()-1,1);
+    to=new Date(t.getFullYear(),t.getMonth(),0);}
+  else{to=t;from=new Date(t);from.setDate(t.getDate()-(+kind)+1);}
+  el('dsAFrom').value=dsF(from);el('dsATo').value=dsF(to);
+  [...el('dsAPre').children].forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===String(kind)));
+  dsSetB(DS_CMP);
+}
+/* ══ период B считается от A: сдвиг на длину, на неделю, на месяц или на год ══ */
+function dsSetB(mode){
+  DS_CMP=mode;
+  const box=el('dsBPre');if(box)[...box.children].forEach(b=>b.setAttribute('aria-pressed',b.dataset.k===mode));
+  const wrap=el('dsBCustom');if(wrap)wrap.style.display=(mode==='custom')?'':'none';
+  if(mode==='custom'){dsCount();return;}
+  const a1=dsP(el('dsAFrom').value),a2=dsP(el('dsATo').value);
+  let b1,b2;
+  if(mode==='prev'){const n=dsDays(el('dsAFrom').value,el('dsATo').value);
+    b2=new Date(a1);b2.setDate(a1.getDate()-1);b1=new Date(b2);b1.setDate(b2.getDate()-n+1);}
+  else if(mode==='week'){b1=new Date(a1);b1.setDate(a1.getDate()-7);b2=new Date(a2);b2.setDate(a2.getDate()-7);}
+  else if(mode==='month'){b1=dsShift(a1,-1,0);b2=dsShift(a2,-1,0);}
+  else{b1=dsShift(a1,0,-1);b2=dsShift(a2,0,-1);}
+  el('dsBFrom').value=dsF(b1);el('dsBTo').value=dsF(b2);
+  dsCount();
+}
+function dsACustom(){[...el('dsAPre').children].forEach(b=>b.setAttribute('aria-pressed',false));dsSetB(DS_CMP);}
+function dsBCustom(){DS_CMP='custom';[...el('dsBPre').children].forEach(b=>b.setAttribute('aria-pressed',b.dataset.k==='custom'));
+  el('dsBCustom').style.display='';dsCount();}
+function dsCount(){
+  const a=el('dsACnt'),b=el('dsBCnt');
+  if(!a||!b)return;
+  const na=dsDays(el('dsAFrom').value,el('dsATo').value), nb=dsDays(el('dsBFrom').value,el('dsBTo').value);
+  const pl=n=>n+' '+(n%10===1&&n%100!==11?'день':(n%10>=2&&n%10<=4&&(n%100<10||n%100>=20)?'дня':'дней'));
+  a.textContent=pl(na);
+  b.textContent=pl(nb)+(na===nb?'':' — длина другая, сравниваем характер, а не объём');
+  b.style.color=(na===nb)?'':'var(--amber)';
+  const n=[...document.querySelectorAll('.ds-cut input:checked')].length;
+  const est=el('dsEst');
+  if(est)est.textContent='Выгрузок из Директа: '+(3+n*2)+', примерно '+(15+n*12)+'–'+(30+n*20)+' секунд.';
+}
+
+async function renderDossier(clientOpts){
+  if(!DS_OPT){try{DS_OPT=await api('dossier_options');}catch(e){DS_OPT={cuts:[]};}}
+  const cuts=(DS_OPT.cuts||[]).map(c=>`<label class="ds-cut"><input type="checkbox" id="dsCut_${c.key}" onchange="dsCount()"> ${esc(c.label)}${c.has_conv?'':' <span class="muted">(без заявок)</span>'}</label>`).join('');
   el('rpane').innerHTML=`
     <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-file-list-2"/></svg></span> Досье по проекту</h3><div class="body">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div class="field"><label>Клиент</label><select id="dsClient">${clientOpts||'<option>нет клиентов</option>'}</select></div>
-        <div class="field"><label>Период</label>
-          <div class="ds-pre" id="dsPre">
-            <button type="button" data-d="7" onclick="dsPreset(7)">Неделя</button>
-            <button type="button" data-d="14" onclick="dsPreset(14)">2 недели</button>
-            <button type="button" data-d="21" onclick="dsPreset(21)">3 недели</button>
-            <button type="button" data-d="30" onclick="dsPreset(30)">Месяц</button>
-            <button type="button" data-d="90" onclick="dsPreset(90)">Квартал</button>
-          </div></div>
+      <div class="field"><label>Клиент</label><select id="dsClient">${clientOpts||'<option>нет клиентов</option>'}</select></div>
+      <div class="ds-per" style="margin-top:14px">
+        <div class="ds-box"><h4><b>A</b> что смотрим</h4>
+          <div class="ds-pre" id="dsAPre">
+            <button type="button" data-k="7" onclick="dsSetA(7)">Неделя</button>
+            <button type="button" data-k="14" onclick="dsSetA(14)">2 недели</button>
+            <button type="button" data-k="30" onclick="dsSetA(30)">30 дней</button>
+            <button type="button" data-k="thismonth" onclick="dsSetA('thismonth')">Этот месяц</button>
+            <button type="button" data-k="lastmonth" onclick="dsSetA('lastmonth')">Прошлый месяц</button>
+          </div>
+          <div class="ds-dates">
+            <div class="field"><label>С</label><input type="date" id="dsAFrom" onchange="dsACustom()"></div>
+            <div class="field"><label>По</label><input type="date" id="dsATo" onchange="dsACustom()"></div>
+          </div>
+          <div class="ds-cnt" id="dsACnt"></div>
+        </div>
+        <div class="ds-box b"><h4><b>B</b> с чем сравниваем</h4>
+          <div class="ds-pre" id="dsBPre">
+            <button type="button" data-k="prev" onclick="dsSetB('prev')">Предыдущим</button>
+            <button type="button" data-k="week" onclick="dsSetB('week')">Неделей раньше</button>
+            <button type="button" data-k="month" onclick="dsSetB('month')">Месяцем раньше</button>
+            <button type="button" data-k="year" onclick="dsSetB('year')">Год назад</button>
+            <button type="button" data-k="custom" onclick="dsBCustom()">Свои даты</button>
+          </div>
+          <div class="ds-dates" id="dsBCustom" style="display:none">
+            <div class="field"><label>С</label><input type="date" id="dsBFrom" onchange="dsBCustom()"></div>
+            <div class="field"><label>По</label><input type="date" id="dsBTo" onchange="dsBCustom()"></div>
+          </div>
+          <div class="ds-cnt" id="dsBCnt"></div>
+        </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:4px">
-        <div class="field"><label>С</label><input type="date" id="dsFrom" onchange="dsCustom()"></div>
-        <div class="field"><label>По</label><input type="date" id="dsTo" onchange="dsCustom()"></div>
-      </div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+      <div class="field" style="margin-top:14px"><label>Добавить разборы (каждый — две выгрузки)</label>
+        <div class="ds-cuts">${cuts}</div></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px">
         <button class="btn primary" id="dsGo" onclick="doDossier()"><svg class="ic"><use href="#i-sparkling-2"/></svg> Собрать досье</button>
+        <span class="muted" id="dsEst" style="font-size:12px"></span>
       </div>
       <div class="ds-demo"><svg class="ic"><use href="#i-flask"/></svg>
         <div><b>Демо-режим</b><span>Функция в активной разработке: считает по-настоящему, но выводы ещё
         обкатываются. Отправка клиенту прямо из кабинета отключена — текст копируешь и отправляешь сам.</span></div></div>
-      <div class="note" style="margin-top:12px">Считается три выгрузки из Директа: выбранный период, предыдущий такой же длины
-        и разбивка по датам. Сравнение и выводы — автоматически. Занимает от 20 секунд до минуты.</div>
     </div></div>
     <div id="dsOut"></div>`;
-  dsPreset(DS_PRESET||14);
-  if(isObs)el('dsGo').insertAdjacentHTML('afterend',
-    '<span class="muted" style="align-self:center;font-size:12.5px">Режим наблюдателя: отправка клиенту недоступна</span>');
+  dsSetA(14);
 }
 
 async function doDossier(){
-  const login=el('dsClient').value, from=el('dsFrom').value, to=el('dsTo').value;
+  const login=el('dsClient').value;
+  const a1=el('dsAFrom').value,a2=el('dsATo').value,b1=el('dsBFrom').value,b2=el('dsBTo').value;
   if(!login){toast('Выбери клиента','err');return;}
-  if(!from||!to){toast('Укажи обе даты','err');return;}
+  if(!a1||!a2||!b1||!b2){toast('Укажи даты обоих периодов','err');return;}
+  const cuts=(DS_OPT.cuts||[]).map(c=>c.key).filter(k=>{const e=el('dsCut_'+k);return e&&e.checked;});
+  const sheet=(typeof GS_CLIENTS!=='undefined'&&GS_CLIENTS)?((GS_CLIENTS.find(x=>x.login===login)||{}).url||''):'';
   const out=el('dsOut');
-  out.innerHTML=`<div class="panel"><div class="body">${skeleton('rows',5)}
-    <p class="muted" style="margin-top:10px">Тяну данные из Директа: период, предыдущий период и разбивку по датам…</p></div></div>`;
+  out.innerHTML=`<div class="panel" style="margin-top:16px"><div class="body">${skeleton('rows',5)}
+    <p class="muted" style="margin-top:10px">Тяну ${3+cuts.length*2} выгрузки из Директа: два периода, динамика по дням${cuts.length?' и выбранные разборы':''}…</p></div></div>`;
   const btn=el('dsGo');btn.disabled=true;
   try{
-    DS_RES=await api('dossier',login,from,to);
+    DS_RES=await api('dossier',login,a1,a2,b1,b2,null,null,cuts,sheet);
     dsRender(DS_RES);
   }catch(e){out.innerHTML=errBlock(e,()=>doDossier());}
   finally{btn.disabled=false;}
@@ -2548,37 +2656,48 @@ function dsTile(color,ic,label,val,d,goodUp,wasText){
       <div class="card-meta"><div class="card-k">${label}</div><div class="card-v">${val}</div></div></div>
     <div class="card-foot"><span class="ds-was">${wasText}</span>${dsDelta(d,goodUp)}</div></div>`;
 }
+function dsList(items){
+  return items.map(x=>`<div class="r ${x.tone}"><svg class="ic"><use href="#i-${x.icon||'question'}"/></svg><span>${esc(x.text)}</span></div>`).join('');
+}
+function dsShortLabel(v,grain){
+  if(!v)return '';
+  const p=String(v).split('-');
+  if(grain==='month'){const M=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+    return p.length>1?(M[+p[1]-1]||v):v;}
+  return p.length>=3?(p[2]+'.'+p[1]):v;
+}
 
 function dsRender(r){
   const T=r.totals, conv=r.has_conv;
-  // пустой период: иначе клиенту уедет отписка с нулями во всех строках
   if(!T.cost.now&&!T.cost.was&&!T.clicks.now&&!T.clicks.was){
     el('dsOut').innerHTML='<div class="panel" style="margin-top:16px"><div class="body">'+
-      emptyState('<svg class="ic"><use href="#i-cactus"/></svg>','За этот период рекламы не было',
-        'У «'+esc(r.client_name)+'» с '+esc(r.date_from)+' по '+esc(r.date_to)+' нет ни показов, ни расхода. '+
-        'Возьми другой период или проверь, работали ли кампании.',null)+'</div></div>';
+      emptyState('<svg class="ic"><use href="#i-cactus"/></svg>','В обоих периодах рекламы не было',
+        'У «'+esc(r.client_name)+'» ни показов, ни расхода — ни в '+esc(r.a_from)+' — '+esc(r.a_to)+
+        ', ни в '+esc(r.b_from)+' — '+esc(r.b_to)+'. Возьми другие даты.',null)+'</div></div>';
     return;
   }
   const tiles=[
     dsTile('blue','wallet-3','Расход',dsMoney(T.cost.now),T.cost,true,'было '+dsMoney(T.cost.was)),
-    dsTile('cyan','cursor','Клики',fmtInt(T.clicks.now),T.clicks,true,'было '+fmtInt(T.clicks.was)),
+    dsTile('cyan','links','Клики',fmtInt(T.clicks.now),T.clicks,true,'было '+fmtInt(T.clicks.was)),
     conv?dsTile('green','focus-3','Заявки',fmtInt(T.conv.now),T.conv,true,'было '+fmtInt(T.conv.was)):
          dsTile('slate','eye','Показы',fmtInt(T.imp.now),T.imp,true,'было '+fmtInt(T.imp.was)),
-    conv?dsTile((T.cpa.pct!==null&&T.cpa.pct>8)?'red':'violet','price-tag-3','Цена заявки',fmtMoney(T.cpa.now),T.cpa,false,'было '+fmtMoney(T.cpa.was)):
-         dsTile('violet','percent','CTR',T.ctr.now.toFixed(2)+'%',T.ctr,true,'было '+T.ctr.was.toFixed(2)+'%'),
+    conv?dsTile((T.cpa.pct!==null&&T.cpa.pct>8)?'red':'violet','wallet','Цена заявки',fmtMoney(T.cpa.now),T.cpa,false,'было '+fmtMoney(T.cpa.was)):
+         dsTile('violet','line-chart','CTR',T.ctr.now.toFixed(2)+'%',T.ctr,true,'было '+T.ctr.was.toFixed(2)+'%'),
   ].join('');
 
-  const hl=(r.highlights||[]).map(h=>{
-    const ic=h.tone==='good'?'checkbox-circle':(h.tone==='bad'?'alert':'question');
-    return `<div class="r ${h.tone}"><svg class="ic"><use href="#i-${ic}"/></svg><span>${esc(h.text)}</span></div>`;}).join('');
-
-  const S=r.series||[];
-  const key=r.compare_by;
+  const S=r.series||[], key=r.compare_by;
   const mx=Math.max(1,...S.map(x=>x[key]||0));
   const cols='repeat('+Math.max(1,S.length)+',1fr)';
   const chart=S.map(x=>{const h=Math.max(3,Math.round((x[key]||0)/mx*118));
     return `<div class="ds-col" title="${esc(x.label)}: ${fmtInt(x[key])}"><b>${fmtInt(x[key])}</b><i style="height:${h}px"></i></div>`;}).join('');
   const days=S.map(x=>`<span title="${esc(x.label)}">${esc(dsShortLabel(x.label,r.grain))}</span>`).join('');
+
+  const goals=(r.goals||[]).map(g=>`<div class="ds-goal"><span>${esc(g.name)}</span>
+    <b>${fmtInt(g.now)}</b><span class="was">было ${fmtInt(g.was)}</span></div>`).join('');
+
+  const fc=r.forecast?`<div class="ds-fc"><svg class="ic"><use href="#i-line-chart"/></svg>
+    <div><b>Прогноз до конца месяца</b><span>Прошло ${r.forecast.days_gone} дн., осталось ${r.forecast.days_left}.
+    При текущем темпе выйдет около ${fmtInt(r.forecast.conv)} заявок при расходе ${dsMoney(r.forecast.cost)}.</span></div></div>`:'';
 
   const rows=(r.campaigns||[]).filter(c=>c.now.cost>0||c.was.cost>0).map(c=>{
     const d={now:c.now[key],was:c.was[key],pct:(c.was[key]?((c.now[key]-c.was[key])/c.was[key]*100):(c.now[key]?100:null))};
@@ -2589,20 +2708,39 @@ function dsRender(r){
       <td>${fmtInt(c.now.clicks)}</td>
       <td>${dsDelta(d,true)}</td></tr>`;}).join('');
 
+  const cutPanels=(r.cuts||[]).map(cut=>{
+    const kk=cut.compare_by;
+    const body=(cut.rows||[]).filter(x=>x.now.cost>0||x.was.cost>0).map(x=>{
+      const d={now:x.now[kk],was:x.was[kk],pct:(x.was[kk]?((x.now[kk]-x.was[kk])/x.was[kk]*100):(x.now[kk]?100:null))};
+      return `<tr><td><b>${esc(x.name)}</b></td><td>${fmtMoney(x.now.cost)}</td>
+        ${cut.has_conv?`<td>${fmtInt(x.now.conv)}</td><td>${x.now.cpa?fmtMoney(x.now.cpa):'<span class="muted">—</span>'}</td>`:''}
+        <td>${fmtInt(x.now.clicks)}</td><td>${dsDelta(d,true)}</td></tr>`;}).join('');
+    return `<div class="panel" style="margin-top:16px"><h3><span class="h3-ic"><svg class="ic"><use href="#i-equalizer"/></svg></span> ${esc(cut.label)}
+      ${cut.has_conv?'':'<span class="wk-chip" style="margin-left:auto">Директ не считает заявки в этом разрезе</span>'}</h3>
+      <div class="scrollx"><table>
+        <thead><tr><th>${esc(cut.label)}</th><th>Расход</th>${cut.has_conv?'<th>Заявки</th><th>Цена заявки</th>':''}<th>Клики</th><th>К периоду B</th></tr></thead>
+        <tbody>${body||'<tr><td colspan="6" class="empty">Нет данных за периоды.</td></tr>'}</tbody></table></div></div>`;}).join('');
+
   el('dsOut').innerHTML=`
     <div class="cards" style="margin-top:16px">${tiles}</div>
-    <div class="dash-cols">
+    <div class="ds-two">
+      <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-tools"/></svg></span> Что сделано</h3>
+        <div class="body"><div class="ds-hl">${dsList(r.done||[])}</div></div></div>
+      <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-pulse"/></svg></span> Что случилось</h3>
+        <div class="body"><div class="ds-hl">${dsList(r.happened||[])}</div>${fc}</div></div>
+    </div>
+    <div class="dash-cols" style="margin-top:16px">
       <div class="dash-col">
-        <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-sparkling-2"/></svg></span> Что происходило
-          <span class="wk-chip" style="margin-left:auto">против ${esc(r.prev_from)} — ${esc(r.prev_to)}</span></h3>
-          <div class="body"><div class="ds-hl">${hl||'<span class="muted">Изменений, достойных отдельной строки, не нашлось.</span>'}</div></div></div>
-        <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-bar-chart"/></svg></span> Динамика
+        <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-bar-chart"/></svg></span> Динамика внутри периода A
           <span class="wk-chip" style="margin-left:auto">${r.grain==='day'?'по дням':(r.grain==='week'?'по неделям':'по месяцам')}</span></h3>
           <div class="body">
             <div class="ds-chart" style="grid-template-columns:${cols}">${chart}</div>
             <div class="ds-days" style="grid-template-columns:${cols}">${days}</div>
-            <div class="dnote" style="margin-top:10px">${conv?'Заявки':'Клики'} внутри периода.${r.peak?(' Лучший отрезок — '+esc(dsShortLabel(r.peak.label,r.grain))+'.'):''}</div>
+            <div class="dnote" style="margin-top:10px">${conv?'Заявки':'Клики'} по дням.${r.peak?(' Лучший отрезок — '+esc(dsShortLabel(r.peak.label,r.grain))+'.'):''}</div>
           </div></div>
+        ${goals?`<div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-focus-3"/></svg></span> Заявки по целям
+          <span class="wk-chip" style="margin-left:auto">A против B</span></h3>
+          <div class="body"><div class="ds-goals">${goals}</div></div></div>`:''}
       </div>
       <div class="dash-col">
         <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-send-plane"/></svg></span> Текст для клиента</h3>
@@ -2619,19 +2757,10 @@ function dsRender(r){
     <div class="panel" style="margin-top:16px"><h3><span class="h3-ic"><svg class="ic"><use href="#i-equalizer"/></svg></span> Кампании
       <span class="wk-chip" style="margin-left:auto">${fmtInt(r.n_campaigns)} всего</span></h3>
       <div class="scrollx"><table>
-        <thead><tr><th>Кампания</th><th>Расход</th>${conv?'<th>Заявки</th><th>Цена заявки</th>':''}<th>Клики</th><th>${conv?'Заявки':'Клики'} к прошлому</th></tr></thead>
-        <tbody>${rows||'<tr><td colspan="6" class="empty">За период не было расхода.</td></tr>'}</tbody></table></div></div>`;
+        <thead><tr><th>Кампания</th><th>Расход</th>${conv?'<th>Заявки</th><th>Цена заявки</th>':''}<th>Клики</th><th>К периоду B</th></tr></thead>
+        <tbody>${rows||'<tr><td colspan="6" class="empty">За период не было расхода.</td></tr>'}</tbody></table></div></div>
+    ${cutPanels}`;
 }
-
-function dsShortLabel(v,grain){
-  if(!v)return '';
-  if(grain==='month'){const p=String(v).split('-');
-    const M=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
-    return p.length>1?(M[+p[1]-1]||v):v;}
-  const p=String(v).split('-');
-  return p.length>=3?(p[2]+'.'+p[1]):v;
-}
-
 
 /* ---------- CLIENTS ---------- */
 let CL_SORT={key:'added',dir:-1};   // по умолчанию — по дате добавления, новые сверху
@@ -3200,16 +3329,24 @@ const GUIDE=[
   </ul>
   <div class="note">Пока панель свёрнута, игра ничего не считает и не жуёт батарею — она полностью выключена. И клавиши она не перехватывает: если печатаешь в поле ввода, стрелки работают как обычно.</div>`},
 // ===== КЛИЕНТЫ =====
-{tab:'Рассылка',icon:'<svg class="ic"><use href="#i-flask"/></svg>',title:'Досье по проекту (демо)',kw:'досье отписка период произвольный сравнение итоги неделя две три месяц квартал текст клиенту',html:`
-  <p><b>Отчёты → Досье</b> — собрать отписку клиенту за любой период, а не только за прошлую неделю. Выбираешь проект, жмёшь <b>Неделя / 2 недели / 3 недели / Месяц / Квартал</b> или ставишь свои даты — и получаешь готовый текст.</p>
-  <p>Считается три выгрузки из Директа: выбранный период, <b>предыдущий такой же длины</b> и разбивка по датам. Поэтому в досье есть не только цифры, но и сравнение: что выросло, что просело и за счёт каких кампаний.</p>
+{tab:'Рассылка',icon:'<svg class="ic"><use href="#i-flask"/></svg>',title:'Досье по проекту (демо)',kw:'досье отписка период сравнение два периода год назад месяц неделя что сделано что случилось разрезы устройства гео запросы прогноз',html:`
+  <p><b>Отчёты → Досье</b> — отписка клиенту за любой период. Всё построено на сравнении <b>двух</b> периодов: <b>A</b> — то, что смотрим, <b>B</b> — то, с чем сравниваем.</p>
+  <p><b>Период A.</b> Кнопки «Неделя / 2 недели / 30 дней / Этот месяц / Прошлый месяц» или свои даты. Считается по вчерашний день: сегодняшний ещё не закрыт и портил бы картину.</p>
+  <p><b>Период B</b> подставляется сам, как только выбран A:</p>
   <ul>
-    <li><b>Плитки</b> — расход, клики, заявки, цена заявки. Под каждой «было столько-то» и стрелка с процентом; изменения меньше 8% помечаются серым как шум.</li>
-    <li><b>«Что происходило»</b> — выводы словами: драйверы роста и падения, кампании, которые тратят без заявок, самая дешёвая по цене заявки, что запускали и останавливали.</li>
-    <li><b>Динамика</b> — по дням для короткого периода, по неделям для среднего, по месяцам для длинного.</li>
-    <li><b>Текст для клиента</b> — правь прямо в поле и копируй.</li>
+    <li><b>Предыдущим</b> — такой же длины, впритык до начала A. Обычное «неделя к неделе».</li>
+    <li><b>Неделей раньше</b> и <b>Месяцем раньше</b> — тот же отрезок, сдвинутый назад.</li>
+    <li><b>Год назад</b> — тот же отрезок прошлого года. Это ответ на «у нас всё упало»: если просадка каждый июль, видно сразу.</li>
+    <li><b>Свои даты</b> — любые два куска, хоть разной длины. Если длина разная, кабинет предупредит: сравнивать тогда честно характер, а не объём.</li>
   </ul>
-  <div class="note"><b>Демо-режим.</b> Функция в активной разработке: цифры настоящие, но формулировки выводов ещё обкатываются — перечитывай текст перед отправкой. Отправка прямо из кабинета пока отключена, только копирование. Сбор занимает 20–60 секунд на проект: это три полноценных отчёта Директа, а он их ставит в очередь.</div>`},
+  <p>Результат делится на два вопроса:</p>
+  <ul>
+    <li><b>Что сделано</b> — какие кампании запустили и остановили, как переложили бюджет между ними (доли в процентах), заметка по проекту.</li>
+    <li><b>Что случилось</b> — заявки, цена заявки, расход с изменениями; за счёт каких кампаний вышло; какие цели выросли и просели; кто потратил без заявок; кто даёт самые дешёвые заявки. Если A — это текущий месяц с 1-го числа, добавляется прогноз до конца месяца по текущему темпу.</li>
+  </ul>
+  <p><b>Разборы</b> (галочки) добавляют разрезы, и каждый тоже сравнивает A с B: поиск и РСЯ, устройства, география, возраст, пол, поисковые запросы. Каждая галочка — это две дополнительные выгрузки, время сбора растёт; кабинет показывает оценку рядом с кнопкой.</p>
+  <div class="note"><b>Про поисковые запросы:</b> Директ не считает по ним конверсии, поэтому там сравнение по кликам и расходу. Обещать клиенту «заявки по запросам» нельзя.</div>
+  <div class="note"><b>Демо-режим.</b> Цифры настоящие, но формулировки выводов ещё обкатываются — перечитывай текст перед отправкой. Отправка прямо из кабинета отключена, только копирование.</div>`},
 {tab:'Клиенты',icon:'<svg class="ic"><use href="#i-file-list-2"/></svg>',title:'Как читать список',kw:'список карточка строка статус фильтр поиск готов без чата настроить цели страница',html:`
   <p>Сверху четыре плитки: <b>Всего</b>, <b>Подключено</b>, <b>Без чата</b>, <b>Требуют настройки</b>. Нажатие на плитку отбирает только этих клиентов — то же делают чипы под поиском. Поиск ищет по названию, логину и <b>названию чата</b>.</p>
   <p>В строке клиента слева имя и логин, дальше чат с пометкой, подключён он или нет, потом цели дробью: <b>первое число — сколько идёт в отчёт</b>, второе — сколько всего нашлось в Метрике. Полоса под дробью показывает ту же долю, подпись снизу — сколько целей выключено.</p>
@@ -3541,6 +3678,18 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-04',tag:'major',title:'Досье: сравнение двух периодов',
+ sum:'Любые два отрезка, быстрые предустановки и результат в двух вопросах — что сделано и что случилось',items:[
+  '<b>Досье перестроено вокруг пары периодов.</b> Раньше сравнение было жёстким: предыдущий отрезок такой же длины, и всё. Теперь <b>A</b> (что смотрим) и <b>B</b> (с чем сравниваем) настраиваются отдельно и не обязаны быть одной длины — можно сопоставить любые два куска.',
+  '<b>Предустановки для обоих периодов.</b> Для A: неделя, 2 недели, 30 дней, этот месяц, прошлый месяц. Для B: предыдущим, неделей раньше, месяцем раньше, <b>год назад</b> или свои даты. Выбрал A — B подставился сам, менять руками не нужно.',
+  '<b>Сравнение год к году</b> — то, чего не хватало для сезонных клиентов. На «у нас всё упало» теперь есть ответ: если в этом месяце просадка каждый год, это видно в одну кнопку.',
+  '<b>Результат разделён на «Что сделано» и «Что случилось».</b> Слева — действия: какие кампании запустили и остановили, как переложили бюджет между ними (с долями в процентах), заметка по проекту. Справа — результат: заявки, цена, расход, за счёт чего изменилось, что просело. Раньше это шло вперемешку одним списком.',
+  '<b>Заявки по целям с динамикой.</b> Не просто список целей, а каждая в сравнении: «отправка формы — 71 против 45». Видно не только сколько заявок, но и как изменился их характер.',
+  '<b>Прогноз до конца месяца.</b> Если период A — текущий месяц с 1-го числа, считается темп и прогноз: сколько заявок и расхода выйдет к концу месяца. Появляется только там, где это честно посчитать.',
+  '<b>Шесть дополнительных разборов галочками:</b> поиск и РСЯ, устройства, география, возраст, пол, поисковые запросы. Каждый тоже сравнивает A с B. Рядом с кнопкой сбора написано, сколько выгрузок и секунд это добавит.',
+  '<b>Приписка специалиста и ссылка на таблицу</b> подставляются в текст — как в недельном отчёте.',
+  '<b>Починка календаря:</b> при сдвиге на месяц или год 31-е число уезжало на первое следующего месяца (31 июля минус месяц в браузере даёт 1 июля). Теперь день подрезается до последнего дня целевого месяца.',
+ ]},
 {date:'2026-08-03',tag:'major',title:'Досье по проекту за любой период',
  sum:'Выбрал проект и даты — получил готовую отписку клиенту со сравнением и разбором причин',items:[
   '<b>Новая вкладка «Отчёты → Досье».</b> Раньше отчёт умел только «прошлую неделю», а конструктор отдавал таблицу, из которой выводы надо было делать самому. Теперь: выбираешь проект, жмёшь «Неделя / 2 недели / 3 недели / Месяц / Квартал» или ставишь свои даты — и получаешь готовый текст для клиента.',
