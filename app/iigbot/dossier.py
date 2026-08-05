@@ -112,6 +112,30 @@ def _pair(a_rows, b_rows, key):
     return out
 
 
+def build_cut(token, login, ck, a_from, a_to, b_from, b_to,
+              attribution=None, goal_defs=None, _post=None, _sleep=None):
+    """Один разрез отдельным вызовом: два отчёта Директа вместо пятнадцати за раз.
+
+    Собирать все разрезы внутри одного HTTP-запроса нельзя — Reports API ставит
+    каждый отчёт в очередь, и пятнадцать отчётов подряд занимают минуты, а на
+    shared-хостинге один занятый процесс держит весь кабинет.
+    """
+    if ck not in CUTS:
+        raise RuntimeError("Неизвестный разрез: {}".format(ck))
+    level, seg, label, cut_conv = CUTS[ck]
+    segs = [seg] if seg else None
+    kw = dict(attribution=attribution, goal_defs=goal_defs, _post=_post, _sleep=_sleep)
+    ca = RC.build(token, login, level, a_from, a_to, segments=segs, limit=200, **kw)
+    cb = RC.build(token, login, level, b_from, b_to, segments=segs, limit=200, **kw)
+    has_conv = cut_conv and ((ca["totals"]["conv"] > 0) or (cb["totals"]["conv"] > 0))
+    ckey = "conv" if has_conv else "clicks"
+    rows = _pair(_rows_by_name(ca), _rows_by_name(cb), ckey)
+    rows = [r for r in rows if r["now"]["cost"] > 0 or r["was"]["cost"] > 0][:12]
+    cut = {"key": ck, "label": label, "has_conv": has_conv, "compare_by": ckey, "rows": rows}
+    cut["summary"] = cut_summary({"compare_by": ckey}, cut)
+    return cut
+
+
 def build(token, login, client_name, a_from, a_to, b_from, b_to,
           attribution=None, goal_defs=None, cuts=None,
           client_note=None, signature=None, sheet_url=None, today=None,
@@ -195,20 +219,8 @@ def build(token, login, client_name, a_from, a_to, b_from, b_to,
                 "per_day_conv": rate_conv, "per_day_cost": rate_cost,
             }
 
-    # ── дополнительные разрезы: тоже A против B
+    # разрезы кабинет запрашивает по одному отдельными вызовами — см. build_cut
     cut_res = []
-    for ck in (cuts or []):
-        if ck not in CUTS:
-            continue
-        level, seg, label, cut_conv = CUTS[ck]
-        segs = [seg] if seg else None
-        ca = RC.build(token, login, level, a_from, a_to, segments=segs, limit=200, **kw)
-        cb = RC.build(token, login, level, b_from, b_to, segments=segs, limit=200, **kw)
-        ckey = key if cut_conv else "clicks"
-        rows = _pair(_rows_by_name(ca), _rows_by_name(cb), ckey)
-        rows = [r for r in rows if r["now"]["cost"] > 0 or r["was"]["cost"] > 0][:12]
-        cut_res.append({"key": ck, "label": label, "has_conv": cut_conv and has_conv,
-                        "compare_by": ckey, "rows": rows})
 
     res = {
         "login": login, "client_name": client_name or login,

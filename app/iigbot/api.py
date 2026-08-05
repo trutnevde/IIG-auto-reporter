@@ -1021,6 +1021,26 @@ class Api:
                         attribution or default_attribution(), goal_defs, cuts or [],
                         client_note=note, signature=signature, sheet_url=sheet_url)
 
+    @safe
+    def dossier_cut(self, login, cut, a_from=None, a_to=None, b_from=None, b_to=None,
+                    attribution=None, goal_ids=None):
+        """Один дополнительный разрез досье. Кабинет запрашивает их по очереди,
+        чтобы каждый HTTP-запрос оставался коротким."""
+        self._require_owned(login)
+        from . import dossier as DS
+        token = load_secrets()["yandex_oauth_token"]
+        c = self.db.get_client(login)
+        if not c:
+            raise RuntimeError("Клиент {} не найден".format(login))
+        if goal_ids is not None:
+            goal_defs = report.goal_defs_from_client(c, only_ids=goal_ids)
+        else:
+            goal_defs = report.goal_defs_from_client(c)
+        if not (a_from and a_to and b_from and b_to):
+            raise RuntimeError("Нужны даты обоих периодов")
+        return DS.build_cut(token, login, cut, a_from, a_to, b_from, b_to,
+                            attribution or default_attribution(), goal_defs)
+
     # Отправка досье клиенту появится, когда режим выйдет из демо. Метода намеренно нет:
     # диспетчер /api/<method> вызывает по имени, поэтому «просто не показать кнопку» мало —
     # пока функции не существует, в чат клиента ничего уйти не может.
