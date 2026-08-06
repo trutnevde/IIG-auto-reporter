@@ -17,6 +17,8 @@ import datetime as dt
 
 import requests
 
+from . import net
+
 from . import report as R
 
 V4_URL = "https://api.direct.yandex.ru/live/v4/json/"
@@ -30,7 +32,7 @@ WARN_DAYS = 7      # жёлтая зона
 def get_balances(token, logins, _post=None):
     """{login: {'amount': float, 'currency': str}} по общим счетам. Логины без общего
     счёта в ответ не попадают. Батчами по 50 (лимит SelectionCriteria)."""
-    post = _post or requests.post
+    post = _post or (lambda url, **kw: net.post("Директ v4", url, **kw))
     out = {}
     logins = [str(l) for l in logins if l]
     for i in range(0, len(logins), 50):
@@ -56,11 +58,36 @@ def get_balances(token, logins, _post=None):
 
 
 # ---------- Директ: статусы кампаний (v5) ----------
+# Повторный ручной сбор бюджетов раньше заново обходил всех клиентов. Состояния
+# кампаний за пару минут не меняются — держим их недолго в памяти процесса.
+_STATES_CACHE = {}
+_STATES_TTL = 300
+
+
+def _states_cached(login):
+    import time as _t
+    hit = _STATES_CACHE.get(login)
+    if hit and _t.time() - hit[0] < _STATES_TTL:
+        return hit[1]
+    return None
+
+
+def _states_store(login, val):
+    import time as _t
+    if len(_STATES_CACHE) > 500:
+        _STATES_CACHE.clear()
+    _STATES_CACHE[login] = (_t.time(), val)
+
+
 def get_campaign_states(token, login, _post=None):
     """Сводка по кампаниям клиента: {'total','on','pay_stopped','daily_budget'}.
     on — State=ON и оплата разрешена; pay_stopped — остановлены по деньгам (StatusPayment=DISALLOWED
     среди неархивных); daily_budget — суммарный дневной бюджет включённых (руб/день, 0 если не задан)."""
-    post = _post or requests.post
+    if _post is None:
+        hit = _states_cached(login)
+        if hit is not None:
+            return hit
+    post = _post or (lambda url, **kw: net.post("Директ", url, **kw))
     headers = {
         "Authorization": "Bearer {}".format(token),
         "Client-Login": login,
@@ -95,6 +122,8 @@ def get_campaign_states(token, login, _post=None):
                 daily += float(db_.get("Amount") or 0) / 1e6   # микро-единицы -> валюта
             except (TypeError, ValueError):
                 pass
+    if _post is None:
+        _states_store(login, {"total": total, "on": on, "pay_stopped": pay_stopped, "daily_budget": round(daily, 2)})
     return {"total": total, "on": on, "pay_stopped": pay_stopped, "daily_budget": round(daily, 2)}
 
 

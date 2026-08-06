@@ -226,6 +226,20 @@ class Api:
     # ---------- dashboard ----------
     @safe
     def dashboard(self):
+        """Сводка Обзора. Десяток обращений к базе на каждое открытие — а открывают
+        его по несколько раз подряд. Держим готовый ответ минуту: за это время
+        ни отчёты, ни бюджеты не меняются."""
+        import time as _t
+        uid = (self.user or {}).get("id") or 0
+        key = "dash:{}".format(uid)
+        cached = getattr(self, "_dash_cache", None)
+        if cached and cached.get("key") == key and (_t.time() - cached["at"]) < 60:
+            return cached["data"]
+        data = self._dashboard_build()
+        self._dash_cache = {"key": key, "at": _t.time(), "data": data}
+        return data
+
+    def _dashboard_build(self):
         chats = [c for c in self._visible_chats() if c["status"] == "active"]
         clients = self.db.list_clients(self._owner())
         bindings = self.db.list_bindings(self._owner())
@@ -884,22 +898,46 @@ class Api:
     # операцией, кабинет не отвечает никому. «Подтянуть из Директа» на 393
     # клиента, «Цели из Метрики (всем)» и выгрузка в таблицы — как раз такие.
     # Запускаем их в потоке, а кабинет опрашивает job_progress.
+    # Одновременно тяжёлую работу делаем только одну: процесс на хостинге один,
+    # две параллельные выгрузки просто мешают друг другу и кабинету.
+    JOB_TIMEOUT = 20 * 60          # дольше двадцати минут — считаем, что задача зависла
+
+    def _job_stale(self, j):
+        """Задача помечена running, но процесс давно перезапустили или она зависла."""
+        import time as _t
+        if not j or j.get("state") != "running":
+            return False
+        started = j.get("started") or 0
+        return (_t.time() - started) > self.JOB_TIMEOUT
+
     def _job_start(self, key, title, work):
-        jobs = getattr(self, "_jobs", None)
-        if jobs is None:
-            jobs = self._jobs = {}
-        cur = jobs.get(key)
-        if cur and cur.get("running"):
+        import time as _t
+        db = self.db
+        # подчистить зависшие с прошлой жизни процесса
+        for j in db.jobs_running():
+            if self._job_stale(j):
+                db.job_set(j["key"], state="error", note="прервана",
+                           error="Задача не завершилась за {} мин — вероятно, приложение перезапустили."
+                           .format(self.JOB_TIMEOUT // 60))
+        cur = db.job_get(key)
+        if cur and cur.get("state") == "running":
             return {"already_running": True, "title": cur.get("title")}
-        jobs[key] = {"running": True, "title": title, "note": "запускаю…",
-                     "result": None, "error": None}
+        busy = [j for j in db.jobs_running() if j["key"] != key]
+        if busy:
+            return {"busy": True, "title": busy[0].get("title"),
+                    "error": "Сейчас идёт другая операция: {}. Дождись её окончания."
+                             .format(busy[0].get("title") or busy[0]["key"])}
+        db.job_set(key, title=title, state="running", note="запускаю…", result=None, error=None,
+                   started=_t.time(), finished=None,
+                   owner=(self.user or {}).get("id"))
 
         def runner():
             try:
-                res = work(lambda note: jobs[key].update({"note": note}))
-                jobs[key].update({"running": False, "result": res, "note": "готово"})
+                res = work(lambda note: db.job_set(key, note=note))
+                db.job_set(key, state="done", note="готово",
+                           result=json.dumps(res, ensure_ascii=False, default=str))
             except Exception as e:  # noqa: BLE001
-                jobs[key].update({"running": False, "error": str(e), "note": "ошибка"})
+                db.job_set(key, state="error", note="ошибка", error=str(e)[:400])
                 log_error("job." + key, str(e))
 
         import threading
@@ -908,13 +946,31 @@ class Api:
 
     @safe
     def job_progress(self, key):
-        """Состояние фоновой задачи: running / note / result / error."""
-        jobs = getattr(self, "_jobs", None) or {}
-        j = jobs.get(key)
+        """Состояние фоновой задачи. Переживает перезапуск приложения: лежит в базе."""
+        j = self.db.job_get(key)
         if not j:
             return {"running": False, "unknown": True}
-        return {"running": j.get("running", False), "title": j.get("title"),
-                "note": j.get("note"), "result": j.get("result"), "error": j.get("error")}
+        if self._job_stale(j):
+            j = self.db.job_set(key, state="error", note="прервана",
+                                error="Задача не завершилась вовремя — вероятно, приложение перезапустили.")
+        res = None
+        if j.get("result"):
+            try:
+                res = json.loads(j["result"])
+            except Exception:  # noqa: BLE001
+                res = None
+        return {"running": j.get("state") == "running", "title": j.get("title"),
+                "note": j.get("note"), "result": res, "error": j.get("error"),
+                "started": j.get("started"), "finished": j.get("finished")}
+
+    @safe
+    def jobs_state(self):
+        """Что идёт прямо сейчас и что было недавно — для строки в шапке."""
+        running = [j for j in self.db.jobs_running() if not self._job_stale(j)]
+        return {"running": [{"key": j["key"], "title": j.get("title"), "note": j.get("note")}
+                            for j in running],
+                "recent": [{"key": j["key"], "title": j.get("title"), "state": j.get("state"),
+                            "finished": j.get("finished")} for j in self.db.jobs_recent(5)]}
 
     @safe
     def sync_clients_start(self):

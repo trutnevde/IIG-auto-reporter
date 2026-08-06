@@ -140,6 +140,7 @@ class Storage:
         ("ix_budgets_login",      "budgets(login)"),
         ("ix_audit_created",      "audit(created_at)"),
         ("ix_logins_user",        "logins(user_id, at)"),
+        ("ix_cache_at",           "cache(at)"),
     ]
 
     def _ensure_indexes(self):
@@ -172,6 +173,86 @@ class Storage:
             "SELECT at FROM logins WHERE user_id=? AND ok=1 ORDER BY id DESC LIMIT 1",
             (user_id,)).fetchone()
         return r["at"] if r else None
+
+    # ─────────── кэш выгрузок ───────────
+    # Раньше кэш жил только в памяти процесса: Passenger перезапустил приложение —
+    # и всё, что было накоплено, пропадало. Теперь переживает перезапуск.
+    CACHE_MAX_ROWS = 200
+    CACHE_MAX_BYTES = 8 * 1024 * 1024      # 8 МБ на весь кэш, дальше вытесняем старое
+
+    def cache_get(self, key, max_age):
+        import time as _t
+        r = self.conn.execute("SELECT value, at FROM cache WHERE key=?", (key,)).fetchone()
+        if not r:
+            return None
+        if _t.time() - (r["at"] or 0) > max_age:
+            self.conn.execute("DELETE FROM cache WHERE key=?", (key,))
+            self.conn.commit()
+            return None
+        return r["value"]
+
+    def cache_put(self, key, value):
+        import time as _t
+        val = value or ""
+        self.conn.execute(
+            "INSERT INTO cache(key,value,at,bytes) VALUES(?,?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, at=excluded.at, bytes=excluded.bytes",
+            (key, val, _t.time(), len(val)))
+        self.conn.commit()
+        self._cache_trim()
+
+    def _cache_trim(self):
+        """Держим кэш в берегах: и по числу записей, и по объёму."""
+        row = self.conn.execute("SELECT COUNT(*) n, COALESCE(SUM(bytes),0) b FROM cache").fetchone()
+        if row["n"] <= self.CACHE_MAX_ROWS and row["b"] <= self.CACHE_MAX_BYTES:
+            return
+        self.conn.execute(
+            "DELETE FROM cache WHERE key IN (SELECT key FROM cache ORDER BY at ASC LIMIT ?)",
+            (max(1, row["n"] // 4),))
+        self.conn.commit()
+
+    def cache_clear(self):
+        self.conn.execute("DELETE FROM cache")
+        self.conn.commit()
+
+    def cache_stats(self):
+        r = self.conn.execute("SELECT COUNT(*) n, COALESCE(SUM(bytes),0) b FROM cache").fetchone()
+        return {"rows": r["n"], "kb": round((r["b"] or 0) / 1024)}
+
+    # ─────────── фоновые задачи ───────────
+    def job_set(self, key, **fields):
+        import time as _t
+        cur = self.job_get(key) or {}
+        data = {"key": key, "title": cur.get("title"), "note": cur.get("note"),
+                "state": cur.get("state"), "result": cur.get("result"),
+                "error": cur.get("error"), "started": cur.get("started"),
+                "finished": cur.get("finished"), "owner": cur.get("owner")}
+        data.update(fields)
+        if fields.get("state") == "running" and not data.get("started"):
+            data["started"] = _t.time()
+        if fields.get("state") in ("done", "error"):
+            data["finished"] = _t.time()
+        self.conn.execute(
+            "INSERT INTO jobs(key,title,note,state,result,error,started,finished,owner) "
+            "VALUES(:key,:title,:note,:state,:result,:error,:started,:finished,:owner) "
+            "ON CONFLICT(key) DO UPDATE SET title=excluded.title, note=excluded.note, "
+            "state=excluded.state, result=excluded.result, error=excluded.error, "
+            "started=excluded.started, finished=excluded.finished, owner=excluded.owner", data)
+        self.conn.commit()
+        return data
+
+    def job_get(self, key):
+        r = self.conn.execute("SELECT * FROM jobs WHERE key=?", (key,)).fetchone()
+        return dict(r) if r else None
+
+    def jobs_running(self):
+        rows = self.conn.execute("SELECT * FROM jobs WHERE state='running'").fetchall()
+        return [dict(r) for r in rows]
+
+    def jobs_recent(self, limit=10):
+        rows = self.conn.execute(
+            "SELECT * FROM jobs ORDER BY COALESCE(finished, started) DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
 
     def maintenance(self):
         """Обслуживание базы: пересчёт статистики и сжатие. Зовётся по кнопке из кабинета —
@@ -277,6 +358,25 @@ class Storage:
                 ip       TEXT,
                 agent    TEXT,
                 at       TEXT
+            )""")
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS cache (
+                key   TEXT PRIMARY KEY,
+                value TEXT,
+                at    REAL,
+                bytes INTEGER
+            )""")
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS jobs (
+                key      TEXT PRIMARY KEY,
+                title    TEXT,
+                note     TEXT,
+                state    TEXT,      -- running | done | error
+                result   TEXT,
+                error    TEXT,
+                started  REAL,
+                finished REAL,
+                owner    INTEGER    -- кто запустил
             )""")
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS audit (

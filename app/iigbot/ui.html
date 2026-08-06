@@ -937,10 +937,10 @@
   .spin{display:inline-block;width:15px;height:15px;border:2px solid color-mix(in srgb,var(--brand) 25%,transparent);
     border-top-color:var(--brand);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
   @keyframes sp{to{transform:rotate(360deg)}}
-  .busy-bar{display:flex;align-items:center;gap:9px;margin-bottom:14px;padding:10px 14px;
+  .busy-bar{display:flex;align-items:center;gap:9px;margin:0;padding:9px 18px;position:sticky;top:0;z-index:40;
     border-radius:11px;font-size:12.5px;color:var(--ink-soft);
-    border:1px solid color-mix(in srgb,var(--brand) 26%,transparent);
-    background:linear-gradient(96deg,color-mix(in srgb,var(--brand) 10%,var(--surface)),var(--surface) 72%)}
+    border-bottom:1px solid color-mix(in srgb,var(--brand) 26%,transparent);
+    background:linear-gradient(96deg,color-mix(in srgb,var(--brand) 12%,var(--surface)),var(--surface) 72%)}
   .empty{color:var(--muted);padding:26px;text-align:center}
 
   /* ---------- дружелюбный UX: тост с действием, скелетоны, пустые экраны ---------- */
@@ -3117,6 +3117,7 @@ async function jobRun(key, startMethod, args, startText, doneText){
     if(r&&r.already_running){toast('Уже выполняется: '+(r.title||'задача'),'err');return;}
   }catch(e){return;}
   toast(startText);
+  setBusy(startText);              // сразу, не дожидаясь первого ответа о ходе дела
   for(;;){
     await new Promise(s=>setTimeout(s,1500));
     let p; try{p=await api('job_progress',key);}catch(e){return;}
@@ -3129,15 +3130,32 @@ async function jobRun(key, startMethod, args, startText, doneText){
     return;
   }
 }
-/* строка состояния под шапкой, чтобы было видно: фоновая задача идёт */
+/* Полоска фоновой задачи живёт в шапке: раньше она рисовалась внутри раздела
+   и пропадала при переходе, хотя задача продолжала идти. */
 function setBusy(text){
   let b=el('busyBar');
   if(!text){ if(b)b.remove(); return; }
   if(!b){
     b=document.createElement('div'); b.id='busyBar'; b.className='busy-bar';
-    const c=document.querySelector('.content'); if(c)c.insertBefore(b,c.firstChild); else return;
+    const top=document.querySelector('.top');
+    if(top&&top.parentNode)top.parentNode.insertBefore(b,top.nextSibling); else return;
   }
   b.innerHTML='<span class="spin"></span> '+esc(text);
+}
+/* Кабинет мог не знать, что задача идёт: перезагрузили страницу — полоска пропала.
+   Теперь при запуске спрашиваем сервер, не осталось ли незаконченного. */
+async function busyWatch(){
+  if(!ME)return;
+  let st; try{st=await api('jobs_state');}catch(e){return;}
+  const cur=(st.running||[])[0];
+  if(!cur){setBusy('');return;}
+  setBusy(cur.title+(cur.note?(' — '+cur.note):''));
+  for(;;){
+    await new Promise(s=>setTimeout(s,2000));
+    let p; try{p=await api('job_progress',cur.key);}catch(e){setBusy('');return;}
+    if(!p.running){setBusy('');refresh();return;}
+    setBusy((p.title||cur.title)+(p.note?(' — '+p.note):''));
+  }
 }
 
 async function doSync(){
@@ -3804,6 +3822,16 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-07',tag:'fix',title:'Долгие операции стали предсказуемыми, Обзор — быстрее',
+ sum:'Очередь задач, полоска в шапке, кэш переживает перезапуск',items:[
+  '<b>Полоска фоновой задачи переехала в шапку.</b> Раньше она рисовалась внутри раздела и пропадала при переходе, хотя работа продолжалась. Теперь видно из любого места, и появляется сразу при запуске, а не через полторы секунды.',
+  '<b>Две тяжёлые операции больше не запускаются одновременно.</b> Процесс на хостинге один: параллельные выгрузки только мешали друг другу. Если что-то уже идёт, кабинет прямо говорит, что именно, и просит дождаться.',
+  '<b>Состояние задачи переживает перезагрузку.</b> Раньше оно жило в памяти приложения: перезапустился процесс — и кабинет забывал, что синхронизация идёт. Теперь помнит; а если задача не закончилась за двадцать минут, помечает её прерванной, а не оставляет висеть навсегда.',
+  '<b>Перезагрузил страницу во время операции — полоска возвращается.</b> Кабинет при входе спрашивает, не осталось ли незавершённого.',
+  '<b>Кэш выгрузок из Директа переехал в базу.</b> Раньше он жил в памяти процесса и пропадал при каждом перезапуске. Теперь повторный сбор досье за тот же период не идёт в Директ, даже если приложение успело перезапуститься.',
+  '<b>Обзор открывается мгновенно при повторных заходах.</b> Он собирал сводку десятком обращений к базе каждый раз, а открывают его по нескольку раз подряд. Теперь готовый ответ живёт минуту: проверено — второе и третье открытие не трогают базу вообще.',
+  '<b>Сбор бюджетов стал устойчивее:</b> запросы к Директу повторяются при сбоях, а состояния кампаний недолго кэшируются — повторный ручной сбор не обходит всех клиентов заново.',
+ ]},
 {date:'2026-08-06',tag:'fix',title:'Связь с Директом, Метрикой, Google и Telegram стала надёжнее',
  sum:'Повторы при сбоях, таймауты, понятные ошибки и экран здоровья интеграций',items:[
   '<b>Разовый обрыв связи больше не роняет операцию.</b> У Директа и Метрики не было ни одной повторной попытки: моргнул интернет — и синхронизация или сбор целей падали целиком. Теперь запрос повторяется до трёх раз с растущей паузой, а если сервис просит подождать — ждём именно столько, сколько он сказал.',
@@ -5070,6 +5098,7 @@ function showLogin(setup){
 function hideLogin(){el('loginBg').classList.remove('on');el('lgErr').textContent='';}
 const ROLE_RU={admin:'Администратор',observer:'Наблюдатель',user:'Специалист'};
 function applyUser(){
+  setTimeout(busyWatch,800);   // вдруг задача осталась с прошлой сессии
   const box=el('userBox');
   const setNav=(id,on)=>{const e=el(id);if(e)e.style.display=on?'':'none';};
   if(!ME){box.style.display='none';setNav('navUsers',false);setNav('navSup',false);setNav('navErrlog',false);setNav('navCapManage',false);return;}

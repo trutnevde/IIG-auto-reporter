@@ -186,6 +186,13 @@ def _safe_user(u):
 
 def create_app(api=None):
     base = api or Api()          # агентский Api (без пользователя) — для входа/сессий/сида
+    # кэш выгрузок Директа держим в базе: переживает перезапуск процесса
+    try:
+        from . import report as _report
+        _report.set_cache_store(base.db)
+    except Exception:  # noqa: BLE001
+        pass
+
     app = Flask(__name__)
     app.secret_key = _secret_key(base.db)
     # Кука сессии: недоступна из JS, не уходит по HTTP, не отправляется

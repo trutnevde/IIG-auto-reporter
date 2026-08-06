@@ -72,6 +72,15 @@ _CACHE_TTL = 900            # период включает сегодня: да
 _CACHE_TTL_CLOSED = 6 * 3600  # период закрыт (кончился вчера или раньше) — меняться нечему
 _CACHE_MAX = 40             # чтобы память процесса не росла бесконечно
 
+# Внешнее хранилище кэша (обычно база): пережить перезапуск процесса.
+# Ставится один раз при старте приложения; None — работаем только в памяти.
+CACHE_STORE = None          # объект с cache_get(key, max_age) / cache_put(key, value)
+
+
+def set_cache_store(store):
+    global CACHE_STORE
+    CACHE_STORE = store
+
 
 def _cache_key(token, login, date_from, date_to, fields, goal_ids, attribution,
                report_type, filters):
@@ -79,9 +88,20 @@ def _cache_key(token, login, date_from, date_to, fields, goal_ids, attribution,
             attribution, report_type, json.dumps(filters, sort_keys=True) if filters else "")
 
 
+def _store_key(ckey):
+    """Ключ для внешнего хранилища: кортеж → короткая строка."""
+    import hashlib
+    return "rep:" + hashlib.sha1(repr(ckey).encode("utf-8")).hexdigest()
+
+
 def cache_clear():
     """Сбросить кэш выгрузок (после смены целей клиента, например)."""
     _CACHE.clear()
+    if CACHE_STORE is not None:
+        try:
+            CACHE_STORE.cache_clear()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _ttl_for(date_to):
@@ -151,9 +171,19 @@ def fetch_report(token, login, date_from, date_to, fields, goal_ids=None, attrib
     ckey = _cache_key(token, login, date_from, date_to, fields, goal_ids, attribution,
                       report_type, filters)
     now = time.time()
-    cached = _cache_get(ckey, now, _ttl_for(date_to))
+    ttl = _ttl_for(date_to)
+    cached = _cache_get(ckey, now, ttl)
     if cached is not None:
         return cached
+    if CACHE_STORE is not None:                 # переживает перезапуск процесса
+        try:
+            raw = CACHE_STORE.cache_get(_store_key(ckey), ttl)
+            if raw:
+                rows = json.loads(raw)
+                _cache_put(ckey, rows, now)     # поднимаем и в память — там быстрее
+                return rows
+        except Exception:  # noqa: BLE001 — кэш не обязан работать
+            pass
 
     for attempt in range(12):
         r = post(REPORTS_URL, data=body, headers=headers, timeout=120)
@@ -167,6 +197,11 @@ def fetch_report(token, login, date_from, date_to, fields, goal_ids=None, attrib
         if r.status_code == 200:
             rows = _parse_tsv(r.text)
             _cache_put(ckey, rows, now)
+            if CACHE_STORE is not None:
+                try:
+                    CACHE_STORE.cache_put(_store_key(ckey), json.dumps(rows, ensure_ascii=False))
+                except Exception:  # noqa: BLE001
+                    pass
             return rows
         if r.status_code in (201, 202):
             # Директ ставит отчёт в очередь. Раньше ждали ровно столько, сколько
