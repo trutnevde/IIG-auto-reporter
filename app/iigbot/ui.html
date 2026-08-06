@@ -3100,15 +3100,6 @@ async function doBulkGoals(){
     r=>'Готово: с целями '+(r.with_goals||0)+', без счётчика '+(r.no_counter||0)+', ошибок '+(r.errors||0)+' (из '+(r.clients||0)+' привязанных)');
 }
 async function doImport(){try{const r=await api('import_config');toast('Импорт: клиентов '+r.clients+', привязок '+r.bindings,'ok');refresh();}catch(e){}}
-async function doBulkGoals(){
-  if(!(await askConfirm('Подтянуть цели из Метрики для ВСЕХ привязанных клиентов?\nКлючевые включатся для отчётов, остальные сохранятся выключенными. Уже настроенные вручную галки не сбросятся.',{ok:'Подтянуть',title:'Цели из Метрики'})))return;
-  toast('Подтягиваю цели из Метрики всем привязанным… это может занять время');
-  try{const r=await api('metrika_goals_bulk');
-    toast('Готово: с целями '+r.with_goals+', без счётчика '+r.no_counter+', ошибок '+r.errors+' (из '+r.clients+' привязанных)','ok');
-    refresh();
-  }catch(e){}
-}
-
 /* ---------- ДИАЛОГИ: кому мы не ответили ---------- */
 function waitFmt(h){
   if(h==null)return '—';
