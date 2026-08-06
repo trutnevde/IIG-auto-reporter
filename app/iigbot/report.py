@@ -68,7 +68,8 @@ def period(today=None):
 # секунд ожидания. Держим ответы в памяти процесса: пересборка досье за тот же
 # период или повторный конструктор отвечают мгновенно и не жгут лимиты.
 _CACHE = {}                 # ключ -> (время, строки)
-_CACHE_TTL = 900            # 15 минут: свежее суток статистики Директа всё равно нет
+_CACHE_TTL = 900            # период включает сегодня: данные ещё набегают
+_CACHE_TTL_CLOSED = 6 * 3600  # период закрыт (кончился вчера или раньше) — меняться нечему
 _CACHE_MAX = 40             # чтобы память процесса не росла бесконечно
 
 
@@ -83,12 +84,22 @@ def cache_clear():
     _CACHE.clear()
 
 
-def _cache_get(key, now):
+def _ttl_for(date_to):
+    """Сколько держать выгрузку: закрытый период уже не изменится."""
+    try:
+        from datetime import date as _dt
+        y, m, d = (int(x) for x in str(date_to)[:10].split("-"))
+        return _CACHE_TTL if _dt(y, m, d) >= _dt.today() else _CACHE_TTL_CLOSED
+    except Exception:  # noqa: BLE001
+        return _CACHE_TTL
+
+
+def _cache_get(key, now, ttl=None):
     hit = _CACHE.get(key)
     if not hit:
         return None
     ts, rows = hit
-    if now - ts > _CACHE_TTL:
+    if now - ts > (ttl or _CACHE_TTL):
         _CACHE.pop(key, None)
         return None
     return rows
@@ -140,11 +151,11 @@ def fetch_report(token, login, date_from, date_to, fields, goal_ids=None, attrib
     ckey = _cache_key(token, login, date_from, date_to, fields, goal_ids, attribution,
                       report_type, filters)
     now = time.time()
-    cached = _cache_get(ckey, now)
+    cached = _cache_get(ckey, now, _ttl_for(date_to))
     if cached is not None:
         return cached
 
-    for _ in range(12):
+    for attempt in range(12):
         r = post(REPORTS_URL, data=body, headers=headers, timeout=120)
         # Директ не всегда шлёт charset, и тогда requests читает ответ как latin-1 —
         # русские тексты ошибок превращались в кракозябры прямо в журнале
@@ -158,12 +169,14 @@ def fetch_report(token, login, date_from, date_to, fields, goal_ids=None, attrib
             _cache_put(ckey, rows, now)
             return rows
         if r.status_code in (201, 202):
+            # Директ ставит отчёт в очередь. Раньше ждали ровно столько, сколько
+            # он сказал, и долбились с той же частотой; теперь пауза подрастает.
             wait = r.headers.get("retryIn", "5")
             try:
                 wait = int(wait)
             except (TypeError, ValueError):
                 wait = 5
-            sleep(max(wait, 1))
+            sleep(min(30, max(wait, 1) + attempt))
             continue
         detail = (r.text or "")[:500]
         try:

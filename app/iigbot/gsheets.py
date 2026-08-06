@@ -26,6 +26,9 @@ from . import report as R
 from . import report_custom as RC
 
 # ---- доступы ----
+# Google без таймаута может висеть сколько угодно — держим потолок
+GOOGLE_TIMEOUT = 45
+
 SCOPES_RO = ["https://www.googleapis.com/auth/spreadsheets.readonly",
              "https://www.googleapis.com/auth/drive.readonly"]
 SCOPES_RW = ["https://www.googleapis.com/auth/spreadsheets",
@@ -65,7 +68,39 @@ def client(readonly=True):
             "sa_key.json не найден ({}). Положи ключ сервисного аккаунта Google рядом с программой."
             .format(settings.BASE_DIR if settings.FROZEN else "корень репозитория"))
     creds = Credentials.from_service_account_file(p, scopes=(SCOPES_RO if readonly else SCOPES_RW))
-    return gspread.authorize(creds)
+    gc = gspread.authorize(creds)
+    # Таймаута не было вовсе: зависший вызов Google держал единственный процесс
+    # кабинета бесконечно. gspread ходит через requests.Session — ставим его там.
+    try:
+        sess = getattr(gc, "session", None) or getattr(getattr(gc, "http_client", None), "session", None)
+        if sess is not None and not getattr(sess, "_iig_timeout", False):
+            _send = sess.request
+
+            def _with_timeout(method, url, **kw):
+                kw.setdefault("timeout", GOOGLE_TIMEOUT)
+                return _send(method, url, **kw)
+
+            sess.request = _with_timeout
+            sess._iig_timeout = True
+    except Exception:  # noqa: BLE001 — без таймаута хуже, но работать должно
+        pass
+    return gc
+
+
+def access_check(gc=None):
+    """Быстрая проверка: ключ на месте, сервисный аккаунт жив, таблицы видны.
+    Раньше о проблеме узнавали в середине выгрузки."""
+    import time as _t
+    t0 = _t.time()
+    try:
+        if not key_path():
+            return {"ok": False, "error": "Ключ sa_key.json не найден"}
+        g = gc or client(readonly=True)
+        sheets = discover(g)
+        return {"ok": True, "sheets": len(sheets), "ms": int((_t.time() - t0) * 1000),
+                "account": getattr(getattr(g, "auth", None), "service_account_email", "") or ""}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:200], "ms": int((_t.time() - t0) * 1000)}
 
 
 _DISCOVER_CACHE = {"at": 0.0, "data": None}

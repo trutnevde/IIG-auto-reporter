@@ -1107,6 +1107,107 @@ class Api:
         return DS.build_cut(token, login, cut, a_from, a_to, b_from, b_to,
                             attribution or default_attribution(), goal_defs)
 
+    # ─────────── здоровье интеграций ───────────
+    def _probe(self, name, fn):
+        """Один замер: сколько заняло и чем кончилось."""
+        import time as _t
+        t0 = _t.time()
+        try:
+            info = fn() or {}
+            return {"name": name, "ok": True, "ms": int((_t.time() - t0) * 1000), **info}
+        except Exception as e:  # noqa: BLE001
+            return {"name": name, "ok": False, "ms": int((_t.time() - t0) * 1000),
+                    "error": str(e)[:200]}
+
+    def _health_probe_all(self, say=None):
+        """Опрашиваем все внешние сервисы. Долго (секунды), поэтому только в фоне."""
+        from . import yandex, metrika, gsheets
+        out = []
+
+        def note(t):
+            if say:
+                say(t)
+
+        note("Директ…")
+        def _direct():
+            token = load_secrets()["yandex_oauth_token"]
+            rows = self.db.list_clients("all")
+            login = rows[0]["login"] if rows else None
+            if not login:
+                return {"detail": "нет клиентов для проверки"}
+            camps = yandex.get_campaigns(token, login)
+            return {"detail": "кампаний у первого клиента: {}".format(len(camps))}
+        out.append(self._probe("Яндекс.Директ", _direct))
+
+        note("Метрика…")
+        def _metrika():
+            token = load_secrets()["yandex_oauth_token"]
+            data = metrika._get(metrika.API + "counters?per_page=1", token)
+            return {"detail": "счётчиков доступно: {}".format(data.get("rows", "?"))}
+        out.append(self._probe("Яндекс.Метрика", _metrika))
+
+        note("Google-таблицы…")
+        def _google():
+            res = gsheets.access_check()
+            if not res.get("ok"):
+                raise RuntimeError(res.get("error") or "нет доступа")
+            return {"detail": "таблиц видно: {}".format(res.get("sheets", 0))}
+        out.append(self._probe("Google-таблицы", _google))
+
+        note("Telegram…")
+        def _tg():
+            me = self._tg_client().get_me() or {}   # _call отдаёт уже result
+            return {"detail": "бот @{}".format(me.get("username") or "?")}
+        out.append(self._probe("Telegram", _tg))
+
+        note("база…")
+        def _db():
+            n = len(self.db.list_clients("all"))
+            return {"detail": "клиентов в базе: {}".format(n)}
+        out.append(self._probe("База данных", _db))
+
+        try:
+            self.db.set_kv("health_last", json.dumps(out, ensure_ascii=False))
+        except Exception:  # noqa: BLE001
+            pass
+        return {"items": out, "bad": sum(1 for x in out if not x["ok"])}
+
+    @safe
+    def health_start(self):
+        """Проверка всех интеграций в фоне: каждый вызов — секунды."""
+        self._require_admin()
+        return self._job_start("health", "Проверяю интеграции",
+                               lambda say: self._health_probe_all(say))
+
+    @safe
+    def health_last(self):
+        """Последний известный результат — чтобы экран не был пустым до проверки."""
+        self._require_admin()
+        raw = self.db.get_kv("health_last")
+        try:
+            return {"items": json.loads(raw) if raw else []}
+        except Exception:  # noqa: BLE001
+            return {"items": []}
+
+    @safe
+    def chat_check(self, chat_id):
+        """Бот всё ещё в чате? Раньше это выяснялось в момент отправки клиенту."""
+        self._require_chat_visible(int(chat_id))
+        return self._tg_client().chat_ok(int(chat_id))
+
+    @safe
+    def counter_check(self, login):
+        """Доступен ли счётчик Метрики у клиента — до того, как тянуть цели."""
+        self._require_owned(login)
+        from . import yandex, metrika
+        token = load_secrets()["yandex_oauth_token"]
+        counters = yandex.get_campaign_counters(token, login) or []
+        if not counters:
+            return {"ok": False, "error": "У клиента не найден счётчик Метрики в кампаниях"}
+        res = metrika.counter_available(token, counters[0])
+        res["counter"] = counters[0]
+        return res
+
     # Отправка досье клиенту появится, когда режим выйдет из демо. Метода намеренно нет:
     # диспетчер /api/<method> вызывает по имени, поэтому «просто не показать кнопку» мало —
     # пока функции не существует, в чат клиента ничего уйти не может.

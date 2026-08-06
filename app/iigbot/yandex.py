@@ -6,7 +6,36 @@ weekly_report.ps1 (secrets.json -> yandex_oauth_token).
 """
 import requests
 
+from . import net
+
 API = "https://api.direct.yandex.com/json/v5/"
+
+# коды Директа, у которых есть человеческое объяснение: иначе в кабинете
+# показывался сырой технический текст, по которому непонятно, что делать
+_ERR_HINTS = {
+    53:   "Нет доступа к этому клиенту под текущим токеном.",
+    54:   "Токен не подходит: не тот аккаунт или истёк срок.",
+    152:  "Закончились баллы Директа на сегодня — попробуй позже.",
+    1000: "Директ временно недоступен, повтори чуть позже.",
+    9000: "Директ отклонил параметры запроса.",
+}
+
+
+def _explain(err, status=None):
+    """Собрать понятное сообщение из ответа Директа."""
+    code = err.get("error_code") if isinstance(err, dict) else None
+    text = "{} — {}".format((err or {}).get("error_string", ""),
+                            (err or {}).get("error_detail", "")).strip(" —")
+    hint = _ERR_HINTS.get(int(code)) if str(code).isdigit() else None
+    if status == 429:
+        hint = hint or "Слишком часто обращаемся к Директу — сбавляем темп."
+    parts = ["Директ API: " + text if text else "Директ API вернул ошибку"]
+    if code:
+        parts.append("(код {})".format(code))
+    if hint:
+        parts.append("— " + hint)
+    return " ".join(parts)
+
 
 
 def get_agency_clients(token):
@@ -23,14 +52,14 @@ def get_agency_clients(token):
             "FieldNames": ["Login", "ClientId", "ClientInfo"],
         },
     }
-    r = requests.post(API + "agencyclients", json=body, headers=headers, timeout=60)
+    r = net.post("Директ", API + "agencyclients", json=body, headers=headers)
     try:
         data = r.json()
     except ValueError:
         raise RuntimeError("Директ вернул не-JSON (HTTP {})".format(r.status_code))
     if isinstance(data, dict) and data.get("error"):
         err = data["error"]
-        raise RuntimeError("Директ API: {} — {}".format(err.get("error_string"), err.get("error_detail")))
+        raise RuntimeError(_explain(err, getattr(r, "status_code", None)))
     return (data.get("result") or {}).get("Clients", [])
 
 
@@ -38,7 +67,7 @@ def get_ads_text(token, login, ad_ids, _post=None):
     """{ad_id: {'title','text'}} — заголовки и текст объявлений по их ID (для уровня «Объявления»
     конструктора: Reports API отдаёт только ID). Поддержаны текстовые объявления (TextAd) и
     товарные/динамические — берём что есть. Батчами по 1000, только чтение. Ошибки не роняют отчёт."""
-    post = _post or requests.post
+    post = _post or (lambda url, **kw: net.post("Директ", url, **kw))
     ids = []
     for x in ad_ids:
         try:
@@ -92,14 +121,14 @@ def get_campaigns(token, login):
         "method": "get",
         "params": {"SelectionCriteria": {}, "FieldNames": ["Id", "Name"]},
     }
-    r = requests.post(API + "campaigns", json=body, headers=headers, timeout=60)
+    r = net.post("Директ", API + "campaigns", json=body, headers=headers)
     try:
         data = r.json()
     except ValueError:
         raise RuntimeError("Директ вернул не-JSON (HTTP {})".format(r.status_code))
     if isinstance(data, dict) and data.get("error"):
         err = data["error"]
-        raise RuntimeError("Директ API: {} — {}".format(err.get("error_string"), err.get("error_detail")))
+        raise RuntimeError(_explain(err, getattr(r, "status_code", None)))
     camps = (data.get("result") or {}).get("Campaigns", [])
     camps.sort(key=lambda c: (c.get("Name") or "").lower())
     return camps
@@ -111,7 +140,7 @@ def get_campaign_counters(token, login, _post=None):
     SelectionCriteria пустой — берём кампании во ВСЕХ статусах (в т.ч. ARCHIVED),
     иначе у приостановленных аккаунтов вернётся пусто.
     """
-    post = _post or requests.post
+    post = _post or (lambda url, **kw: net.post("Директ", url, **kw))
     headers = {
         "Authorization": "Bearer {}".format(token),
         "Client-Login": login,
@@ -130,7 +159,7 @@ def get_campaign_counters(token, login, _post=None):
         raise RuntimeError("Директ вернул не-JSON (HTTP {})".format(getattr(r, "status_code", "?")))
     if isinstance(data, dict) and data.get("error"):
         err = data["error"]
-        raise RuntimeError("Директ API: {} — {}".format(err.get("error_string"), err.get("error_detail")))
+        raise RuntimeError(_explain(err, getattr(r, "status_code", None)))
     ids = set()
     for c in (data.get("result") or {}).get("Campaigns", []):
         items = (((c.get("TextCampaign") or {}).get("CounterIds") or {}).get("Items")) or []

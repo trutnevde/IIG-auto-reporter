@@ -99,6 +99,18 @@ class Telegram:
                 time.sleep(0.4)
         return result
 
+    def chat_ok(self, chat_id):
+        """Жив ли чат и на месте ли бот. Раньше об этом узнавали в момент
+        отправки — то есть уже во время рассылки клиенту."""
+        try:
+            data = self._call("getChat", {"chat_id": chat_id}, retries=2)
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": str(e)[:160]}
+        # _call уже разворачивает конверт и отдаёт result
+        res = data or {}
+        return {"ok": True, "title": res.get("title") or res.get("username") or "",
+                "type": res.get("type") or ""}
+
     def get_chat_administrators(self, chat_id):
         return self._call("getChatAdministrators", {"chat_id": chat_id}, retries=2)
 
