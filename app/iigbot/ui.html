@@ -2225,7 +2225,11 @@ document.addEventListener('keydown',e=>{
 async function callBackend(method,args){
   // Десктоп: pywebview.api.<method>(...args).  Веб: POST /api/<method> с JSON-массивом аргументов.
   if(window.pywebview&&window.pywebview.api){return await window.pywebview.api[method](...args);}
-  const resp=await fetch('/api/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(args)});
+  const resp=await fetch('/api/'+method,{method:'POST',
+    // X-IIG: сервер принимает вызовы только со своей страницы — браузер не даст
+    // выставить этот заголовок с чужого сайта без разрешающего CORS
+    headers:{'Content-Type':'application/json','X-IIG':'1'},
+    body:JSON.stringify(args)});
   return await resp.json();
 }
 async function api(method,...args){
@@ -3754,6 +3758,18 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-06',tag:'fix',title:'База, безопасность и починка поиска в «Пользователях»',
+ sum:'Индексы, защита сессии и заголовков, журнал входов, требования к паролю',items:[
+  '<b>Поиск и фильтры в «Пользователях» работали вхолостую.</b> Список клиентов есть и в «Контроле», и в «Пользователях», и оба звали одни и те же имена полей. «Контроль» стоит в разметке выше — браузер всегда отдавал его, и поиск в «Пользователях» молча фильтровал чужую невидимую таблицу. Теперь у каждого раздела свой список.',
+  '<b>В базе не было ни одного индекса</b> — каждая выборка перебирала таблицу целиком. Добавлено 15 индексов на самые частые обращения: клиенты по владельцу, привязки по клиенту и чату, история отправок, активность чатов, уведомления, заметки. Создаются сами при запуске.',
+  '<b>Обслуживание базы</b> — пересчёт статистики и сжатие файла — вынесено отдельной операцией (появится кнопкой в разделе для администратора).',
+  '<b>Кука сессии закрыта по трём направлениям:</b> недоступна из скриптов на странице, не уходит по незащищённому соединению и не отправляется, когда переход пришёл с чужого сайта. Раньше не было ни одного из ограничений. Заодно кабинет сам переводит на защищённое соединение, если открыли по обычному.',
+  '<b>Запросы принимаются только со страницы кабинета.</b> Добавлена служебная метка, которую чужой сайт выставить не может, — раньше любая страница в интернете могла отправить команду от имени открытой сессии.',
+  '<b>Заголовки безопасности:</b> кабинет нельзя встроить в чужой фрейм, браузер не угадывает тип файлов, полный адрес не утекает на внешние сайты, доступ к камере и микрофону закрыт.',
+  '<b>Журнал входов.</b> Пишется, кто и когда заходил, с какого адреса, и отдельно — неудачные попытки с чужим паролем.',
+  '<b>Требования к паролю:</b> не короче восьми символов, буквы и цифры, без совсем очевидных вариантов. Раньше можно было завести пароль из одной цифры.',
+  '<b>Смена пароля закрывает все прежние входы.</b> Если пароль поменяли, старые открытые сессии перестают действовать — раньше они продолжали работать.',
+ ]},
 {date:'2026-08-06',tag:'fix',title:'Кабинет перестал зависать на долгих операциях',
  sum:'Синхронизация и цели ушли в фон, выгрузки Директа кэшируются, в списках клиентов появился поиск',items:[
   '<b>«Подтянуть из Директа», «Цели из Метрики (всем)» и выгрузка в таблицу больше не вешают кабинет.</b> Раньше они выполнялись прямо в запросе, а на хостинге у приложения один рабочий процесс: пока шёл сбор по 393 клиентам, кабинет не отвечал вообще никому. Теперь операция уходит в фон, под шапкой появляется строка с ходом дела, а работать можно дальше. Проверено: во время синхронизации всех 393 клиентов кабинет отвечал за треть секунды.',
@@ -5107,22 +5123,22 @@ async function renderSupervision(){
       <div class="body">
         <p class="muted" style="margin-top:0;font-size:13px">Назначь проект специалисту и сразу выбери способ доставки: <b><svg class="ic"><use href="#i-telegram"/></svg> Telegram</b> (бот шлёт в чат) или <b><svg class="ic"><use href="#i-upload-2"/></svg> Сторонний</b> (копипаст вручную).</p>
         <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-          <input id="poolFilter" placeholder="Поиск по названию или логину…" oninput="poolFilter()" style="flex:1;min-width:200px">
-          <select id="poolOwnerF" onchange="poolFilter()" style="width:auto">
+          <input id="supPoolFilter" placeholder="Поиск по названию или логину…" oninput="poolFilter('sup')" style="flex:1;min-width:200px">
+          <select id="supPoolOwnerF" onchange="poolFilter('sup')" style="width:auto">
             <option value="">Все владельцы</option>
             <option value="none">— без владельца (${supUnassigned}) —</option>
             ${(SUP_USERS||[]).map(u=>`<option value="${u.id}">${esc(u.name)} (${(POOL||[]).filter(c=>String(c.owner)===String(u.id)).length})</option>`).join('')}
           </select>
-          <select id="poolDelivF" onchange="poolFilter()" style="width:auto">
+          <select id="supPoolDelivF" onchange="poolFilter('sup')" style="width:auto">
             <option value="">Любая доставка</option>
             <option value="telegram"><svg class="ic"><use href="#i-telegram"/></svg> Telegram</option>
             <option value="external"><svg class="ic"><use href="#i-upload-2"/></svg> Сторонний</option>
           </select>
-          <span class="muted" id="poolCount" style="align-self:center;font-size:12.5px"></span>
+          <span class="muted" id="supPoolCount" style="align-self:center;font-size:12.5px"></span>
         </div>
         <div class="scrollx" style="max-height:520px;overflow:auto"><table>
           <thead><tr><th>Клиент</th><th style="width:220px">Специалист</th><th style="width:170px">Доставка</th></tr></thead>
-          <tbody id="poolBody">${poolRows(POOL||[],supAssignOpts)}</tbody></table></div>
+          <tbody id="supPoolBody">${poolRows(POOL||[],supAssignOpts)}</tbody></table></div>
         <div class="note" style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <b><svg class="ic"><use href="#i-refresh"/></svg> Передать все проекты:</b>
           <select id="reFrom" style="width:auto"><option value="none">— ничьи (общий пул) —</option>${(SUP_USERS||[]).map(u=>`<option value="${u.id}">${esc(u.name)} (${(POOL||[]).filter(c=>String(c.owner)===String(u.id)).length})</option>`).join('')}</select>
@@ -5132,7 +5148,7 @@ async function renderSupervision(){
           <span class="muted" style="font-size:12.5px">Разом переносит весь стек: увольнение, отпуск, передача дел.</span>
         </div>
       </div></div>`;
-  poolFilter();
+  poolFilter('sup');
   loadTrend(); loadAudit();
 }
 async function supSendNote(){
@@ -5447,9 +5463,9 @@ async function renderUsers(){
     </div>
     <div class="panel">
       <h3>Раздача проектов — не назначено: ${unassigned} из ${POOL.length}</h3>
-      <div style="padding:12px 16px 4px"><input id="poolFilter" placeholder="Поиск клиента…" oninput="poolFilter()" style="width:100%"></div>
+      <div style="padding:12px 16px 4px"><input id="usrPoolFilter" placeholder="Поиск клиента…" oninput="poolFilter('usr')" style="width:100%"></div>
       <table><thead><tr><th>Клиент</th><th style="width:220px">Владелец</th><th style="width:170px">Доставка</th></tr></thead>
-      <tbody id="poolBody">${poolRows(POOL,opts)}</tbody></table>
+      <tbody id="usrPoolBody">${poolRows(POOL,opts)}</tbody></table>
     </div>`;
 }
 function poolRows(list,opts){
@@ -5464,13 +5480,18 @@ function poolRows(list,opts){
         <option value="external"${c.delivery==='external'?' selected':''}><svg class="ic"><use href="#i-upload-2"/></svg> Сторонний</option>
       </select></td></tr>`).join('');
 }
-function poolFilter(){
-  const qe=el('poolFilter'); if(!qe)return;
+/* Список клиентов есть и в «Контроле», и в «Пользователях», и раньше оба блока
+   звали одни и те же id. «Контроль» стоит в разметке выше, поэтому
+   getElementById всегда отдавал его — поиск и фильтры в «Пользователях» молча
+   работали по чужой невидимой таблице. Теперь у каждого свой префикс. */
+function poolFilter(scope){
+  const pre = (scope==='usr') ? 'usrPool' : 'supPool';
+  const qe=el(pre+'Filter'); if(!qe)return;
   const q=(qe.value||'').trim().toLowerCase();
-  const ow=(el('poolOwnerF')||{}).value||'';
-  const dv=(el('poolDelivF')||{}).value||'';
+  const ow=(el(pre+'OwnerF')||{}).value||'';
+  const dv=(el(pre+'DelivF')||{}).value||'';
   let shown=0;
-  document.querySelectorAll('#poolBody tr').forEach(tr=>{
+  document.querySelectorAll('#'+pre+'Body tr').forEach(tr=>{
     const okQ=!q||(tr.dataset.q||'').indexOf(q)>=0;
     const owner=tr.dataset.owner||'';           // '' = без владельца
     const okOw=!ow||(ow==='none'?owner==='':owner===ow);
@@ -5478,8 +5499,9 @@ function poolFilter(){
     const on=okQ&&okOw&&okDv;
     tr.style.display=on?'':'none'; if(on)shown++;
   });
-  const c=el('poolCount'); if(c)c.textContent='показано: '+shown;
+  const c=el(pre+'Count'); if(c)c.textContent='показано: '+shown;
 }
+
 async function userCreate(){
   const email=el('nuEmail').value.trim(), name=el('nuName').value.trim(),
         pass=el('nuPass').value, role=el('nuRole').value;

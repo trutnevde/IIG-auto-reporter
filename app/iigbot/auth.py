@@ -13,6 +13,8 @@ from flask import session, g, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 
 SESSION_KEY = "uid"
+# версия пароля в сессии: сменил пароль — все прежние сессии становятся недействительными
+VERSION_KEY = "pv"
 
 
 # ---- пароли ----
@@ -29,10 +31,27 @@ def verify_password(pw_hash, password):
         return False
 
 
+def check_password_rules(password):
+    """Минимальные требования. Не мучаем спецсимволами — важнее длина."""
+    pw = password or ""
+    if len(pw) < 8:
+        raise RuntimeError("Пароль короче 8 символов")
+    if pw.isdigit() or pw.isalpha():
+        raise RuntimeError("Пароль должен содержать и буквы, и цифры")
+    if pw.lower() in ("password", "12345678", "qwerty123", "admin123"):
+        raise RuntimeError("Слишком простой пароль")
+    return True
+
+
 # ---- сессия ----
-def login_session(user_id):
+def login_session(user_id, pass_version=0):
     session[SESSION_KEY] = int(user_id)
+    session[VERSION_KEY] = int(pass_version or 0)
     session.permanent = True
+
+
+def session_pass_version():
+    return session.get(VERSION_KEY, 0)
 
 
 def logout_session():

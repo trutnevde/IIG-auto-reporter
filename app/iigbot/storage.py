@@ -120,9 +120,85 @@ class Storage:
         )
         self.conn.commit()
         self._migrate()
+        self._ensure_indexes()
+
+    # Индексов не было ни одного: каждая выборка перебирала таблицу целиком.
+    # Дёшево создаются, безопасно пересоздаются, ускоряют всё разом.
+    _INDEXES = [
+        ("ix_clients_owner",      "clients(owner)"),
+        ("ix_clients_delivery",   "clients(delivery)"),
+        ("ix_bindings_login",     "bindings(login)"),
+        ("ix_bindings_chat",      "bindings(chat_id)"),
+        ("ix_sendlog_login_date", "send_log(login, sent_at)"),
+        ("ix_sendlog_status",     "send_log(status)"),
+        ("ix_activity_chat",      "chat_activity(chat_id)"),
+        ("ix_notif_kind",         "notifications(kind)"),
+        ("ix_notifread_user",     "notif_read(user_id)"),
+        ("ix_noteack_note",       "note_ack(note_id)"),
+        ("ix_notereply_note",     "note_reply(note_id)"),
+        ("ix_excuses_week",       "excuses(week)"),
+        ("ix_budgets_login",      "budgets(login)"),
+        ("ix_audit_created",      "audit(created_at)"),
+        ("ix_logins_user",        "logins(user_id, at)"),
+    ]
+
+    def _ensure_indexes(self):
+        """Создать недостающие индексы. Ошибки по отдельному индексу не валят запуск:
+        схема на разных копиях базы могла разойтись."""
+        for name, target in self._INDEXES:
+            try:
+                self.conn.execute("CREATE INDEX IF NOT EXISTS {} ON {}".format(name, target))
+            except Exception:  # noqa: BLE001
+                pass
+        self.conn.commit()
+
+    def log_login(self, user_id, email, ok, ip, agent):
+        """Кто и когда заходил — и чьи попытки не прошли."""
+        self.conn.execute(
+            "INSERT INTO logins(user_id,email,ok,ip,agent,at) VALUES(?,?,?,?,?,?)",
+            (user_id, email, 1 if ok else 0, (ip or "")[:64], (agent or "")[:200], _now()))
+        self.conn.commit()
+
+    def logins_recent(self, limit=50, user_id=None):
+        if user_id:
+            cur = self.conn.execute(
+                "SELECT * FROM logins WHERE user_id=? ORDER BY id DESC LIMIT ?", (user_id, limit))
+        else:
+            cur = self.conn.execute("SELECT * FROM logins ORDER BY id DESC LIMIT ?", (limit,))
+        return cur.fetchall()
+
+    def last_login(self, user_id):
+        r = self.conn.execute(
+            "SELECT at FROM logins WHERE user_id=? AND ok=1 ORDER BY id DESC LIMIT 1",
+            (user_id,)).fetchone()
+        return r["at"] if r else None
+
+    def maintenance(self):
+        """Обслуживание базы: пересчёт статистики и сжатие. Зовётся по кнопке из кабинета —
+        VACUUM переписывает файл целиком, в фоне при каждом старте это лишнее."""
+        import os
+        before = 0
+        try:
+            before = os.path.getsize(self.path) if getattr(self, "path", None) else 0
+        except OSError:
+            pass
+        self.conn.execute("ANALYZE")
+        self.conn.commit()
+        self.conn.execute("VACUUM")
+        after = 0
+        try:
+            after = os.path.getsize(self.path) if getattr(self, "path", None) else 0
+        except OSError:
+            pass
+        return {"before_kb": round(before / 1024), "after_kb": round(after / 1024),
+                "saved_kb": round(max(0, before - after) / 1024)}
 
     def _migrate(self):
         """Безопасные миграции для уже существующих баз (только добавления)."""
+        ucols = {r["name"] for r in self.conn.execute("PRAGMA table_info(users)")}
+        if "pass_version" not in ucols:   # смена пароля обнуляет прежние сессии
+            self.conn.execute("ALTER TABLE users ADD COLUMN pass_version INTEGER DEFAULT 0")
+            self.conn.commit()
         cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(clients)")}
         if "owner" not in cols:   # владелец клиента (кому назначен); NULL = общий пул
             self.conn.execute("ALTER TABLE clients ADD COLUMN owner INTEGER")
@@ -192,6 +268,16 @@ class Storage:
             )""")
         self.conn.commit()
         # аудит действий: кто что сделал (привязки, назначения, долги, сотрудники)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS logins (
+                id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id  INTEGER,
+                email    TEXT,
+                ok       INTEGER,     -- 1 удачный вход, 0 неверный пароль
+                ip       TEXT,
+                agent    TEXT,
+                at       TEXT
+            )""")
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS audit (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -350,6 +436,8 @@ class Storage:
 
     def set_user_password(self, user_id, pass_hash):
         self.conn.execute("UPDATE users SET pass_hash=? WHERE id=?", (pass_hash, user_id))
+        self.conn.execute("UPDATE users SET pass_version=COALESCE(pass_version,0)+1 WHERE id=?",
+                          (user_id,))
         self.conn.commit()
 
     def set_user_note(self, user_id, note):

@@ -1311,6 +1311,7 @@ class Api:
     def user_create(self, email, password, name=None, role="user"):
         """Завести сотрудника. Наблюдатель (работодатель) тоже может — он же нанимает; но выдать
         роль «Администратор» (доступ к токенам/журналу) может только админ."""
+        auth.check_password_rules(password)
         self._require_supervisor()
         from . import auth
         email = (email or "").strip().lower()
@@ -1357,6 +1358,7 @@ class Api:
 
     @safe
     def user_set_password(self, user_id, password):
+        auth.check_password_rules(password)
         u = self._require_manage_user(user_id)
         from . import auth
         if not password:

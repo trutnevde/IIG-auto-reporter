@@ -13,7 +13,7 @@ import os
 import threading
 import webbrowser
 
-from flask import Flask, request, jsonify, Response, g
+from flask import Flask, request, jsonify, Response, g, redirect
 
 from .api import Api
 from .settings import load_app_config, load_secrets, package_file
@@ -188,6 +188,24 @@ def create_app(api=None):
     base = api or Api()          # агентский Api (без пользователя) — для входа/сессий/сида
     app = Flask(__name__)
     app.secret_key = _secret_key(base.db)
+    # Кука сессии: недоступна из JS, не уходит по HTTP, не отправляется
+    # с чужих сайтов. Раньше не было ни одного из трёх ограничений.
+    app.config.update(
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_SECURE=not os.environ.get("IIG_INSECURE_COOKIE"),
+        MAX_CONTENT_LENGTH=4 * 1024 * 1024,     # тело запроса больше 4 МБ нам не нужно
+    )
+
+    @app.after_request
+    def _security_headers(resp):
+        """Базовые заголовки: не встраивать в чужой фрейм, не угадывать тип,
+        не утекать полным адресом на внешние сайты."""
+        resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+        return resp
     with open(package_file("ui.html"), encoding="utf-8") as f:
         ui_html = f.read()
     try:
@@ -206,13 +224,28 @@ def create_app(api=None):
         return Response(favicon_svg, mimetype="image/svg+xml")
 
     @app.before_request
+    def _force_https():
+        """За обратным прокси Beget оригинальная схема приходит заголовком.
+        Кука сессии помечена Secure — по http вход просто не сохранится."""
+        if os.environ.get("IIG_INSECURE_COOKIE"):
+            return None
+        proto = request.headers.get("X-Forwarded-Proto", "")
+        if proto and proto != "https":
+            return redirect(request.url.replace("http://", "https://", 1), code=301)
+        return None
+
+    @app.before_request
     def _load_user():
         g.user = None
         uid = auth.session_user_id()
         if uid:
             row = base.db.get_user(uid)
-            if row and row["active"]:
+            # версия пароля в сессии отстала — значит пароль сменили, вход больше не годен
+            pv = (row["pass_version"] if row and "pass_version" in row.keys() else 0) or 0
+            if row and row["active"] and int(auth.session_pass_version() or 0) >= int(pv):
                 g.user = dict(row)
+            elif row:
+                auth.logout_session()
         try:
             _periodic_tick(base)   # ленивые фоновые задачи (автосинк/бюджеты)
         except Exception:  # noqa: BLE001 — планировщик не должен ронять запросы
@@ -260,6 +293,11 @@ def create_app(api=None):
             password = data.get("password", "")
         row = base.db.get_user_by_email(email or "")
         if not row or not row["active"] or not auth.verify_password(row["pass_hash"], password):
+            try:
+                base.db.log_login(row["id"] if row else None, email, False, ip,
+                                  request.headers.get("User-Agent", ""))
+            except Exception:  # noqa: BLE001 — журнал входов не должен мешать логину
+                pass
             s = _login_fails.setdefault(key, {"n": 0, "until": 0})
             s["n"] += 1
             if s["n"] >= 5:   # 5-я и далее: пауза 15с, 30с, 60с … максимум 5 минут
@@ -269,7 +307,11 @@ def create_app(api=None):
                     _login_fails.pop(k, None)
             return jsonify({"ok": False, "error": "Неверный email или пароль"}), 401
         _login_fails.pop(key, None)   # успешный вход — счётчик сбрасываем
-        auth.login_session(row["id"])
+        auth.login_session(row["id"], (row["pass_version"] if "pass_version" in row.keys() else 0))
+        try:
+            base.db.log_login(row["id"], email, True, ip, request.headers.get("User-Agent", ""))
+        except Exception:  # noqa: BLE001
+            pass
         return jsonify({"ok": True, "user": _safe_user(dict(row))})
 
     @app.route("/download/backup/<path:name>")
@@ -332,6 +374,10 @@ def create_app(api=None):
 
     @app.route("/api/<method>", methods=["POST"])
     def call(method):
+        # простая защита от запросов с чужих страниц: браузер не даст
+        # выставить этот заголовок кросс-доменно без разрешающего CORS
+        if request.headers.get("X-IIG") != "1":
+            return jsonify({"ok": False, "error": "bad_request"}), 400
         # публичные (до гейта)
         if method == "login":
             return _login()
