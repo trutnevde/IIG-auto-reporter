@@ -1955,13 +1955,16 @@ class Api:
         os.makedirs(d, exist_ok=True)
         return d
 
-    def _make_backup(self, keep=14):
-        """Целостный бэкап БД + ротация. Возвращает имя файла."""
+    def _make_backup(self, keep=14, name=None):
+        """Целостный бэкап БД + ротация. Возвращает имя файла.
+
+        name задаётся, когда копия делается не «по расписанию»: имя по минутам иначе
+        совпадёт с уже существующим файлом и затрёт его."""
         import os
         import datetime as dt
         self.db.wal_checkpoint()
         d = self._backup_dir()
-        name = "iigbot_{}.sqlite3".format(dt.datetime.now().strftime("%Y%m%d_%H%M"))
+        name = name or "iigbot_{}.sqlite3".format(dt.datetime.now().strftime("%Y%m%d_%H%M"))
         self.db.backup_to(os.path.join(d, name))
         files = sorted(f for f in os.listdir(d) if f.startswith("iigbot_") and f.endswith(".sqlite3"))
         for old in files[:-int(keep)] if len(files) > keep else []:
@@ -1997,6 +2000,241 @@ class Api:
             out.append({"file": f, "size_kb": round(os.path.getsize(p) / 1024),
                         "created": dt.datetime.fromtimestamp(os.path.getmtime(p)).isoformat(timespec="seconds")})
         return {"items": out[:30], "last": self.db.get_kv("backup_last")}
+
+    # ═══════════ система: состояние машины и обслуживание (только админ) ═══════════
+    # Всё это раньше делалось по SSH: посмотреть, жив ли процесс, цела ли база,
+    # какой код сейчас на сервере, откуда откатываться. Теперь — из кабинета.
+
+    def _public_url(self):
+        """Адрес, по которому кабинет виден снаружи. Записывается при первом заходе."""
+        return (self.db.get_kv("public_url") or "https://reports.iig.ru").rstrip("/")
+
+    def _personal_chat(self):
+        """Личный чат текущего пользователя с ботом — туда уходят копии базы."""
+        from . import budgets as B
+        by_id, by_un, by_title = B._priv_index(self.db)
+        u = self.db.get_user((self.user or {}).get("id")) if self.user else None
+        chat = B._resolve_chat(u, by_id, by_un, by_title)
+        if not chat:
+            raise RuntimeError("Личный чат с ботом не привязан. Настройки → «Мой чат для тревог» → "
+                               "«Привязать», и повторите.")
+        return chat["chat_id"]
+
+    @safe
+    def sys_status(self):
+        """Одним запросом всё о машине: версия, аптайм, база, место, задачи, проверки."""
+        self._require_admin()
+        from . import sysinfo
+        db = self.db
+
+        def kv_json(key):
+            try:
+                raw = db.get_kv(key)
+                return json.loads(raw) if raw else None
+            except Exception:  # noqa: BLE001 — сохранённого результата может не быть
+                return None
+
+        jobs = [{"key": j["key"], "title": j.get("title"), "state": j.get("state"),
+                 "note": j.get("note"), "error": (j.get("error") or "")[:200],
+                 "started": j.get("started"), "finished": j.get("finished")}
+                for j in db.jobs_recent(8)]
+        p = sysinfo.paths()
+        return {"version": sysinfo.version(), "cpu": sysinfo.cpu_now(),
+                "db": sysinfo.db_stats(db), "disk": sysinfo.storage_stats(),
+                "cache": db.cache_stats(), "jobs": jobs,
+                "backup_last": db.get_kv("backup_last"),
+                "backup_sent": db.get_kv("backup_sent_last"),
+                "integrity": kv_json("integrity_last"),
+                "watch": kv_json("watch_last"),
+                "public_url": self._public_url(),
+                "python": p["python_version"], "paths": p,
+                "users": len(db.list_users()),
+                "clients": len(db.list_clients("all")),
+                "cron": {
+                    "autosync": "0 5 * * *  {} -m iigbot autosync".format(p["python"]),
+                    "weekly": "0 10 * * 1 {} -m iigbot weekly".format(p["python"]),
+                    "watch": "*/5 * * * * {} -m iigbot watch".format(p["python"]),
+                }}
+
+    @safe
+    def sys_integrity(self):
+        """Полная проверка базы. Читает файл целиком — поэтому в фоне."""
+        self._require_admin()
+        return self._job_start("integrity", "Проверяю целостность базы",
+                               lambda say: self._integrity_run(say))
+
+    def _integrity_run(self, say=None):
+        from . import sysinfo
+        if say:
+            say("читаю базу…")
+        res = sysinfo.integrity(self.db)
+        self.db.set_kv("integrity_last", json.dumps(res, ensure_ascii=False))
+        if not res.get("ok"):
+            log_error("integrity", "проверка базы не прошла: {}".format(res.get("full"))[:400])
+        return res
+
+    @safe
+    def sys_maintenance(self):
+        """ANALYZE + VACUUM: пересчитать статистику и сжать файл базы."""
+        self._require_admin()
+        res = self.db.maintenance()
+        self._audit("maintenance", "db", "было {} КБ, стало {} КБ".format(
+            res.get("before_kb"), res.get("after_kb")))
+        return res
+
+    @safe
+    def sys_cpu(self):
+        """Расход процессора: по дням и по методам. На виртуальном хостинге это тот ресурс,
+        из-за которого гасят процесс, — полезно знать, кто его ест."""
+        self._require_admin()
+        from . import sysinfo
+        import datetime as _d
+        today = _d.date.today().isoformat()
+        return {"days": self.db.cpu_days(14), "top_today": self.db.cpu_top(today, 12),
+                "top_all": self.db.cpu_top(None, 12), "today": today,
+                "process": sysinfo.cpu_now()}
+
+    @safe
+    def sys_secrets(self):
+        """Какие ключи есть, когда менялись, не пора ли обновить. Значения не отдаём."""
+        self._require_admin()
+        from . import sysinfo
+        return sysinfo.secrets_report(self.db)
+
+    @safe
+    def sys_secret_rotated(self, name):
+        """Отметить, что ключ обновлён вручную: возраст считается от этой даты."""
+        self._require_admin()
+        import time as _t
+        self.db.set_kv("secret_rotated_" + str(name)[:40], str(_t.time()))
+        self._audit("secret_rotated", str(name)[:40], "отмечено обновление ключа")
+        return {"ok": True}
+
+    @safe
+    def sys_backup_send(self):
+        """Копия базы во внешнее хранилище: файлом в личный чат с ботом.
+
+        Копия рядом с базой не спасает, если у хостинга проблема с диском или аккаунтом,
+        — нужна копия вне сервера."""
+        self._require_admin()
+        chat_id = self._personal_chat()      # проверяем до фона: ошибку видно сразу
+        return self._job_start("backup_send", "Отправляю копию базы в Telegram",
+                               lambda say: self._backup_send_run(chat_id, say))
+
+    def _backup_send_run(self, chat_id, say=None):
+        import os
+        import time as _t
+        import datetime as _d
+        if say:
+            say("делаю копию…")
+        name = self._make_backup()
+        path = os.path.join(self._backup_dir(), name)
+        size = os.path.getsize(path)
+        if say:
+            say("отправляю {} КБ…".format(round(size / 1024)))
+        with open(path, "rb") as f:
+            data = f.read()
+        self._tg_client().send_document(
+            chat_id, name, data,
+            caption="Копия базы IIG Reporter\n{} КБ, {}".format(
+                round(size / 1024), _d.datetime.now().strftime("%d.%m.%Y %H:%M")))
+        self.db.set_kv("backup_sent_last", str(_t.time()))
+        self._audit("backup_send", name,
+                    "копия базы отправлена в Telegram, {} КБ".format(round(size / 1024)))
+        return {"file": name, "kb": round(size / 1024)}
+
+    @safe
+    def sys_restore(self, file):
+        """Восстановить базу из копии. Текущее состояние сначала сохраняем отдельным бэкапом:
+        если восстановились не туда, будет куда вернуться."""
+        self._require_admin()
+        import os
+        from . import sysinfo
+        fn = os.path.basename(str(file))
+        if fn != str(file) or not (fn.startswith("iigbot_") and fn.endswith(".sqlite3")):
+            raise RuntimeError("Неверное имя файла копии")
+        path = os.path.join(self._backup_dir(), fn)
+        if not os.path.isfile(path):
+            raise RuntimeError("Копия не найдена")
+        # Имя с секундами и пометкой: копия по минутам могла бы совпасть с той,
+        # из которой восстанавливаемся, — и затереть её до чтения.
+        import datetime as _d
+        safety = self._make_backup(name="iigbot_{}_before_restore.sqlite3".format(
+            _d.datetime.now().strftime("%Y%m%d_%H%M%S")))
+        res = sysinfo.restore(self.db, path)
+        self.db.cache_clear()                 # накопленный кэш относится к прежним данным
+        report.cache_clear()
+        self._audit("restore", fn,
+                    "база восстановлена из копии; прежняя сохранена как {}".format(safety))
+        res["safety"] = safety
+        return res
+
+    @safe
+    def sys_deploys(self):
+        """Копии файлов приложения, которые кладёт выкат: откуда можно откатиться."""
+        self._require_admin()
+        from . import sysinfo
+        return sysinfo.deploy_backups()
+
+    @safe
+    def sys_rollback(self, stamp):
+        """Вернуть файлы приложения из выбранной копии и перезапустить приложение."""
+        self._require_admin()
+        from . import sysinfo
+        res = sysinfo.rollback(str(stamp)[:40])
+        self._audit("rollback", res["stamp"], "возвращены файлы: {}".format(", ".join(res["files"])))
+        res["restart"] = sysinfo.touch_restart()
+        return res
+
+    @safe
+    def sys_restart(self):
+        """Перезапустить приложение (Passenger следит за tmp/restart.txt)."""
+        self._require_admin()
+        from . import sysinfo
+        res = sysinfo.touch_restart()
+        if not res.get("ok"):
+            raise RuntimeError(res.get("error") or "не удалось перезапустить")
+        self._audit("restart", "app", "перезапуск из кабинета")
+        return res
+
+    @safe
+    def sys_ping(self):
+        """Проверка снаружи: запрос уходит отдельным потоком.
+
+        Синхронно так нельзя. Процесс приложения на хостинге один, и запрос к самому себе
+        изнутри обработчика ждал бы освобождения этого же процесса — то есть себя. Поток
+        отпускает текущий запрос, и проверка доходит уже до свободного процесса.
+        """
+        self._require_admin()
+        import threading
+        db = self.db
+
+        def run():
+            from . import sysinfo
+            try:
+                sysinfo.watch_once(db, tg=None)   # тревоги в Telegram шлёт cron, не кнопка
+            except Exception as e:  # noqa: BLE001
+                log_error("watch", str(e))
+
+        threading.Thread(target=run, daemon=True).start()
+        return {"started": True}
+
+    @safe
+    def sys_watch(self):
+        """Последний результат проверки живости — и ручной, и ночной из cron."""
+        self._require_admin()
+        raw = self.db.get_kv("watch_last")
+        try:
+            return json.loads(raw) if raw else {}
+        except Exception:  # noqa: BLE001
+            return {}
+
+    @safe
+    def sys_runbook(self):
+        """Справка для преемника с подставленными путями этой машины."""
+        self._require_admin()
+        from . import sysinfo
+        return {"text": sysinfo.runbook(self.db)}
 
     # ---------- переотправка отчёта ----------
     @safe

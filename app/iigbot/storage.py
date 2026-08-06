@@ -141,6 +141,7 @@ class Storage:
         ("ix_audit_created",      "audit(created_at)"),
         ("ix_logins_user",        "logins(user_id, at)"),
         ("ix_cache_at",           "cache(at)"),
+        ("ix_cpu_day",            "cpu_usage(day)"),
     ]
 
     def _ensure_indexes(self):
@@ -253,6 +254,41 @@ class Storage:
         rows = self.conn.execute(
             "SELECT * FROM jobs ORDER BY COALESCE(finished, started) DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
+
+    # ─────────── расход процессора ───────────
+    # На виртуальном хостинге процессорное время — расходуемый ресурс, и когда его
+    # не хватает, хостер просто гасит процесс. Считаем свой расход сами: по дням и
+    # по методам — иначе непонятно, какая операция дорогая.
+    def cpu_add(self, day, method, secs, calls=1):
+        self.conn.execute(
+            "INSERT INTO cpu_usage(day,method,secs,calls) VALUES(?,?,?,?) "
+            "ON CONFLICT(day,method) DO UPDATE SET secs=secs+excluded.secs, calls=calls+excluded.calls",
+            (day, method, float(secs), int(calls)))
+        self.conn.commit()
+
+    def cpu_days(self, limit=14):
+        rows = self.conn.execute(
+            "SELECT day, ROUND(SUM(secs),2) secs, SUM(calls) calls FROM cpu_usage "
+            "GROUP BY day ORDER BY day DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def cpu_top(self, day=None, limit=12):
+        if day:
+            rows = self.conn.execute(
+                "SELECT method, ROUND(SUM(secs),2) secs, SUM(calls) calls FROM cpu_usage "
+                "WHERE day=? GROUP BY method ORDER BY secs DESC LIMIT ?", (day, limit)).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT method, ROUND(SUM(secs),2) secs, SUM(calls) calls FROM cpu_usage "
+                "GROUP BY method ORDER BY secs DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def cpu_trim(self, keep_days=30):
+        """Держим только последний месяц: это диагностика, а не архив."""
+        import datetime as _d
+        edge = (_d.date.today() - _d.timedelta(days=keep_days)).isoformat()
+        self.conn.execute("DELETE FROM cpu_usage WHERE day < ?", (edge,))
+        self.conn.commit()
 
     def maintenance(self):
         """Обслуживание базы: пересчёт статистики и сжатие. Зовётся по кнопке из кабинета —
@@ -377,6 +413,14 @@ class Storage:
                 started  REAL,
                 finished REAL,
                 owner    INTEGER    -- кто запустил
+            )""")
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS cpu_usage (
+                day    TEXT,        -- YYYY-MM-DD
+                method TEXT,        -- метод api или маршрут
+                secs   REAL,        -- процессорное время, накопленное за день
+                calls  INTEGER,
+                PRIMARY KEY (day, method)
             )""")
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS audit (

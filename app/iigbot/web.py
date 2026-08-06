@@ -39,6 +39,34 @@ def _api_for(user):
 
 # ---------- ленивый планировщик (shared-хостинг: демонов нет, тикаем на живом трафике) ----------
 _periodic = {"checked": 0.0}
+# Расход процессора по методам. На виртуальном хостинге это тот ресурс, из-за нехватки
+# которого хостер гасит процесс, — а понять, какая операция дорогая, было неоткуда.
+# Копим в памяти и пишем в базу пачкой: запись на каждый запрос стоила бы дороже замера.
+_cpu_buf = {}
+_cpu_flushed = {"at": __import__("time").time()}
+
+
+def _cpu_note(base, method, secs):
+    import time as _t
+    import datetime as _d
+    key = (_d.date.today().isoformat(), method)
+    cur = _cpu_buf.get(key) or [0.0, 0]
+    cur[0] += secs
+    cur[1] += 1
+    _cpu_buf[key] = cur
+    now = _t.time()
+    if len(_cpu_buf) < 25 and (now - _cpu_flushed["at"]) < 120:
+        return
+    _cpu_flushed["at"] = now
+    items = list(_cpu_buf.items())
+    _cpu_buf.clear()
+    for (day, m), (secs_, calls) in items:
+        try:
+            base.db.cpu_add(day, m, secs_, calls)
+        except Exception:  # noqa: BLE001 — учёт не должен мешать работе
+            pass
+
+
 _login_fails = {}   # анти-брутфорс входа: {"ip|email": {"n": попыток, "until": до какого времени пауза}}
 
 
@@ -92,6 +120,16 @@ def _autosync_job(base):
             raise RuntimeError("metrika_goals_bulk: {}".format(r2.get("error")))
         log_error("autosync", "ок: клиентов в Директе {}, цели обновлены у {} из {} привязанных".format(
             d1.get("synced", "?"), d2.get("with_goals", "?"), d2.get("clients", "?")))
+        try:
+            # раз в сутки заодно проверяем базу и подчищаем учёт расхода процессора
+            res = base._integrity_run()
+            base.db.cpu_trim()
+            if not res.get("ok"):
+                base.db.add_notification(None, "system", "База повреждена",
+                                         "Проверка целостности не прошла — нужен откат из копии",
+                                         "errlog", dedup_key=True)
+        except Exception as e:  # noqa: BLE001 — обслуживание не должно ронять автосинк
+            log_error("autosync", "проверка базы не выполнилась: {}".format(e))
     except Exception as e:  # noqa: BLE001
         log_error("autosync", "сбой: {}".format(e))
 
@@ -205,6 +243,22 @@ def create_app(api=None):
     )
 
     @app.after_request
+    def _cpu_account(resp):
+        """Сколько процессорного времени стоил этот запрос — в разрезе метода."""
+        try:
+            import time as _t
+            t0 = getattr(g, "cpu0", None)
+            spent = (_t.process_time() - t0) if t0 is not None else 0.0
+            if spent > 0:
+                name = request.path
+                if name == "/api/" or name.startswith("/api/"):
+                    name = name[5:] or "api"
+                _cpu_note(base, name[:60], spent)
+        except Exception:  # noqa: BLE001 — учёт не должен ломать ответ
+            pass
+        return resp
+
+    @app.after_request
     def _security_headers(resp):
         """Базовые заголовки: не встраивать в чужой фрейм, не угадывать тип,
         не утекать полным адресом на внешние сайты."""
@@ -243,6 +297,11 @@ def create_app(api=None):
 
     @app.before_request
     def _load_user():
+        import time as _t
+        g.cpu0 = _t.process_time()
+        if not base.db.get_kv("public_url"):
+            # адрес, по которому кабинет виден снаружи: нужен внешней проверке живости
+            base.db.set_kv("public_url", request.url_root.rstrip("/"))
         g.user = None
         uid = auth.session_user_id()
         if uid:
@@ -261,6 +320,30 @@ def create_app(api=None):
     @app.route("/")
     def index():
         return Response(ui_html, mimetype="text/html; charset=utf-8")
+
+    @app.route("/healthz")
+    def healthz():
+        """Публичная проверка живости: по ней внешний монитор понимает, что кабинет отвечает.
+        Ничего чувствительного не отдаём — только версия и аптайм."""
+        from . import sysinfo
+        try:
+            base.db.conn.execute("SELECT 1").fetchone()
+            db_ok = True
+        except Exception:  # noqa: BLE001
+            db_ok = False
+        code = 200 if db_ok else 503
+        return jsonify({"ok": db_ok, "version": sysinfo.version()["short"],
+                        "uptime": sysinfo.fmt_dur(__import__("time").time() - sysinfo.STARTED)}), code
+
+    @app.route("/download/runbook.md")
+    def download_runbook():
+        """Справка для преемника файлом: пути, команды и расписание этой машины."""
+        if not g.user or g.user.get("role") != "admin":
+            return jsonify({"ok": False, "error": "только администратор"}), 403
+        from . import sysinfo
+        text = sysinfo.runbook(base.db)
+        return Response(text, mimetype="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="iig-reporter-runbook.md"'})
 
     @app.route("/download/xlsx/<path:name>")
     def download_xlsx(name):
@@ -319,7 +402,9 @@ def create_app(api=None):
             base.db.log_login(row["id"], email, True, ip, request.headers.get("User-Agent", ""))
         except Exception:  # noqa: BLE001
             pass
-        return jsonify({"ok": True, "user": _safe_user(dict(row))})
+        from . import sysinfo
+        return jsonify({"ok": True, "user": _safe_user(dict(row)),
+                        "version": sysinfo.version()["short"]})
 
     @app.route("/download/backup/<path:name>")
     def download_backup(name):
@@ -392,8 +477,10 @@ def create_app(api=None):
             auth.logout_session()
             return jsonify({"ok": True})
         if method == "me":
+            from . import sysinfo
             return jsonify({"ok": True, "user": _safe_user(g.user),
-                            "setup": base.db.count_users() == 0})
+                            "setup": base.db.count_users() == 0,
+                            "version": sysinfo.version()["short"]})
 
         if method.startswith("_"):
             return jsonify({"ok": False, "error": "forbidden"}), 403

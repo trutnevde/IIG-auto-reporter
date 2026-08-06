@@ -99,6 +99,38 @@ class Telegram:
                 time.sleep(0.4)
         return result
 
+    def send_document(self, chat_id, filename, data, caption=None):
+        """Отправить файл в чат. Отдельно от _call: файлы уходят multipart-ом, а не JSON-ом.
+
+        Используется для бэкапа базы во внешнее хранилище: копия рядом с базой не спасает,
+        если у хостинга проблема с диском или аккаунтом."""
+        url = self.base + "sendDocument"
+        last = None
+        for attempt in range(3):
+            try:
+                r = self.s.post(url, data={"chat_id": str(chat_id), "caption": (caption or "")[:1000]},
+                                files={"document": (filename, data)},
+                                timeout=max(180, self.timeout))
+            except (requests.RequestException, OSError) as e:
+                last = "сеть: {}".format(e)
+                time.sleep(min(2 ** attempt, 8))
+                continue
+            try:
+                d = r.json()
+            except ValueError:
+                last = "не-JSON ответ (HTTP {})".format(r.status_code)
+                time.sleep(2)
+                continue
+            if d.get("ok"):
+                return d.get("result")
+            if r.status_code == 429:
+                ra = (d.get("parameters") or {}).get("retry_after", 1)
+                last = "429 (retry_after={})".format(ra)
+                time.sleep(ra + 0.5)
+                continue
+            raise TelegramError("sendDocument: {} {}".format(d.get("error_code"), d.get("description")))
+        raise TelegramError("sendDocument: не удалось ({})".format(last))
+
     def chat_ok(self, chat_id):
         """Жив ли чат и на месте ли бот. Раньше об этом узнавали в момент
         отправки — то есть уже во время рассылки клиенту."""

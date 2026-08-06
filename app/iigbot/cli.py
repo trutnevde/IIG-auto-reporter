@@ -42,6 +42,7 @@ HELP = (
     "  autosync         суточное обслуживание: клиенты + цели + бюджеты (для cron)\n"
     "  sync             подтянуть клиентов из Директа\n"
     "  gsheets-sync     выгрузить Директ в Google-таблицы всех клиентов (cron/headless)\n"
+    "  watch            проверка живости снаружи (для cron каждые 5 минут)\n"
     "  import           импорт config.json\n"
     "  bot              только слушатель чатов (консоль, long-polling)\n"
     "  webhook          вебхук для хостинга: webhook set <url> | delete | info\n"
@@ -95,6 +96,22 @@ def main(argv=None):
         res = B.collect_and_alert(a.db, load_secrets()["yandex_oauth_token"], tg=tg)
         print("бюджеты: пул {}, активных {}, критичных {}".format(
             res.get("clients"), res.get("active"), res.get("critical")))
+    elif cmd in ("watch", "ping", "healthcheck"):
+        # внешняя проверка живости для cron: изнутри приложения её не сделать —
+        # если процесс не поднимается, проверять некому
+        from .api import Api
+        from . import sysinfo
+        a = Api()
+        tg = None
+        try:
+            tg = a._tg_client()
+        except Exception:  # noqa: BLE001 — без бота проверка всё равно запишется
+            pass
+        st = sysinfo.watch_once(a.db, tg)
+        print("{}: {} ({} мс){}".format(
+            st["url"], "отвечает" if st["ok"] else "НЕ ОТВЕЧАЕТ — " + str(st.get("error")),
+            st["ms"], "" if st["ok"] else ", подряд неудач: {}".format(st["fails"])))
+        raise SystemExit(0 if st["ok"] else 1)
     elif cmd in ("gsheets-sync", "gsheets_sync", "gsheets", "gs-sync"):
         from . import gsheets_sync
         raise SystemExit(gsheets_sync.main())

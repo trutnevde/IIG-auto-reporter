@@ -409,6 +409,56 @@
     .ds-cut input[type="checkbox"]{width:20px;height:20px;min-height:20px;flex:0 0 auto}
   }
 
+  /* Сервер: состояние машины, проверки и обслуживание. Всё, за чем раньше лезли по SSH. */
+  .sy-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px;margin-bottom:14px}
+  .sy-t{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:13px 14px;
+    box-shadow:var(--shadow-sm)}
+  .sy-t .l{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+  .sy-t .v{font-size:21px;font-weight:800;line-height:1.15;margin-top:5px;font-variant-numeric:tabular-nums;
+    word-break:break-word}
+  .sy-t .s{font-size:12px;color:var(--muted);margin-top:3px}
+  .sy-t.ok{border-left:3px solid var(--green)}
+  .sy-t.bad{border-left:3px solid var(--red)}
+  .sy-kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 16px;font-size:13px}
+  .sy-kv>div{padding:8px 0;border-bottom:1px solid var(--line-soft);min-width:0}
+  .sy-kv>div:nth-last-child(-n+2){border-bottom:0}
+  .sy-kv .k{color:var(--muted)}
+  .sy-kv .v{text-align:right;font-weight:650;font-variant-numeric:tabular-nums;
+    overflow-wrap:anywhere}
+  .sy-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;
+    background:var(--surface-3);border:1px solid var(--line);border-radius:9px;padding:9px 11px;
+    overflow-x:auto;white-space:pre;-webkit-overflow-scrolling:touch}
+  .sy-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line-soft);
+    flex-wrap:wrap}
+  .sy-row:last-child{border-bottom:0}
+  /* имена файлов копий длинные и без пробелов — на телефоне рвём их, а не строку */
+  .sy-row .n{font-size:13px;font-weight:650;min-width:0;flex:1;overflow-wrap:anywhere}
+  .sy-row .d{font-size:12.5px;color:var(--muted);min-width:0;overflow-wrap:anywhere}
+  .sy-acts{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .sy-bar{display:flex;align-items:center;gap:9px;padding:5px 0;font-size:12.5px}
+  .sy-bar .day{color:var(--muted);min-width:52px;font-variant-numeric:tabular-nums}
+  .sy-bar .fill{height:9px;border-radius:5px;background:var(--brand);min-width:2px}
+  .sy-bar .num{margin-left:auto;font-weight:650;font-variant-numeric:tabular-nums}
+  .sy-sec{padding:11px 0;border-bottom:1px solid var(--line-soft)}
+  .sy-sec:last-child{border-bottom:0}
+  .sy-sec .h{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .sy-sec .h b{font-size:13.5px}
+  .sy-key{display:flex;gap:10px;font-size:12.5px;padding:4px 0;flex-wrap:wrap}
+  .sy-key .kk{color:var(--muted);min-width:150px}
+  .sy-key .vv{font-family:ui-monospace,Menlo,Consolas,monospace;overflow-wrap:anywhere}
+  .sy-note{font-size:12.5px;color:var(--muted);margin:0 0 10px}
+  .sy-pre{max-height:340px;overflow:auto;white-space:pre-wrap;font-size:12.5px;line-height:1.5;
+    background:var(--surface-3);border:1px solid var(--line);border-radius:10px;padding:12px}
+  .ver-line{font-size:11px;color:var(--side-muted,var(--muted));padding:2px 12px 8px;
+    font-variant-numeric:tabular-nums;opacity:.75}
+  @media (max-width:600px){
+    .sy-kv{grid-template-columns:1fr;gap:0}
+    .sy-kv .v{text-align:left;padding-top:0}
+    .sy-kv>div{border-bottom:0;padding:4px 0}
+    .sy-kv>div.k{padding-top:9px;border-top:1px solid var(--line-soft)}
+    .sy-kv>div:nth-child(1){border-top:0}
+    .sy-key .kk{min-width:0;flex:1 1 100%}
+  }
   /* здоровье интеграций: строка на сервис, цвет по итогу проверки */
   .hl-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line-soft)}
   .hl-row:last-child{border-bottom:0}
@@ -1462,6 +1512,7 @@
       <a data-go="supervision" id="navSup" style="display:none"><svg class="ic"><use href="#i-eye"/></svg><span>Контроль</span></a>
       <a data-go="users" id="navUsers" style="display:none"><svg class="ic"><use href="#i-key"/></svg><span>Пользователи</span></a>
       <a data-go="errlog" id="navErrlog" style="display:none"><svg class="ic"><use href="#i-pulse"/></svg><span>Журнал</span></a>
+      <a data-go="system" id="navSystem" style="display:none"><svg class="ic"><use href="#i-heart-pulse"/></svg><span>Сервер</span></a>
 
       <div class="nav-cap">Система</div>
       <a data-act="onboard"><svg class="ic"><use href="#i-add-circle"/></svg><span>Подключить клиента</span></a>
@@ -1470,6 +1521,7 @@
     </nav>
     <div class="spacer"></div>
     <div class="mini" id="botInfo">Загрузка…</div>
+    <div class="ver-line" id="verInfo" title="Версия кода на сервере"></div>
   </aside>
   <div class="side-bg" onclick="closeNav()"></div>
 
@@ -1509,6 +1561,7 @@
       <section data-view="supervision"><div id="v_supervision"></div></section>
       <section data-view="users"><div id="v_users"></div></section>
       <section data-view="errlog"><div id="v_errlog"></div></section>
+      <section data-view="system"><div id="v_system"></div></section>
       <section data-view="guide"><div id="v_guide"></div></section>
       <section data-view="changelog"><div id="v_changelog"></div></section>
     </div>
@@ -2263,7 +2316,7 @@ function applyTheme(t){document.documentElement.setAttribute('data-theme',t);try
 function toggleTheme(){const cur=document.documentElement.getAttribute('data-theme')||'light';applyTheme(cur==='dark'?'light':'dark');}
 
 /* ---------- роутинг ---------- */
-const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',dialogs:'Ждут ответа',match:'Привязки',reports:'Отчёты',budgets:'Бюджеты',external:'Сторонний мессенджер',gsheets:'Google-таблицы',settings:'Настройки',supervision:'Контроль',users:'Пользователи',errlog:'Журнал',guide:'Гайд',changelog:'Что нового'};
+const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',dialogs:'Ждут ответа',match:'Привязки',reports:'Отчёты',budgets:'Бюджеты',external:'Сторонний мессенджер',gsheets:'Google-таблицы',settings:'Настройки',supervision:'Контроль',users:'Пользователи',errlog:'Журнал',system:'Сервер',guide:'Гайд',changelog:'Что нового'};
 /* Модели атрибуции Директа: код -> как это называется в самом Директе. «D» на конце —
    кросс-девайс (сшивка по Яндекс ID), пишется через два C. Дефолт агентства — LSCCD. */
 const ATTR_RU={LSCCD:'Последний значимый, кросс-девайс',LSC:'Последний значимый переход',
@@ -2294,7 +2347,7 @@ document.getElementById('nav').addEventListener('click',e=>{
 function toggleNav(){document.body.classList.toggle('nav-open');}   // мобильный бургер
 function closeNav(){document.body.classList.remove('nav-open');}
 let CURRENT='dashboard';
-function render(v){CURRENT=v;setTimeout(()=>{const s=document.querySelector('section[data-view="'+v+'"]');mobilizeTables(s);clampSubs(s);mobilizeToolbar(s);},60);({dashboard:renderDashboard,clients:renderClients,chats:renderChats,dialogs:renderDialogs,match:renderMatch,reports:renderReports,budgets:renderBudgets,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,guide:renderGuide,changelog:renderChangelog}[v]||(()=>{}))();}
+function render(v){CURRENT=v;setTimeout(()=>{const s=document.querySelector('section[data-view="'+v+'"]');mobilizeTables(s);clampSubs(s);mobilizeToolbar(s);},60);({dashboard:renderDashboard,clients:renderClients,chats:renderChats,dialogs:renderDialogs,match:renderMatch,reports:renderReports,budgets:renderBudgets,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,system:renderSystem,guide:renderGuide,changelog:renderChangelog}[v]||(()=>{}))();}
 function refresh(){render(CURRENT);loadBadges();}
 
 /* ---------- бейджи/статус ---------- */
@@ -2893,6 +2946,258 @@ async function healthRun(){
     toast(res.bad?('Проблем: '+res.bad):'Все интеграции отвечают', res.bad?'err':'ok');
     return;
   }
+}
+
+
+/* ---------- СЕРВЕР: состояние машины и обслуживание (только админ) ---------- */
+/* Всё, за чем раньше приходилось лезть по SSH: жив ли процесс и давно ли перезапускался,
+   цела ли база, какой код сейчас выложен, откуда откатываться, куда уходит процессор. */
+let SYS=null;   /* состояние раздела: обработчикам кнопок нужны те же данные */
+function setVersion(v){const e=el('verInfo');if(e&&v){e.textContent='версия '+v;}}
+function sysAgo(ts){const n=Number(ts||0);return n?fmtWhen(new Date(n*1000).toISOString()):'—';}
+function sysKb(kb){if(kb===null||kb===undefined)return '—';
+  return kb>=1024?(kb/1024).toFixed(1)+' МБ':fmtInt(kb)+' КБ';}
+function sysDate(iso){return iso?fmtWhen(iso):'—';}
+
+async function renderSystem(){
+  const host=el('v_system');
+  if(!ME||ME.role!=='admin'){host.innerHTML=emptyState('<svg class="ic"><use href="#i-lock-2"/></svg>',
+    'Раздел только для администратора',
+    'Здесь состояние сервера, копии базы и обслуживание — доступ есть только у администратора.',null);return;}
+  host.innerHTML=skeleton('rows',8);
+  let s,c,sec,dep;
+  try{[s,c,sec,dep]=await Promise.all([api('sys_status'),api('sys_cpu'),api('sys_secrets'),api('sys_deploys')]);}
+  catch(e){host.innerHTML=errBlock(e,()=>renderSystem());return;}
+  SYS={s:s,c:c,sec:sec,dep:dep};
+  if(s.version&&s.version.short)setVersion(s.version.short);
+
+  const ig=s.integrity, wt=s.watch, db=s.db, dk=s.disk||{}, ver=s.version||{}, cpu=s.cpu||{};
+  const tiles=`<div class="sy-tiles">
+    <div class="sy-t"><div class="l">Версия</div><div class="v" style="font-size:15px">${esc(ver.short||'—')}</div>
+      <div class="s">${ver.exact?'из файла выката':'по датам файлов'}</div></div>
+    <div class="sy-t"><div class="l">Работает без перезапуска</div><div class="v">${esc(cpu.uptime||'—')}</div>
+      <div class="s">с ${sysDate(cpu.started)}</div></div>
+    <div class="sy-t"><div class="l">База</div><div class="v">${sysKb(db.kb)}</div>
+      <div class="s">журнал ${sysKb(db.wal_kb)}${db.free_kb?', свободно '+sysKb(db.free_kb):''}</div></div>
+    <div class="sy-t ${ig?(ig.ok?'ok':'bad'):''}"><div class="l">Целостность базы</div>
+      <div class="v" style="font-size:17px">${ig?(ig.ok?'в порядке':'ПОВРЕЖДЕНА'):'не проверялась'}</div>
+      <div class="s">${ig?sysDate(ig.at):'нажми «Проверить»'}</div></div>
+  </div>`;
+
+  const kv=(rows)=>'<div class="sy-kv">'+rows.map(r=>`<div class="k">${r[0]}</div><div class="v">${r[1]}</div>`).join('')+'</div>';
+  const state=`<div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-heart-pulse"/></svg></span> Состояние</h3>
+    <div class="body">${kv([
+      ['Код на сервере', esc(ver.short||'—')+(ver.note?' · '+esc(ver.note):'')],
+      ['Файлы приложения обновлялись', sysDate(ver.files_at)],
+      ['Python', esc(s.python||'—')],
+      ['Процессорного времени с запуска', (cpu.cpu_sec||0)+' с'+(cpu.share!==null&&cpu.share!==undefined?' ('+cpu.share+'% от времени работы)':'')],
+      ['Память процесса', cpu.rss_mb?cpu.rss_mb+' МБ':'—'],
+      ['Клиентов / пользователей', fmtInt(s.clients||0)+' / '+fmtInt(s.users||0)],
+      ['Кэш выгрузок', fmtInt((s.cache||{}).rows||0)+' записей, '+sysKb((s.cache||{}).kb)],
+      ['Занимают файлы приложения', sysKb(dk.app_kb)],
+      ['Копии базы', fmtInt(dk.backups_n||0)+' шт., '+sysKb(dk.backups_kb)],
+      ['Копии файлов выката', sysKb(dk.deploy_kb)],
+      ['Журнал ошибок', sysKb(dk.log_kb)],
+      ['Адрес снаружи', '<a href="'+esc(s.public_url||'')+'" target="_blank" rel="noopener">'+esc(s.public_url||'—')+'</a>'],
+    ])}
+    <div class="sy-acts" style="margin:14px 0 0">
+      <button class="btn sm" onclick="renderSystem()"><svg class="ic"><use href="#i-refresh"/></svg> Обновить</button>
+      <button class="btn sm" onclick="sysMaint()"><svg class="ic"><use href="#i-hammer"/></svg> Сжать базу</button>
+      <button class="btn sm danger" onclick="sysRestart()"><svg class="ic"><use href="#i-refresh"/></svg> Перезапустить приложение</button>
+    </div></div></div>`;
+
+  const jobs=(s.jobs||[]).length?`<div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-clock"/></svg></span> Последние операции</h3>
+    <div class="body">${(s.jobs||[]).map(j=>`<div class="sy-row">
+      <span class="badge ${j.state==='done'?'b-green':(j.state==='error'?'b-red':'b-amber')}">${j.state==='done'?'готово':(j.state==='error'?'ошибка':'идёт')}</span>
+      <span class="n">${esc(j.title||j.key)}</span>
+      <span class="d">${esc(j.error||j.note||'')}</span>
+      <span class="d">${sysAgo(j.finished||j.started)}</span></div>`).join('')}</div></div>`:'';
+
+  const checks=`<div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-shield-check"/></svg></span> Проверки</h3>
+    <div class="body">
+      <div class="sy-sec"><div class="h"><b>Целостность базы</b>
+        <button class="btn sm" style="margin-left:auto" onclick="sysIntegrity()"><svg class="ic"><use href="#i-flask"/></svg> Проверить</button></div>
+        <p class="sy-note" style="margin:7px 0 0">${ig?
+          (ig.ok?('Проверена '+sysDate(ig.at)+', ошибок нет. Заняло '+ig.ms+' мс.'):
+                 ('<b style="color:var(--red)">База повреждена:</b> '+esc(ig.full||'')+'. Восстановись из копии ниже.')):
+          'Ещё не проверялась. Полная проверка читает файл базы целиком — на нашем размере это доли секунды. Запускается и сама, раз в сутки вместе с ночным обслуживанием.'}</p></div>
+      <div class="sy-sec"><div class="h"><b>Живость снаружи</b>
+        <button class="btn sm" style="margin-left:auto" onclick="sysPing()"><svg class="ic"><use href="#i-plug"/></svg> Проверить сейчас</button></div>
+        <p class="sy-note" style="margin:7px 0 0" id="sysPingBox">${wt?
+          (wt.ok?('Отвечал '+sysDate(wt.at)+' за '+wt.ms+' мс.'):
+                 ('<b style="color:var(--red)">Не отвечал</b> '+sysDate(wt.at)+': '+esc(wt.error||wt.status||'')+'. Неудач подряд: '+wt.fails+'.')):
+          'Проверок снаружи ещё не было. Их делает cron хостинга: изнутри приложения живость не проверить — если процесс не поднимается, проверять некому.'}</p>
+        <div class="sy-code" style="margin-top:9px">${esc((s.cron||{}).watch||'')}</div>
+        <button class="btn sm" style="margin-top:8px" onclick="copyToClip(SYS.s.cron.watch,'Строка cron скопирована',this)"><svg class="ic"><use href="#i-file-copy-2"/></svg> Скопировать строку для cron</button></div>
+      <div class="sy-sec"><div class="h"><b>Расписание хостинга</b></div>
+        <p class="sy-note" style="margin:7px 0">Эти строки должны стоять в панели Beget → Cron. Ночное обслуживание заодно проверяет базу.</p>
+        <div class="sy-code">${esc(((s.cron||{}).autosync||'')+'\n'+((s.cron||{}).weekly||'')+'\n'+((s.cron||{}).watch||''))}</div></div>
+    </div></div>`;
+
+  const bks=(dk.backups||[]);
+  const backups=`<div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-save-3"/></svg></span> Копии базы</h3>
+    <div class="body">
+      <p class="sy-note">Копия снимается через штатный механизм SQLite — корректно даже при включённом журнале.
+        Рядом с базой хранятся 14 последних; копия «в Telegram» уходит файлом в твой личный чат с ботом —
+        это единственная копия, которая переживёт проблему с самим хостингом.</p>
+      <div class="sy-acts">
+        <button class="btn sm" onclick="sysBackup()"><svg class="ic"><use href="#i-save-3"/></svg> Сделать копию</button>
+        <button class="btn sm" onclick="sysBackupSend()"><svg class="ic"><use href="#i-send"/></svg> Отправить копию в Telegram</button>
+      </div>
+      ${kv([['Последняя копия', sysAgo(s.backup_last)],
+            ['Последняя отправка в Telegram', sysAgo(s.backup_sent)]])}
+      ${bks.length?('<div style="margin-top:12px">'+bks.map((b,i)=>`<div class="sy-row">
+        <span class="n">${esc(b.file)}</span><span class="d">${sysKb(b.kb)}</span>
+        <span class="d">${sysDate(b.at)}</span>
+        <a class="btn sm" href="/download/backup/${encodeURIComponent(b.file)}"><svg class="ic"><use href="#i-download-2"/></svg> Скачать</a>
+        <button class="btn sm danger" onclick="sysRestore(${i})"><svg class="ic"><use href="#i-arrow-go-back"/></svg> Восстановить</button>
+      </div>`).join('')+'</div>'):'<p class="sy-note" style="margin-top:12px">Копий пока нет.</p>'}
+    </div></div>`;
+
+  const dps=(dep.items||[]);
+  const deploys=`<div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-arrow-go-back"/></svg></span> Откат выката</h3>
+    <div class="body">
+      <p class="sy-note">Перед каждой заливкой прежние файлы приложения складываются рядом. Откат возвращает
+        их на место и перезапускает приложение — на случай, если новая версия оказалась хуже старой.
+        Данные при этом не трогаются: меняется только код.</p>
+      ${dps.length?dps.map((d,i)=>`<div class="sy-row">
+        <span class="n">${esc(d.stamp)}</span>
+        <span class="d">${d.files.map(f=>esc(f.file)).join(', ')}</span>
+        <span class="d">${sysKb(d.kb)}</span>
+        <button class="btn sm danger" onclick="sysRollback(${i})">Откатить</button>
+      </div>`).join(''):'<p class="sy-note">Копий выката нет — либо выкат сюда ещё не приезжал, либо папка не найдена.</p>'}
+    </div></div>`;
+
+  const days=(c.days||[]).slice().reverse(), maxd=Math.max(1,...days.map(d=>d.secs||0));
+  const cpuPanel=`<div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-bar-chart"/></svg></span> Расход процессора</h3>
+    <div class="body">
+      <p class="sy-note">На виртуальном хостинге процессорное время — расходуемый ресурс: когда его не хватает,
+        процесс просто гасят. Здесь видно, сколько его съедает кабинет и какие операции самые дорогие.</p>
+      ${days.length?days.map(d=>`<div class="sy-bar"><span class="day">${esc(String(d.day).slice(5))}</span>
+        <span class="fill" style="width:${Math.round(100*(d.secs||0)/maxd)}%"></span>
+        <span class="num">${(d.secs||0).toFixed(1)} с<span class="d" style="font-weight:400;color:var(--muted)"> · ${fmtInt(d.calls||0)} запр.</span></span></div>`).join(''):
+        '<p class="sy-note">Данных ещё нет — учёт начинается с этого обновления.</p>'}
+      ${(c.top_all||[]).length?('<div style="margin-top:14px"><b style="font-size:13px">Самые дорогие операции</b>'+
+        (c.top_all||[]).map(t=>`<div class="sy-row"><span class="n"><code>${esc(t.method)}</code></span>
+          <span class="d">${fmtInt(t.calls||0)} вызовов</span>
+          <span class="d" style="font-weight:650;color:var(--ink)">${(t.secs||0).toFixed(1)} с</span></div>`).join('')+'</div>'):''}
+    </div></div>`;
+
+  const secrets=`<div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-key-2"/></svg></span> Ключи и доступы</h3>
+    <div class="body">
+      <p class="sy-note">Сами ключи не показываются никогда — только хвост и длина, чтобы можно было сверить
+        с тем, что выдал сервис. Ключи стоит обновлять хотя бы раз в ${sec.rotate_days} дней.</p>
+      ${(sec.items||[]).map((it,i)=>`<div class="sy-sec">
+        <div class="h"><b>${esc(it.title)}</b>
+          ${it.exists?'':'<span class="badge b-red">не найден</span>'}
+          ${it.stale?'<span class="badge b-amber">пора обновить</span>':''}
+          <span class="d" style="margin-left:auto;font-size:12px;color:var(--muted)">${it.age_days!==null&&it.age_days!==undefined?('возраст '+it.age_days+' дн.'):''}</span>
+          <button class="btn sm" onclick="sysRotated(${i})">Отметить обновление</button></div>
+        <div style="margin-top:6px">${(it.keys||[]).map(k=>`<div class="sy-key"><span class="kk">${esc(k.title)}</span><span class="vv">${esc(k.value)}</span></div>`).join('')}</div>
+        <div class="sy-key" style="margin-top:4px"><span class="kk">Файл</span><span class="vv">${esc(it.path||'—')}</span></div>
+        <div class="sy-key"><span class="kk">Менялся</span><span class="vv">${esc(it.rotated||it.changed||'—')}</span></div>
+      </div>`).join('')}
+    </div></div>`;
+
+  const runbook=`<div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-book-2"/></svg></span> Справка для преемника</h3>
+    <div class="body">
+      <p class="sy-note">Где что лежит, как запускается, как выкатывать и что делать, если сломалось.
+        Собирается по этой машине — с настоящими путями, а не с примерами.</p>
+      <div class="sy-acts">
+        <a class="btn sm" href="/download/runbook.md"><svg class="ic"><use href="#i-download-2"/></svg> Скачать файлом</a>
+        <button class="btn sm" onclick="sysRunbook()"><svg class="ic"><use href="#i-eye"/></svg> Посмотреть здесь</button>
+      </div>
+      <div id="sysRunbookBox"></div>
+    </div></div>`;
+
+  host.innerHTML=`<h2 class="title">Сервер</h2>
+    <p class="sub">Состояние машины, проверки, копии базы и обслуживание. Всё, за чем раньше нужно было
+      заходить на хостинг по SSH.</p>
+    ${tiles}${state}${checks}${backups}${deploys}${cpuPanel}${secrets}${runbook}${jobs}`;
+}
+
+async function sysIntegrity(){
+  await jobRun('integrity','sys_integrity',[],'Проверяю базу…',
+    r=>r.ok?'База цела, ошибок нет':'База повреждена: '+(r.full||''));
+}
+async function sysBackup(){
+  try{const r=await api('backup_now');toast('Копия готова: '+r.file+' ('+r.size_kb+' КБ)','ok');renderSystem();}
+  catch(e){}
+}
+async function sysBackupSend(){
+  await jobRun('backup_send','sys_backup_send',[],'Отправляю копию в Telegram…',
+    r=>'Копия отправлена: '+(r.file||'')+' ('+(r.kb||0)+' КБ)');
+}
+async function sysMaint(){
+  if(!await askConfirm('Пересчитать статистику и сжать файл базы? Занимает несколько секунд, данные не меняются.',
+    {title:'Обслуживание базы',ok:'Сжать'}))return;
+  try{const r=await api('sys_maintenance');
+    toast('Было '+r.before_kb+' КБ, стало '+r.after_kb+' КБ (освободилось '+r.saved_kb+' КБ)','ok');renderSystem();}
+  catch(e){}
+}
+async function sysRestart(){
+  if(!await askConfirm('Приложение перезапустится: открытые страницы переживут это незаметно, но идущие '+
+    'фоновые операции прервутся. Продолжаем?',{title:'Перезапуск',ok:'Перезапустить',danger:true}))return;
+  try{await api('sys_restart');toast('Перезапуск запрошен — приложение поднимется на следующем запросе','ok');}
+  catch(e){}
+}
+/* Восстановление и откат необратимы, поэтому подтверждение — вводом слова,
+   а не кнопкой: случайно попасть по «Да» можно, случайно напечатать слово — нет. */
+async function sysRestore(i){
+  const bk=((SYS&&SYS.s.disk.backups)||[])[i]; if(!bk)return;
+  const file=bk.file;
+  const w=await askText('Данные из копии «'+file+'» заменят всё, что есть сейчас: клиентов, привязки, историю.\n'+
+    'Текущее состояние перед этим сохранится отдельной копией.\n\nВведи слово ВОССТАНОВИТЬ, чтобы продолжить.','',
+    {title:'Восстановление из копии',ok:'Восстановить',danger:true,placeholder:'ВОССТАНОВИТЬ'});
+  if(!w||w.trim().toUpperCase()!=='ВОССТАНОВИТЬ'){if(w!==null)toast('Слово не совпало — ничего не менял','err');return;}
+  try{const r=await api('sys_restore',file);
+    toast('База восстановлена из '+r.restored+'. Прежняя сохранена как '+r.safety,'ok');
+    location.reload();}
+  catch(e){}
+}
+async function sysRollback(i){
+  const it=((SYS&&SYS.dep.items)||[])[i]; if(!it)return;
+  const stamp=it.stamp;
+  const w=await askText('Файлы приложения вернутся к состоянию «'+stamp+'», приложение перезапустится.\n'+
+    'Данные не пострадают — меняется только код.\n\nВведи слово ОТКАТИТЬ, чтобы продолжить.','',
+    {title:'Откат выката',ok:'Откатить',danger:true,placeholder:'ОТКАТИТЬ'});
+  if(!w||w.trim().toUpperCase()!=='ОТКАТИТЬ'){if(w!==null)toast('Слово не совпало — ничего не менял','err');return;}
+  try{const r=await api('sys_rollback',stamp);
+    toast('Возвращено: '+(r.files||[]).join(', ')+'. Приложение перезапускается','ok');
+    setTimeout(()=>location.reload(),2500);}
+  catch(e){}
+}
+async function sysPing(){
+  const box=el('sysPingBox');
+  const was=(SYS&&SYS.s.watch&&SYS.s.watch.at)||'';
+  if(box)box.innerHTML='<span class="spin"></span> проверяю…';
+  try{await api('sys_ping');}catch(e){if(box)box.textContent='не получилось';return;}
+  // запрос уходит отдельным потоком (иначе кабинет ждал бы сам себя) — опрашиваем результат
+  let r=null;
+  for(let i=0;i<12;i++){
+    await new Promise(s=>setTimeout(s,900));
+    try{const w=await api('sys_watch'); if(w&&w.at&&w.at!==was){r=w;break;}}catch(e){break;}
+  }
+  if(!r){if(box)box.textContent='Проверка идёт дольше обычного — загляни сюда через минуту.';return;}
+  if(SYS)SYS.s.watch=r;
+  if(box)box.innerHTML=r.ok?('Отвечает за '+r.ms+' мс — '+esc(r.url)):
+    ('<b style="color:var(--red)">Не отвечает</b>: '+esc(r.error||('HTTP '+r.status)));
+  toast(r.ok?('Кабинет отвечает за '+r.ms+' мс'):'Кабинет не отвечает снаружи', r.ok?'ok':'err');
+}
+async function sysRotated(i){
+  const it=((SYS&&SYS.sec.items)||[])[i]; if(!it)return;
+  const name=it.name, title=it.title;
+  if(!await askConfirm('Отметить, что ключ «'+title+'» обновлён сегодня? Возраст будет считаться от этой даты.',
+    {title:'Обновление ключа',ok:'Отметить'}))return;
+  try{await api('sys_secret_rotated',name);toast('Отмечено','ok');renderSystem();}catch(e){}
+}
+async function sysRunbook(){
+  const box=el('sysRunbookBox'); if(!box)return;
+  if(box.innerHTML){box.innerHTML='';return;}
+  box.innerHTML='<p class="sy-note"><span class="spin"></span> собираю…</p>';
+  try{const r=await api('sys_runbook');
+    box.innerHTML='<div class="sy-pre" style="margin-top:12px">'+esc(r.text)+'</div>';}
+  catch(e){box.innerHTML='';}
 }
 
 /* ---------- CLIENTS ---------- */
@@ -3745,6 +4050,17 @@ const GUIDE=[
 {tab:'Журнал',icon:'<svg class="ic"><use href="#i-heart-pulse"/></svg>',title:'Журнал (только админ)',kw:'журнал ошибки лог сбои события автосинк диагностика технические',html:`
   <p>Раздел <b>Журнал</b> (только админ) — технические события сервера: ошибки (API, рассылка, сбор отчётов) и итоги фоновых задач (автосинк клиентов/целей, сбор бюджетов). Свежие сверху, есть очистка.</p>
   <p>Сюда попадает всё, что раньше мелькало красным сообщением и терялось — удобно, когда что-то пошло не так.</p>`},
+{tab:'Журнал',icon:'<svg class="ic"><use href="#i-shield-check"/></svg>',title:'Сервер (только админ)',kw:'сервер состояние версия аптайм целостность база копия бэкап восстановление откат выкат процессор cpu ключи секреты перезапуск README справка',html:`
+  <p>Раздел <b>Сервер</b> (только админ) — состояние машины и обслуживание. Всё, за чем раньше приходилось заходить на хостинг по SSH.</p>
+  <p><b>Наверху четыре плитки:</b> версия выложенного кода, сколько приложение работает без перезапуска, размер базы и результат последней проверки целостности.</p>
+  <p><b>Проверки.</b> «Проверить» читает файл базы целиком и говорит, цел ли он; то же самое делается само раз в сутки на ночном обслуживании, и если база повреждена — приходит уведомление. «Проверить сейчас» рядом — обращение к кабинету снаружи: видно, отвечает ли сайт и за сколько.</p>
+  <p><b>Копии базы.</b> «Сделать копию» кладёт её рядом с базой (хранятся 14 последних), «Отправить копию в Telegram» присылает файл в твой личный чат с ботом — это единственная копия, которая переживёт проблему с самим хостингом. Любую копию можно скачать или восстановить.</p>
+  <div class="note">Восстановление заменяет <b>всё</b>: клиентов, привязки, историю. Перед ним кабинет сам сохраняет текущее состояние отдельной копией, а подтвердить нужно вводом слова — случайно нажать нельзя.</div>
+  <p><b>Откат выката.</b> Перед каждой заливкой новых файлов прежние складываются рядом. Если новая версия оказалась хуже старой — вернёшь файлы одной кнопкой, приложение перезапустится. Данные не трогаются: меняется только код.</p>
+  <p><b>Расход процессора.</b> На виртуальном хостинге это расходуемый ресурс: когда его не хватает, процесс просто гасят. Здесь видно расход по дням и какие операции самые дорогие.</p>
+  <p><b>Ключи и доступы.</b> Какие ключи есть, когда менялись и не пора ли обновить. Сами ключи не показываются — только хвост и длина, чтобы можно было сверить с тем, что выдал сервис.</p>
+  <p><b>Справка для преемника</b> — файл с настоящими путями этой машины, командами запуска, расписанием и порядком действий, если что-то сломалось. Пригодится тому, кто будет вести это после тебя.</p>
+  <p>Версия выложенного кода продублирована внизу бокового меню — по ней понятно, что именно открыто у человека, который жалуется.</p>`},
 // ===== FAQ =====
 {tab:'FAQ',icon:'<svg class="ic"><use href="#i-question"/></svg>',title:'Частые вопросы',kw:'faq вопросы почему не вижу дубли кто рассылает клиент пропал',html:`
   <p><b>Почему я не вижу клиента?</b> Он не закреплён за тобой. Попроси админа назначить или привяжи его чат — заберёшь себе.</p>
@@ -3822,6 +4138,19 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-07',tag:'new',title:'Раздел «Сервер»: состояние машины и обслуживание без SSH',
+ sum:'Версия, целостность базы, копии, откат выката, расход процессора и ключи',items:[
+  '<b>Появился раздел «Сервер» (только у администратора).</b> Всё, за чем раньше нужно было заходить на хостинг по SSH: сколько работает приложение без перезапуска, сколько весит база, что и когда делали фоновые задачи, какой именно код сейчас выложен.',
+  '<b>Версия сборки видна в углу меню и на экране состояния.</b> Раньше по жалобе «у меня не так» нельзя было понять, что за версия открыта у человека.',
+  '<b>Проверка целостности базы — кнопкой и раз в сутки сама.</b> Если файл базы повреждён, это выясняется на ночной проверке и приходит уведомлением, а не в тот момент, когда отчёт не собрался.',
+  '<b>Копия базы уходит в Telegram.</b> Копии рядом с базой не спасут, если проблема у самого хостинга. Теперь есть кнопка, которая присылает файл базы в личный чат с ботом — это копия вне сервера.',
+  '<b>Восстановление из копии — кнопкой.</b> Раньше это делалось руками по SFTP. Перед восстановлением текущее состояние сохраняется отдельной копией, а подтверждать нужно вводом слова: случайно нажать нельзя.',
+  '<b>Откат выката.</b> Перед каждой заливкой прежние файлы складываются рядом — теперь из кабинета видно все такие копии, и любую можно вернуть одной кнопкой с перезапуском. Данные при этом не трогаются.',
+  '<b>Учёт расхода процессора.</b> На виртуальном хостинге это тот ресурс, из-за нехватки которого гасят процесс. Теперь видно расход по дням и какие операции самые дорогие.',
+  '<b>Проверка живости снаружи.</b> Кабинет отдаёт короткий адрес для монитора, а расписание хостинга раз в пять минут дёргает его отдельным процессом и пишет в Telegram, если сайт молчит: изнутри упавшее приложение проверить некому.',
+  '<b>Список ключей и доступов.</b> Видно, какие ключи есть, когда менялись и не пора ли обновить. Сами ключи не показываются — только хвост и длина, чтобы можно было сверить.',
+  '<b>Справка для преемника.</b> Кнопка собирает файл с настоящими путями этой машины, командами запуска, расписанием и порядком действий, если что-то сломалось.',
+ ]},
 {date:'2026-08-07',tag:'fix',title:'Долгие операции стали предсказуемыми, Обзор — быстрее',
  sum:'Очередь задач, полоска в шапке, кэш переживает перезапуск',items:[
   '<b>Полоска фоновой задачи переехала в шапку.</b> Раньше она рисовалась внутри раздела и пропадала при переходе, хотя работа продолжалась. Теперь видно из любого места, и появляется сразу при запуске, а не через полторы секунды.',
@@ -5101,7 +5430,7 @@ function applyUser(){
   setTimeout(busyWatch,800);   // вдруг задача осталась с прошлой сессии
   const box=el('userBox');
   const setNav=(id,on)=>{const e=el(id);if(e)e.style.display=on?'':'none';};
-  if(!ME){box.style.display='none';setNav('navUsers',false);setNav('navSup',false);setNav('navErrlog',false);setNav('navCapManage',false);return;}
+  if(!ME){box.style.display='none';setNav('navUsers',false);setNav('navSup',false);setNav('navErrlog',false);setNav('navSystem',false);setNav('navCapManage',false);return;}
   box.style.display='inline-flex';
   el('userName').textContent=ME.name||ME.email;
   el('userRole').textContent=ROLE_RU[ME.role]||'Специалист';
@@ -5110,6 +5439,7 @@ function applyUser(){
   setNav('navUsers',boss);                                    // работодатель управляет командой
   setNav('navSup',boss);                                      // Контроль — админ и наблюдатель
   setNav('navErrlog',ME.role==='admin');                      // Журнал ошибок — только админ
+  setNav('navSystem',ME.role==='admin');                      // Сервер: состояние машины и обслуживание — только админ
   setNav('navCapManage',boss);   // подзаголовок «Управление» — только если под ним что-то есть
 }
 /* ---------- КОНТРОЛЬ: наблюдатель/админ ---------- */
@@ -5496,6 +5826,7 @@ async function doLogin(ev){
   try{ r=await callBackend('login',[email,pass]); }
   catch(e){errToast(e); el('lgErr').textContent='Нет связи с сервером'; el('lgBtn').disabled=false; return; }
   el('lgBtn').disabled=false;
+  if(r&&r.version)setVersion(r.version);
   if(r&&r.ok&&r.user){ ME=r.user; el('lgPass').value=''; hideLogin(); applyUser();
     if(!READY){ init(); } else { refresh(); } }
   else { el('lgErr').textContent=(r&&r.error)||'Не удалось войти'; }
@@ -5509,6 +5840,7 @@ async function bootWeb(){
   let me;
   try{ me=await callBackend('me',[]); }
   catch(e){errToast(e); return; }                       // нет связи — сработает нижний fallback
+  if(me&&me.version)setVersion(me.version);
   if(me&&me.ok&&me.user){ ME=me.user; applyUser(); init(); }
   else { showLogin(me&&me.setup); }
 }
