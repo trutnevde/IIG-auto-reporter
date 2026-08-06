@@ -63,6 +63,44 @@ def period(today=None):
 
 
 # ---------- запрос отчёта (CAMPAIGN_PERFORMANCE_REPORT, TSV) ----------
+# ───────────────────────── кэш выгрузок Reports API ─────────────────────────
+# Директ ставит каждый отчёт в очередь: один и тот же запрос — это снова десятки
+# секунд ожидания. Держим ответы в памяти процесса: пересборка досье за тот же
+# период или повторный конструктор отвечают мгновенно и не жгут лимиты.
+_CACHE = {}                 # ключ -> (время, строки)
+_CACHE_TTL = 900            # 15 минут: свежее суток статистики Директа всё равно нет
+_CACHE_MAX = 40             # чтобы память процесса не росла бесконечно
+
+
+def _cache_key(token, login, date_from, date_to, fields, goal_ids, attribution,
+               report_type, filters):
+    return (login, date_from, date_to, tuple(fields), tuple(goal_ids or ()),
+            attribution, report_type, json.dumps(filters, sort_keys=True) if filters else "")
+
+
+def cache_clear():
+    """Сбросить кэш выгрузок (после смены целей клиента, например)."""
+    _CACHE.clear()
+
+
+def _cache_get(key, now):
+    hit = _CACHE.get(key)
+    if not hit:
+        return None
+    ts, rows = hit
+    if now - ts > _CACHE_TTL:
+        _CACHE.pop(key, None)
+        return None
+    return rows
+
+
+def _cache_put(key, rows, now):
+    if len(_CACHE) >= _CACHE_MAX:                 # выкидываем самую старую запись
+        oldest = min(_CACHE, key=lambda k: _CACHE[k][0])
+        _CACHE.pop(oldest, None)
+    _CACHE[key] = (now, rows)
+
+
 def fetch_report(token, login, date_from, date_to, fields, goal_ids=None, attribution="LSCCD",
                  report_type="CAMPAIGN_PERFORMANCE_REPORT", filters=None, _post=None, _sleep=None):
     """Возвращает список строк-словарей (имя_столбца -> значение). _post/_sleep — для тестов.
@@ -99,10 +137,26 @@ def fetch_report(token, login, date_from, date_to, fields, goal_ids=None, attrib
         params["AttributionModels"] = [attribution]
     body = json.dumps({"params": params}).encode("utf-8")
 
+    ckey = _cache_key(token, login, date_from, date_to, fields, goal_ids, attribution,
+                      report_type, filters)
+    now = time.time()
+    cached = _cache_get(ckey, now)
+    if cached is not None:
+        return cached
+
     for _ in range(12):
         r = post(REPORTS_URL, data=body, headers=headers, timeout=120)
+        # Директ не всегда шлёт charset, и тогда requests читает ответ как latin-1 —
+        # русские тексты ошибок превращались в кракозябры прямо в журнале
+        if not getattr(r, "encoding", None) or str(r.encoding).lower() in ("iso-8859-1", "latin-1"):
+            try:
+                r.encoding = "utf-8"
+            except Exception:  # noqa: BLE001
+                pass
         if r.status_code == 200:
-            return _parse_tsv(r.text)
+            rows = _parse_tsv(r.text)
+            _cache_put(ckey, rows, now)
+            return rows
         if r.status_code in (201, 202):
             wait = r.headers.get("retryIn", "5")
             try:

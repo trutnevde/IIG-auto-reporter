@@ -177,11 +177,20 @@ def build(token, login, level, date_from, date_to, attribution=None, goal_defs=N
                                  filters=fltrs, _post=_post, _sleep=_sleep)
     except RuntimeError as e:
         # частая причина — несовместимое сочетание разреза и срезов: даём понятную подсказку
-        if segs:
-            raise RuntimeError(
-                "Директ не принял это сочетание разреза «{}» и срезов [{}] — скорее всего они "
-                "несовместимы. Убери один срез или смени разрез. Ответ Директа: {}".format(
-                    LEVEL_LABELS.get(level, level), ", ".join(SEGMENTS[s][1] for s in segs), e))
+        # раньше ЛЮБАЯ 400 при наличии срезов объявлялась несовместимостью разреза и
+        # срезов — и человек по совету убирал срез, хотя причина была другая (например,
+        # Директ не принял модель атрибуции). Теперь на первом месте настоящий ответ,
+        # а подсказка добавляется только когда она к месту.
+        txt = str(e)
+        hint = ""
+        if "AttributionModels" in txt or "атрибуц" in txt.lower():
+            hint = (" Похоже, дело в модели атрибуции «{}» — попробуй другую"
+                    " в карточке клиента или в настройках.".format(attribution))
+        elif segs:
+            hint = (" Возможно, разрез «{}» несовместим со срезами [{}] — попробуй убрать один срез."
+                    .format(LEVEL_LABELS.get(level, level), ", ".join(SEGMENTS[s][1] for s in segs)))
+        if hint:
+            raise RuntimeError("Директ отклонил запрос. {}{}".format(txt, hint))
         raise
 
     # агрегируем на своей стороне по кортежу значений измерений (нужно для свёртки дат

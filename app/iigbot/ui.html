@@ -417,6 +417,7 @@
   .head-row .sub{margin-top:4px}
   .head-row .row-actions{flex:0 0 auto;margin:0}
   @media (max-width:640px){.head-row .row-actions{width:100%}.head-row .row-actions .btn{flex:1}}
+  .pick-s{margin-bottom:7px}
   .cli-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
   .cli-search{flex:1 1 240px;min-width:200px}
   .cli-chips{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;
@@ -924,6 +925,10 @@
   .spin{display:inline-block;width:15px;height:15px;border:2px solid color-mix(in srgb,var(--brand) 25%,transparent);
     border-top-color:var(--brand);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
   @keyframes sp{to{transform:rotate(360deg)}}
+  .busy-bar{display:flex;align-items:center;gap:9px;margin-bottom:14px;padding:10px 14px;
+    border-radius:11px;font-size:12.5px;color:var(--ink-soft);
+    border:1px solid color-mix(in srgb,var(--brand) 26%,transparent);
+    background:linear-gradient(96deg,color-mix(in srgb,var(--brand) 10%,var(--surface)),var(--surface) 72%)}
   .empty{color:var(--muted);padding:26px;text-align:center}
 
   /* ---------- дружелюбный UX: тост с действием, скелетоны, пустые экраны ---------- */
@@ -2613,7 +2618,9 @@ async function renderDossier(clientOpts){
   const cuts=(DS_OPT.cuts||[]).map(c=>`<label class="ds-cut"><input type="checkbox" id="dsCut_${c.key}" onchange="dsCount()"> ${esc(c.label)}${c.has_conv?'':' <span class="muted">(без заявок)</span>'}</label>`).join('');
   el('rpane').innerHTML=`
     <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-file-list-2"/></svg></span> Досье по проекту</h3><div class="body">
-      <div class="field"><label>Клиент</label><select id="dsClient">${clientOpts||'<option>нет клиентов</option>'}</select></div>
+      <div class="field"><label>Клиент</label>
+        <input type="search" class="pick-s" placeholder="Поиск по названию или логину…" oninput="pickFilter(this,'dsClient')">
+        <select id="dsClient" size="1">${clientOpts||'<option>нет клиентов</option>'}</select></div>
       <div class="ds-per" style="margin-top:14px">
         <div class="ds-box"><h4><b>A</b> что смотрим</h4>
           <div class="ds-pre" id="dsAPre">
@@ -2819,6 +2826,23 @@ function dsRender(r){
         <thead><tr><th>Кампания</th><th>Расход</th>${conv?'<th>Заявки</th><th>Цена заявки</th>':''}<th>Клики</th><th>К периоду B</th></tr></thead>
         <tbody>${rows||'<tr><td colspan="6" class="empty">За период не было расхода.</td></tr>'}</tbody></table></div></div>
     <div id="dsCuts"></div>`;
+}
+
+/* Поиск над списком клиентов: прячем неподходящие пункты прямо в <select>.
+   Списки на четыре сотни строк иначе не пролистать. */
+function pickFilter(inp, selId){
+  const sel=el(selId); if(!sel)return;
+  const q=(inp.value||'').trim().toLowerCase();
+  let firstVisible=null, curHidden=false;
+  [...sel.options].forEach(o=>{
+    const hit=!q||o.textContent.toLowerCase().includes(q);
+    o.hidden=!hit;
+    if(hit&&!firstVisible)firstVisible=o;
+    if(!hit&&o.selected)curHidden=true;
+  });
+  if(curHidden&&firstVisible)sel.value=firstVisible.value;   // выбранный уехал из фильтра
+  const n=[...sel.options].filter(o=>!o.hidden).length;
+  inp.setAttribute('title', n+' из '+sel.options.length);
 }
 
 /* ---------- CLIENTS ---------- */
@@ -3035,13 +3059,45 @@ function drawClients(){
     (pg.length?`<span class="cli-pg">${pg.join('')}</span>`:'');
 }
 
-async function doSync(){
+/* Долгие операции идут в фоне: на shared-хостинге один процесс, и синхронный
+   вызов на 393 клиента держал весь кабинет. Здесь только запуск и опрос. */
+async function jobRun(key, startMethod, args, startText, doneText){
   try{
-    toast('Запрашиваю клиентов из Директа…');
-    const r=await api('sync_clients');
-    toast('Синхронизировано: '+r.synced+(r.new?(' · новых: '+r.new+' ('+(r.new_names||[]).slice(0,3).join(', ')+(r.new>3?'…':'')+')'):' · новых нет'),'ok');
+    const r=await api(startMethod, ...(args||[]));
+    if(r&&r.already_running){toast('Уже выполняется: '+(r.title||'задача'),'err');return;}
+  }catch(e){return;}
+  toast(startText);
+  for(;;){
+    await new Promise(s=>setTimeout(s,1500));
+    let p; try{p=await api('job_progress',key);}catch(e){return;}
+    if(p.unknown)return;
+    if(p.running){ if(p.note)setBusy(p.title+' — '+p.note); continue; }
+    setBusy('');
+    if(p.error){toast(p.error,'err');return;}
+    toast(doneText(p.result||{}),'ok');
     refresh();
-  }catch(e){}
+    return;
+  }
+}
+/* строка состояния под шапкой, чтобы было видно: фоновая задача идёт */
+function setBusy(text){
+  let b=el('busyBar');
+  if(!text){ if(b)b.remove(); return; }
+  if(!b){
+    b=document.createElement('div'); b.id='busyBar'; b.className='busy-bar';
+    const c=document.querySelector('.content'); if(c)c.insertBefore(b,c.firstChild); else return;
+  }
+  b.innerHTML='<span class="spin"></span> '+esc(text);
+}
+
+async function doSync(){
+  await jobRun('sync','sync_clients_start',[],'Запрашиваю клиентов из Директа…',
+    r=>'Синхронизировано: '+(r.synced||0)+(r.new?(' · новых: '+r.new+' ('+(r.new_names||[]).slice(0,3).join(', ')+(r.new>3?'…':'')+')'):' · новых нет'));
+}
+async function doBulkGoals(){
+  if(!(await askConfirm('Подтянуть цели из Метрики для ВСЕХ привязанных клиентов?\nКлючевые включатся для отчётов, остальные сохранятся выключенными. Уже настроенные вручную галки не сбросятся.',{ok:'Подтянуть',title:'Цели из Метрики'})))return;
+  await jobRun('goals','metrika_goals_bulk_start',[],'Подтягиваю цели из Метрики… это надолго, можно продолжать работать',
+    r=>'Готово: с целями '+(r.with_goals||0)+', без счётчика '+(r.no_counter||0)+', ошибок '+(r.errors||0)+' (из '+(r.clients||0)+' привязанных)');
 }
 async function doImport(){try{const r=await api('import_config');toast('Импорт: клиентов '+r.clients+', привязок '+r.bindings,'ok');refresh();}catch(e){}}
 async function doBulkGoals(){
@@ -3224,20 +3280,12 @@ async function doDeleteChat(chatId){
 /* ---------- MATCH ---------- */
 async function renderMatch(){
   const host=el('v_match');host.innerHTML=skeleton('rows',5);
-  let cloud=null;try{cloud=await api('cloud_status');}catch(e){}
-  if(cloud&&cloud.configured){try{await api('cloud_pull');}catch(e){}}   // тянем общее состояние из облака
+  // общая Google-таблица как хранилище (cloudsync) осталась в десктопной версии.
+  // В вебе база одна на всех, тянуть оттуда нечего: раньше этот вызов шёл при каждом
+  // открытии раздела, у не-админов падал «Доступно только администратору» и мусорил
+  // в журнале ошибок, а у админа лез в Google и тормозил открытие.
   let d;try{d=await api('suggestions');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
-  let cloudPanel='';
-  if(cloud&&cloud.available&&!cloud.configured){
-    cloudPanel=`<div class="note" style="margin-bottom:12px"><svg class="ic"><use href="#i-cloud"/></svg> <b>Общая база (все устройства)</b>: не настроена. ${esc(cloud.note||'')}${cloud.sa_email?(' <code>'+esc(cloud.sa_email)+'</code>'):''}</div>`;
-  }else if(cloud&&cloud.configured){
-    cloudPanel=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-      <span class="badge b-green"><svg class="ic"><use href="#i-cloud"/></svg> Общая база: ${esc(cloud.sheet)}</span>
-      <button class="btn sm" onclick="doCloudPull()">↓ Загрузить из облака</button>
-      <button class="btn sm" onclick="doCloudPush()">↑ Выгрузить в облако</button>
-      <span class="muted" style="font-size:12px">Привязки тянутся автоматически при открытии и заливаются при изменении.</span>
-    </div>`;
-  }
+  const cloudPanel='';
   const opts=d.free_clients.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
   let rows=d.matches.map(m=>{
     const cc=m.confidence>=70?'hi':(m.confidence>=45?'mid':'lo');
@@ -3288,19 +3336,6 @@ async function doBindBulk(){
   if(!(await askConfirm('Привязать все чаты с уверенным совпадением (≥75%) разом? Спорные останутся, их поправишь вручную.'+tail,{ok:'Привязать',title:'Массовая привязка'})))return;
   try{const r=await api('bind_bulk',75,owner||null);
     toast('Привязано разом: '+r.bound+(owner&&who?(' → '+who.name):''),'ok');refresh();}catch(e){}
-}
-async function doCloudPull(){try{const r=await api('cloud_pull');toast('Из облака: привязок '+r.bindings+', целей '+r.goals,'ok');refresh();}catch(e){}}
-async function doCloudPush(){try{const r=await api('cloud_push');toast('В облако: привязок '+r.bindings+', целей '+r.goals,'ok');}catch(e){}}
-async function bindSmart(chatId,login){
-  // супервайзер с выбранным специалистом → привязка + назначение владельца одним действием
-  const owner=bindOwnerSel();
-  if(ME&&(ME.role==='admin'||ME.role==='observer')){
-    const r=await api('bind_for',chatId,login,owner||null);
-    const who=(SUP_USERS||[]).find(u=>String(u.id)===String(owner));
-    toast(owner?('Привязано и назначено: '+(who?who.name:'специалисту')):'Привязано','ok');
-    return r;
-  }
-  const r=await api('bind',chatId,login);toast('Привязано','ok');return r;
 }
 async function doBind2(chatId,login){try{await bindSmart(chatId,login);refresh();}catch(e){errToast(e);}}
 async function doBindManual(chatId){const s=el('mansel_'+chatId);if(!s.value){toast('Выбери клиента','err');return;}try{await bindSmart(chatId,s.value);refresh();}catch(e){errToast(e);}}
@@ -3379,6 +3414,7 @@ const GUIDE=[
   <p>Подтверждение осталось только там, где отменить нельзя или что-то уходит наружу: рассылка клиентам, тестовый отчёт, удаление чата, очистка журнала, запись в Google-таблицы. У таких кнопок красный цвет и понятное название — не «OK», а «Отправить клиентам».</p>
   <div class="note">Если в карточке клиента остались несохранённые правки, программа спросит перед закрытием — раньше можно было потерять полчаса работы одним кликом мимо.</div>`},// ===== КЛИЕНТЫ =====
 {tab:'Рассылка',icon:'<svg class="ic"><use href="#i-flask"/></svg>',title:'Досье по проекту (демо)',kw:'досье отписка период сравнение два периода год назад месяц неделя что сделано что случилось разрезы устройства гео запросы прогноз',html:`
+  <p>Над списком клиентов есть поле поиска — набери часть названия или логина, список сократится.</p>
   <p><b>Отчёты → Досье</b> — отписка клиенту за любой период. Всё построено на сравнении <b>двух</b> периодов: <b>A</b> — то, что смотрим, <b>B</b> — то, с чем сравниваем.</p>
   <p><b>Период A.</b> Кнопки «Неделя / 2 недели / 30 дней / Этот месяц / Прошлый месяц» или свои даты. Считается по вчерашний день: сегодняшний ещё не закрыт и портил бы картину.</p>
   <p><b>Период B</b> подставляется сам, как только выбран A:</p>
@@ -3727,6 +3763,15 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-06',tag:'fix',title:'Кабинет перестал зависать на долгих операциях',
+ sum:'Синхронизация и цели ушли в фон, выгрузки Директа кэшируются, в списках клиентов появился поиск',items:[
+  '<b>«Подтянуть из Директа», «Цели из Метрики (всем)» и выгрузка в таблицу больше не вешают кабинет.</b> Раньше они выполнялись прямо в запросе, а на хостинге у приложения один рабочий процесс: пока шёл сбор по 393 клиентам, кабинет не отвечал вообще никому. Теперь операция уходит в фон, под шапкой появляется строка с ходом дела, а работать можно дальше. Проверено: во время синхронизации всех 393 клиентов кабинет отвечал за треть секунды.',
+  '<b>Выгрузки из Директа кэшируются на 15 минут.</b> Пересобрал досье за тот же период или вернулся в конструктор — данные берутся из памяти, а не запрашиваются заново. Повторный сбор стал мгновенным вместо десятков секунд ожидания в очереди Директа.',
+  '<b>Поиск в списках клиентов.</b> В «Отчётах» (предпросмотр, конструктор, досье) и в «Таблицах» над выпадающим списком появилось поле поиска: набираешь часть названия или логина — список сокращается. На четырёх сотнях клиентов прокрутка была мучением.',
+  '<b>Ошибки Директа снова читаются.</b> В журнале они лежали кракозябрами вроде «Ð­Ð»ÐµÐ¼ÐµÐ½Ñ Ð¼Ð°ÑÑÐ¸Ð²Ð°»: ответ читался в неверной кодировке, когда Директ не указывал её явно. Теперь текст ошибки видно как есть.',
+  '<b>Сообщение об ошибке в конструкторе перестало врать.</b> Раньше любой отказ Директа при выбранных срезах объявлялся несовместимостью разреза и срезов — и совет «убери срез» не помогал, потому что причина была другая. Теперь сначала показывается настоящий ответ Директа, а подсказка добавляется по делу: про модель атрибуции — если дело в ней, про срезы — если в них.',
+  '<b>Убран лишний поход в Google при открытии «Привязок».</b> Раздел на входе тянул общую таблицу — наследство тех времён, когда база была у каждого своя. У специалистов это молча падало и засоряло журнал ошибок, у администратора просто тормозило открытие. Общая база давно одна на всех, тянуть оттуда нечего.',
+ ]},
 {date:'2026-08-04',tag:'major',title:'Досье: сравнение двух периодов',
  sum:'Любые два отрезка, быстрые предустановки и результат в двух вопросах — что сделано и что случилось',items:[
   '<b>Досье перестроено вокруг пары периодов.</b> Раньше сравнение было жёстким: предыдущий отрезок такой же длины, и всё. Теперь <b>A</b> (что смотрим) и <b>B</b> (с чем сравниваем) настраиваются отдельно и не обязаны быть одной длины — можно сопоставить любые два куска.',
@@ -4080,7 +4125,9 @@ async function renderReports(){
   if(RTAB==='prev'){
     el('rpane').innerHTML=`<div class="grid2">
       <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-settings-3"/></svg></span> Параметры</h3><div class="body">
-        <div class="field"><label>Клиент</label><select id="rpClient">${opts||'<option>нет клиентов</option>'}</select></div>
+        <div class="field"><label>Клиент</label>
+          <input type="search" class="pick-s" placeholder="Поиск по названию или логину…" oninput="pickFilter(this,'rpClient')">
+          <select id="rpClient" size="1">${opts||'<option>нет клиентов</option>'}</select></div>
         <div class="field"><label>Период</label><input value="Прошлая неделя (Пн–Вс)" disabled></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn primary" onclick="doPreview()"><svg class="ic"><use href="#i-eye"/></svg> Сформировать превью</button>
@@ -4234,7 +4281,9 @@ async function renderBuilder(clientOpts){
   el('rpane').innerHTML=`
     <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-tools"/></svg></span> Конструктор отчёта</h3><div class="body">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div class="field"><label>Клиент</label><select id="rbClient" onchange="rbLoadCampaigns();rbLoadGoals();rbUpdateSend()">${clientOpts||'<option>нет клиентов</option>'}</select></div>
+        <div class="field"><label>Клиент</label>
+        <input type="search" class="pick-s" placeholder="Поиск по названию или логину…" oninput="pickFilter(this,'rbClient')">
+        <select id="rbClient" onchange="rbLoadCampaigns();rbLoadGoals();rbUpdateSend()">${clientOpts||'<option>нет клиентов</option>'}</select></div>
         <div class="field"><label>Кампания (фильтр)</label><select id="rbCampaign"><option value="">Все кампании</option></select></div>
         <div class="field"><label>Базовый разрез</label><select id="rbLevel">${lv}</select></div>
         <div class="field"><label>Модель атрибуции</label><select id="rbAttr">${at}</select></div>
@@ -4665,7 +4714,9 @@ async function renderGSheets(){
     <h2 class="title">Google-таблицы</h2>
     <p class="sub">Выгрузка данных Директа в таблицы клиентов (live — включая сегодняшний день). Доступ — сервисный аккаунт, по домену клиента находится его таблица «Auto-Reporter ОТЧЕТ …».</p>
     <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-upload-2"/></svg></span> Выгрузка по клиенту</h3><div class="body">
-      <div class="field"><label>Клиент</label><div style="display:flex;gap:8px"><select id="gsClient" style="flex:1" onchange="gsSyncLink()">${opts}</select>
+      <div class="field"><label>Клиент</label>
+          <input type="search" class="pick-s" placeholder="Поиск по названию или логину…" oninput="pickFilter(this,'gsClient')">
+          <div style="display:flex;gap:8px"><select id="gsClient" style="flex:1" onchange="gsSyncLink()">${opts}</select>
         <a class="btn" id="gsOpen" href="#" target="_blank" rel="noopener" title="Открыть таблицу этого клиента"><svg class="ic"><use href="#i-table"/></svg> Открыть таблицу ↗</a></div></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
         <button class="btn primary" onclick="gsPush()" title="Дописать/обновить ленты (неделя+месяц) свежими данными до сегодня"><svg class="ic"><use href="#i-table"/></svg> Заполнить ленты (неделя + месяц)</button>
@@ -4685,13 +4736,9 @@ function gsSyncLink(){
   else{a.href='#';a.style.display='none';}
 }
 function gsShow(t){const r=el('gsResult');r.style.display='block';r.textContent=t;}
-async function gsPush(){
-  const login=el('gsClient').value;if(!login){toast('Выбери клиента','err');return;}
-  if(!(await askConfirm('Заполнить ленты Google-таблицы клиента свежими данными (неделя + месяц, до сегодня)? Изменит реальную таблицу.',{ok:'Заполнить',title:'Запись в таблицу',danger:true})))return;
-  gsShow('Пишу в таблицу…');
-  try{const r=await api('gsheets_push',login);
-    gsShow('Готово ('+r.domain+'):\n'+r.results.map(x=>'• '+x.tab+': '+x.status).join('\n'));toast('Готово','ok');
-  }catch(e){gsShow('Ошибка: '+e.message);}
+async function gsPush(login){
+  await jobRun('gsheets','gsheets_push_start',[login],'Выгружаю в таблицу…',
+    r=>'Выгружено: строк '+(r.rows!==undefined?r.rows:'—'));
 }
 async function gsBreak(){
   const login=el('gsClient').value;if(!login){toast('Выбери клиента','err');return;}

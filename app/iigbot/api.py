@@ -21,6 +21,13 @@ from .settings import (
 from .import_config import normalize_goals
 
 
+
+def _unwrap(bound):
+    """Функция из-под декоратора @safe: в фоне нам нужен результат, а не {ok,data}."""
+    fn = getattr(bound, "__func__", bound)
+    return getattr(fn, "__wrapped__", fn)
+
+
 def safe(fn):
     @functools.wraps(fn)
     def wrapper(self, *args, **kwargs):
@@ -871,6 +878,65 @@ class Api:
         threading.Thread(target=self._run_weekly_worker, args=(logins, bool(dry_run)),
                          daemon=True).start()
         return {"started": True, "only_failed": only_failed, "dry": bool(dry_run)}
+
+    # ─────────── фоновые задачи ───────────
+    # Passenger на shared-хостинге держит один процесс: пока он занят долгой
+    # операцией, кабинет не отвечает никому. «Подтянуть из Директа» на 393
+    # клиента, «Цели из Метрики (всем)» и выгрузка в таблицы — как раз такие.
+    # Запускаем их в потоке, а кабинет опрашивает job_progress.
+    def _job_start(self, key, title, work):
+        jobs = getattr(self, "_jobs", None)
+        if jobs is None:
+            jobs = self._jobs = {}
+        cur = jobs.get(key)
+        if cur and cur.get("running"):
+            return {"already_running": True, "title": cur.get("title")}
+        jobs[key] = {"running": True, "title": title, "note": "запускаю…",
+                     "result": None, "error": None}
+
+        def runner():
+            try:
+                res = work(lambda note: jobs[key].update({"note": note}))
+                jobs[key].update({"running": False, "result": res, "note": "готово"})
+            except Exception as e:  # noqa: BLE001
+                jobs[key].update({"running": False, "error": str(e), "note": "ошибка"})
+                log_error("job." + key, str(e))
+
+        import threading
+        threading.Thread(target=runner, daemon=True).start()
+        return {"started": True, "title": title}
+
+    @safe
+    def job_progress(self, key):
+        """Состояние фоновой задачи: running / note / result / error."""
+        jobs = getattr(self, "_jobs", None) or {}
+        j = jobs.get(key)
+        if not j:
+            return {"running": False, "unknown": True}
+        return {"running": j.get("running", False), "title": j.get("title"),
+                "note": j.get("note"), "result": j.get("result"), "error": j.get("error")}
+
+    @safe
+    def sync_clients_start(self):
+        """«Подтянуть из Директа» в фоне: 393 клиента — это десятки секунд."""
+        self._require_admin()
+        return self._job_start("sync", "Подтягиваю клиентов из Директа",
+                               lambda say: _unwrap(self.sync_clients)(self))
+
+    @safe
+    def metrika_goals_bulk_start(self):
+        """«Цели из Метрики (всем)» в фоне: ходит в Метрику по каждому клиенту."""
+        self._require_write()
+        return self._job_start("goals", "Тяну цели из Метрики",
+                               lambda say: _unwrap(self.metrika_goals_bulk)(self))
+
+    @safe
+    def gsheets_push_start(self, login):
+        """Выгрузка в Google-таблицу клиента в фоне."""
+        self._require_write()
+        self._require_owned(login)
+        return self._job_start("gsheets", "Выгружаю в таблицу",
+                               lambda say: _unwrap(self.gsheets_push)(self, login))
 
     @safe
     def run_weekly_progress(self):
