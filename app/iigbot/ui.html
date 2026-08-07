@@ -436,6 +436,14 @@
     background:var(--surface-3);border:1px solid var(--line);border-radius:5px;padding:1px 5px;
     margin-left:6px;white-space:nowrap}
   .pr-flag>span{min-width:0}
+  /* откуда взята подпись настройки: из интерфейса Директа, из справочника API или своя */
+  .pr-src{font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
+    padding:1px 5px;border-radius:5px;margin-left:6px;white-space:nowrap;vertical-align:1px}
+  .pr-src.api{color:var(--amber);background:var(--amber-bg);
+    border:1px solid color-mix(in srgb,var(--amber) 28%,transparent)}
+  .pr-src.own{color:var(--green);background:var(--green-bg);
+    border:1px solid color-mix(in srgb,var(--green) 26%,transparent)}
+  .pr-ren{font-size:11px;background:none;border:0;color:var(--brand);cursor:pointer;padding:0 4px}
   .pr-mod{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 0;
     border-bottom:1px solid var(--line-soft)}
   .pr-mod:last-child{border-bottom:0}
@@ -3388,9 +3396,18 @@ function presetDrawForm(){
     </div></div>
 
     <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-gear"/></svg></span> Настройки кампании</h3><div class="body">
+      <p class="sy-note">Подписи без пометки — как в интерфейсе Директа. С пометкой
+        <span class="pr-src api">из API</span> — описание из справочника: дословной подписи
+        интерфейса Яндекс не публикует. Видишь, как называется у тебя, — нажми «переименовать»,
+        и подпись станет общей для всех.</p>
       <div class="pr-flags">${S.settings.map(f=>`<label class="pr-flag">
         <input type="checkbox" data-flag="${f.id}"${(d.settings||{})[f.id]==='YES'?' checked':''}>
-        <span>${esc(f.name)}<span class="pr-code">${esc(f.id)}</span></span></label>`).join('')}</div>
+        <span>${esc(f.name)}<span class="pr-code">${esc(f.id)}</span>${
+          f.src==='api'?'<span class="pr-src api">из API</span>':
+          f.src==='code'?'<span class="pr-src api">нет описания</span>':
+          f.src==='own'?'<span class="pr-src own">своя</span>':''}${
+          (ME&&ME.role==='admin')?`<button type="button" class="pr-ren" onclick="event.preventDefault();presetLabel('${esc(f.id)}')">переименовать</button>`:''
+        }</span></label>`).join('')}</div>
     </div></div>
 
     <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-forbid-2"/></svg></span> Минус-фразы и запрет показов</h3><div class="body">
@@ -3511,6 +3528,24 @@ function presetCollect(){
   d.name_mask=v('prMask');
   return {name:v('prName'),note:v('prNote'),shared:on('prShared'),data:d};
 }
+/* Подпись настройки: справка Яндекса называет дословно не всё, поэтому вместо выдумки
+   показываем описание из справочника API — а тот, кто видит интерфейс, подписывает точно. */
+async function presetLabel(code){
+  const cur=(PRE.spec.settings.find(x=>x.id===code)||{}).name||'';
+  const t=await askText(`Как эта настройка называется в интерфейсе Директа?
+
+Код: ${code}
+
+Пустое поле — вернуть описание из справочника API.`,cur,
+    {title:'Подпись настройки',ok:'Сохранить',placeholder:'например: Мониторинг сайта'});
+  if(t===null)return;
+  try{await api('preset_label_set',code,t);
+    const s=await api('preset_spec');PRE.spec=s.spec;PRE.blank=s.blank;
+    toast(t.trim()?'Подпись сохранена':'Вернул описание из справочника','ok');
+    presetDrawForm();}
+  catch(e){}
+}
+
 async function presetSave(){
   const f=presetCollect();
   if(!f.name){toast('Дай шаблону название','err');return;}
@@ -4602,7 +4637,9 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 const CHANGELOG=[
 {date:'2026-08-08',tag:'fix',title:'Шаблоны кампаний: полный набор настроек и названия из Директа',
  sum:'Стратегии, корректировки, уведомления — и подписи как в документации Яндекса',items:[
-  '<b>Названия настроек больше не придуманные.</b> Все подписи в шаблоне взяты дословно из документации Директа, рядом с каждой стоит её код (ADD_METRICA_TAG и такие же) — чтобы не было расхождений с тем, что видно в интерфейсе. Было «минус-слова» — стало <b>«Минус-фразы»</b>, «UTM-метка» — <b>«Параметры URL»</b>, «Приоритетные цели» — <b>«Ключевые цели»</b>, «Запрещённые площадки» — <b>«Площадки, на которых запрещены показы»</b>.',
+  '<b>Названия настроек больше не придуманные.</b> Было «минус-слова» — стало <b>«Минус-фразы»</b>, «UTM-метка» — <b>«Параметры URL»</b>, «Приоритетные цели» — <b>«Ключевые цели»</b>, «Запрещённые площадки» — <b>«Площадки, на которых запрещены показы»</b>. Рядом с каждой подписью стоит код настройки (ADD_METRICA_TAG и такие же) — сверять с Директом можно без догадок.',
+  '<b>Видно, откуда взята подпись.</b> Дословные названия из интерфейса Яндекс публикует не для всех настроек. Где название подтверждено — оно и стоит («Мониторинг сайта», «Расширенный географический таргетинг», «Оптимизировать текст объявлений»). Где нет — стоит описание из справочника API с пометкой <b>«из API»</b>, чтобы никто не принял его за название кнопки.',
+  '<b>Подпись можно исправить прямо в кабинете.</b> Видишь, как настройка называется у тебя в Директе, — нажимаешь «переименовать», и подпись становится общей для всех. Больше никаких догадок с моей стороны.',
   '<b>Стратегии: было 8 и 3, стало 12 и 12.</b> Список запрошен у самого Директа. Заодно убралась ошибка: в сетях предлагался «Максимальный охват», которого у Единой перфоманс-кампании нет вовсе. Ручное управление называется так, как в Директе — <b>«Максимум кликов с ручными ставками»</b>.',
   '<b>Настройки кампании: было 8, стало 10.</b> Добавились две про расширенный географический таргетинг — «находятся прямо сейчас» и «бывают рядом регулярно».',
   '<b>Модели атрибуции: было 5, стало 8.</b> Добавились первый переход и обе модели «последний переход из Яндекс Директа».',

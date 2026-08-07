@@ -2057,6 +2057,16 @@ class Api:
         return [(g.get("name") or ("Цель " + str(g.get("id")))) for g in items
                 if isinstance(g, dict) and g.get("active") is not False]
 
+    LABELS_KEY = "preset_labels"
+
+    def _preset_labels(self):
+        """Свои подписи настроек, заданные в кабинете."""
+        try:
+            raw = self.db.get_kv(self.LABELS_KEY)
+            return json.loads(raw) if raw else {}
+        except Exception:  # noqa: BLE001
+            return {}
+
     @safe
     def preset_spec(self):
         """Справочники для формы шаблона: стратегии, настройки, корректировки, атрибуция.
@@ -2064,7 +2074,27 @@ class Api:
         Отдаём с сервера, а не держим списками в разметке: иначе они разъедутся при
         первом же изменении в Директе."""
         from . import presets as P
-        return {"spec": P.spec(), "blank": P.blank()}
+        return {"spec": P.spec(self._preset_labels()), "blank": P.blank()}
+
+    @safe
+    def preset_label_set(self, code, text):
+        """Подписать настройку так, как она названа в интерфейсе Директа.
+
+        Часть настроек справка Яндекса дословно не называет — кабинет показывает описание
+        из справочника API и помечает это. Кто видит интерфейс, подписывает точно, и
+        подпись становится общей для всех.
+        """
+        self._require_admin()
+        labels = self._preset_labels()
+        code = str(code)[:64]
+        txt = (text or "").strip()[:160]
+        if txt:
+            labels[code] = txt
+        else:
+            labels.pop(code, None)
+        self.db.set_kv(self.LABELS_KEY, json.dumps(labels, ensure_ascii=False))
+        self._audit("preset_label", code, "подпись настройки: " + (txt or "сброшена"))
+        return {"ok": True, "labels": labels}
 
     @safe
     def presets_list(self):

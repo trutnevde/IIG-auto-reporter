@@ -76,28 +76,33 @@ NETWORK_STRATEGIES = [
 # бюджетом управляет сама стратегия.
 MANUAL_SEARCH = {"HIGHEST_POSITION"}
 
-# Настройки кампании. Тексты — дословно из приложения «Настройки кампаний (параметр Option)».
+# Настройки кампании. src говорит, откуда взята подпись:
+#   "ui"  — так настройка называется в интерфейсе Директа (проверено по справке);
+#   "api" — дословное описание из приложения «Настройки кампаний (параметр Option)»:
+#           подпись интерфейса в документации не приводится, а выдумывать её нельзя.
+# Морда показывает пометку у вторых, чтобы никто не принял описание за название.
 SETTINGS = [
+    {"id": "ENABLE_SITE_MONITORING", "name": "Мониторинг сайта", "src": "ui", "default": "YES"},
+    {"id": "ENABLE_AREA_OF_INTEREST_TARGETING", "name": "Расширенный географический таргетинг",
+     "src": "ui", "default": "YES"},
+    {"id": "ALTERNATIVE_TEXTS_ENABLED", "name": "Оптимизировать текст объявлений",
+     "src": "ui", "default": "NO"},
     {"id": "ADD_METRICA_TAG", "name": "Автоматически добавлять в ссылку объявления метку yclid",
-     "default": "YES"},
-    {"id": "ENABLE_SITE_MONITORING", "name": "Останавливать показы при недоступности сайта",
-     "default": "YES"},
-    {"id": "ENABLE_AREA_OF_INTEREST_TARGETING",
-     "name": "Включить Расширенный географический таргетинг", "default": "YES"},
-    {"id": "ENABLE_CURRENT_AREA_TARGETING",
-     "name": "Расширенный географический таргетинг: находятся прямо сейчас", "default": "NO"},
-    {"id": "ENABLE_REGULAR_AREA_TARGETING",
-     "name": "Расширенный географический таргетинг: бывают рядом регулярно", "default": "NO"},
+     "src": "api", "default": "YES"},
     {"id": "ENABLE_COMPANY_INFO",
-     "name": "При показе на Яндекс Картах добавлять информацию об организации", "default": "YES"},
-    {"id": "ALTERNATIVE_TEXTS_ENABLED", "name": "Оптимизировать текст объявлений под запрос",
-     "default": "NO"},
+     "name": "При показе на Яндекс Картах добавлять информацию об организации",
+     "src": "api", "default": "YES"},
     {"id": "CAMPAIGN_EXACT_PHRASE_MATCHING_ENABLED",
-     "name": "Включает отбор фразы по точности соответствия", "default": "NO"},
+     "name": "Включает отбор фразы по точности соответствия", "src": "api", "default": "NO"},
     {"id": "ADD_TO_FAVORITES", "name": "Добавить кампанию в самые важные для применения фильтра",
-     "default": "NO"},
+     "src": "api", "default": "NO"},
     {"id": "REQUIRE_SERVICING", "name": "Перевести кампанию на обслуживание персональным менеджером",
-     "default": "NO"},
+     "src": "api", "default": "NO"},
+    # Этих двух нет ни в приложении к документации, ни в справке — только коды из ответа API.
+    {"id": "ENABLE_CURRENT_AREA_TARGETING", "name": "ENABLE_CURRENT_AREA_TARGETING",
+     "src": "code", "default": "NO"},
+    {"id": "ENABLE_REGULAR_AREA_TARGETING", "name": "ENABLE_REGULAR_AREA_TARGETING",
+     "src": "code", "default": "NO"},
 ]
 
 # Модели атрибуции — полный список из ответа API.
@@ -207,16 +212,28 @@ SUBSTITUTIONS = [
 ]
 
 
-def spec():
+def spec(labels=None):
     """Описание всех полей шаблона — по нему морда рисует форму.
 
     Держим справочники на сервере, а не в разметке: иначе список стратегий пришлось бы
     править в двух местах и они бы разъехались.
+
+    labels — свои подписи настроек, заданные в кабинете. Часть настроек справка Директа
+    дословно не называет, и вместо выдумки мы показываем описание из справочника API,
+    помечая это. Кто видит интерфейс, может подписать точно — и подпись станет общей.
     """
+    labels = labels or {}
+    settings = []
+    for x in SETTINGS:
+        item = dict(x)
+        if labels.get(x["id"]):
+            item["name"] = labels[x["id"]]
+            item["src"] = "own"
+        settings.append(item)
     return {
         "search_strategies": SEARCH_STRATEGIES,
         "network_strategies": NETWORK_STRATEGIES,
-        "settings": SETTINGS,
+        "settings": settings,
         "attribution": ATTRIBUTION,
         "modifier_kinds": MODIFIER_KINDS,
         "not_portable": MODIFIERS_NOT_PORTABLE, "not_supported": NOT_SUPPORTED,
