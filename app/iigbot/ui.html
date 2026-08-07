@@ -2437,7 +2437,23 @@ const ATTR_ALL=['LSCCD','LSC','LC','FC','FCCD','LYDC','LYDCCD','AUTO'];
 function attrOptions(cur,extra){
   return (extra||ATTR_ALL).map(a=>`<option value="${a}"${a===cur?' selected':''}>${a} — ${esc(ATTR_RU[a]||a)}</option>`).join('');
 }
+/* Раздел — часть адреса (#/clients). Раньше его нигде не запоминали, и любая перезагрузка
+   возвращала в Обзор: обновил страницу в «Клиентах» — начинай заново. Теперь адрес меняется
+   при переходе, работают «назад» и «вперёд» браузера, а ссылку на раздел можно скинуть коллеге. */
+function viewAllowed(v){
+  if(!v||!document.querySelector('section[data-view="'+v+'"]'))return false;
+  const a=document.querySelector('#nav a[data-go="'+v+'"]');
+  return !(a&&a.style.display==='none');      // раздел скрыт по роли — туда не пускаем
+}
+function viewFromHash(){
+  const v=(location.hash||'').replace(/^#\/?/,'').split('?')[0];
+  return viewAllowed(v)?v:'';
+}
 function go(v){
+  if(location.hash!=='#/'+v){try{history.pushState(null,'','#/'+v);}catch(e){}}
+  goShow(v);
+}
+function goShow(v){
   if(typeof sheetClose==='function'&&el('sheet')&&el('sheet').classList.contains('on'))sheetClose();
   document.querySelectorAll('section[data-view]').forEach(s=>s.classList.toggle('on',s.dataset.view===v));
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active',a.dataset.go===v));
@@ -2447,6 +2463,9 @@ function go(v){
   const c=document.querySelector('.content'); if(c)c.scrollTop=0;      // новый раздел — с начала
   document.body.classList.remove('hdr-hide');
 }
+window.addEventListener('popstate',()=>{
+  const v=viewFromHash(); if(v&&v!==CURRENT)goShow(v);
+});
 document.getElementById('nav').addEventListener('click',e=>{
   const a=e.target.closest('a'); if(!a)return;
   closeNav();
@@ -4814,6 +4833,15 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-08',tag:'fix',title:'Перезагрузка больше не выкидывает в Обзор, а раздел «Шаблоны» — на компонентах кабинета',
+ sum:'Раздел стал частью адреса; работают «назад» и «вперёд»',items:[
+  '<b>Обновил страницу — остался там, где был.</b> Раньше любая перезагрузка возвращала в Обзор: сидишь в «Клиентах», нажал F5 — начинай заново. Теперь раздел записан в адресе, и кабинет открывает именно его.',
+  '<b>Заработали кнопки «назад» и «вперёд» в браузере.</b> Переходы между разделами теперь история, а не одно состояние.',
+  '<b>Ссылку на раздел можно скинуть коллеге</b> — откроется сразу нужный. Если раздел ему по роли не положен, откроется Обзор.',
+  '<b>Раздел «Шаблоны» пересобран на компонентах кабинета.</b> Плитки с иконками и крупными цифрами, строки шаблонов с буквенным аватаром — как в «Клиентах». Форма была стопкой из семи панелей на три с лишним экрана прокрутки; стала пятью вкладками: «Стратегия», «Настройки», «Минус-фразы», «Корректировки», «Прочее».',
+  '<b>Настройки кампании — переключатели вместо россыпи галочек</b>, каждая строка с кодом настройки и пометкой, откуда взята подпись.',
+  '<b>Корректировки стали карточками</b> с человеческим текстом: «Эксклюзивное размещение — +30%», а не набором выпадающих списков.',
+ ]},
 {date:'2026-08-08',tag:'fix',title:'Шаблоны кампаний: полный набор настроек и названия из Директа',
  sum:'Стратегии, корректировки, уведомления — и подписи как в документации Яндекса',items:[
   '<b>Названия настроек больше не придуманные.</b> Было «минус-слова» — стало <b>«Минус-фразы»</b>, «UTM-метка» — <b>«Параметры URL»</b>, «Приоритетные цели» — <b>«Ключевые цели»</b>, «Запрещённые площадки» — <b>«Площадки, на которых запрещены показы»</b>. Рядом с каждой подписью стоит код настройки (ADD_METRICA_TAG и такие же) — сверять с Директом можно без догадок.',
@@ -6677,7 +6705,9 @@ function init(){
   applyUser();
   if(typeof tabbarRender==='function')tabbarRender();   // нижняя навигация зависит от роли
   if(window.gmShowFab)gmShowFab(true);    // вошли — можно и передохнуть
-  go('dashboard');loadBadges();
+  const start=viewFromHash()||'dashboard';
+  try{history.replaceState(null,'','#/'+start);}catch(e){}
+  goShow(start);loadBadges();
   if(ME){checkNotes();if(!window._noteTimer)window._noteTimer=setInterval(checkNotes,45000);}  // яркие сообщения руководителя
   if(ME){loadNotif(false);if(!window._notifTimer)window._notifTimer=setInterval(()=>loadNotif(NOTIF_OPEN),60000);}  // колокольчик
   const modeTx = ME ? ('Веб · '+esc(ME.email)) : 'Десктоп · ПК-режим';
