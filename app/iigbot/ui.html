@@ -409,62 +409,113 @@
     .ds-cut input[type="checkbox"]{width:20px;height:20px;min-height:20px;flex:0 0 auto}
   }
 
-  /* Шаблоны кампаний: карточки шаблонов, форма и предпросмотр перед записью в Директ */
-  .pr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:12px}
-  .pr-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;
-    box-shadow:var(--shadow-sm);display:flex;flex-direction:column;gap:9px}
-  .pr-card h4{margin:0;font-size:15px;font-weight:700;overflow-wrap:anywhere}
-  .pr-card .note{font-size:12.5px;color:var(--muted);flex:1;overflow-wrap:anywhere}
-  .pr-meta{display:flex;gap:7px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
-  .pr-acts{display:flex;gap:7px;flex-wrap:wrap}
-  .pr-row{display:grid;grid-template-columns:minmax(0,190px) minmax(0,1fr);gap:10px 14px;
-    align-items:center;padding:8px 0;border-bottom:1px solid var(--line-soft)}
-  .pr-row:last-child{border-bottom:0}
-  .pr-row>label{font-size:13px;color:var(--muted)}
-  /* select берёт ширину по самому длинному варианту («Ручное управление (наивысшая позиция)»)
-     и на телефоне вылезал за экран — держим по ширине строки */
-  .pr-row select,.pr-row input,.pr-row textarea{max-width:100%;min-width:0}
-  .pr-row>select,.pr-row>input,.pr-row>textarea{width:100%}
-  .pr-inline>*{min-width:0;max-width:100%}
-  .pr-row .hint{font-size:11.5px;color:var(--muted);margin-top:3px}
-  .pr-inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .pr-flags{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 14px}
-  .pr-flag{display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0}
-  .pr-flag input[type="checkbox"]{width:18px;height:18px;min-height:18px;flex:0 0 auto}
-  /* код настройки Директа рядом с подписью — чтобы не было разночтений с интерфейсом */
-  .pr-code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;color:var(--muted);
-    background:var(--surface-3);border:1px solid var(--line);border-radius:5px;padding:1px 5px;
-    margin-left:6px;white-space:nowrap}
-  .pr-flag>span{min-width:0}
-  /* откуда взята подпись настройки: из интерфейса Директа, из справочника API или своя */
-  .pr-src{font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
-    padding:1px 5px;border-radius:5px;margin-left:6px;white-space:nowrap;vertical-align:1px}
-  .pr-src.api{color:var(--amber);background:var(--amber-bg);
+  /* ══════════ Шаблоны кампаний ══════════ */
+  /* Строка шаблона повторяет строку клиента: та же сетка, аватар и стрелка —
+     раздел не должен выглядеть чужим среди остальных. */
+  .prs-hdr,.prs-row{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1.5fr) 132px 116px 20px;
+    gap:14px;align-items:center}
+  .prs-hdr{padding:11px 16px;border-bottom:1px solid var(--line);font-size:11.5px;font-weight:700;
+    letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+  .prs-row{padding:12px 16px;border-bottom:1px solid var(--line-soft);cursor:pointer;
+    transition:background .14s}
+  .prs-row:last-child{border-bottom:0}
+  .prs-row:hover{background:var(--surface-2)}
+  .prs-row:hover .prs-arw{color:var(--brand);transform:translateX(2px)}
+  .prs-who{display:flex;align-items:center;gap:11px;min-width:0}
+  .prs-av{width:36px;height:36px;border-radius:11px;flex:0 0 auto;display:grid;place-items:center;
+    font-weight:800;font-size:14px;line-height:1;letter-spacing:-.02em;color:var(--av);
+    background:color-mix(in srgb,var(--av) 15%,var(--surface));
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--av) 28%,transparent)}
+  .prs-nm{min-width:0}
+  .prs-nm b{display:block;font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap}
+  .prs-nm small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .prs-arw{color:var(--muted);display:flex;justify-content:flex-end;transition:.14s}
+  .prs-cnt{font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .prs-cnt b{display:block;font-size:15px;font-weight:750;color:var(--ink)}
+
+  /* Настройка кампании — строка с кружком-состоянием, как «требует внимания» на Обзоре */
+  .prs-set{--ac:var(--slate);display:flex;align-items:center;gap:12px;padding:10px 13px;
+    border:1px solid color-mix(in srgb,var(--ac) 18%,var(--line));border-left:3px solid var(--ac);
+    border-radius:11px;cursor:pointer;margin-bottom:7px;transition:.14s;
+    background:linear-gradient(96deg,color-mix(in srgb,var(--ac) 7%,var(--surface)) 0%,var(--surface) 76%)}
+  .prs-set:hover{border-color:color-mix(in srgb,var(--ac) 34%,var(--line))}
+  .prs-set.on{--ac:var(--green)}
+  .prs-set-ic{width:30px;height:30px;border-radius:50%;flex:0 0 auto;display:grid;place-items:center;
+    color:var(--ac);background:color-mix(in srgb,var(--ac) 14%,var(--surface));
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--ac) 28%,transparent)}
+  .prs-set-t{flex:1;min-width:0;font-size:13px;font-weight:600;line-height:1.35}
+  .prs-set-t i{font-style:normal;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;
+    color:var(--muted);background:var(--surface-3);border:1px solid var(--line);border-radius:5px;
+    padding:1px 5px;margin-left:7px;white-space:nowrap}
+  .prs-src{font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+    padding:2px 6px;border-radius:5px;margin-left:6px;white-space:nowrap;
+    color:var(--amber);background:var(--amber-bg);
     border:1px solid color-mix(in srgb,var(--amber) 28%,transparent)}
-  .pr-src.own{color:var(--green);background:var(--green-bg);
-    border:1px solid color-mix(in srgb,var(--green) 26%,transparent)}
-  .pr-ren{font-size:11px;background:none;border:0;color:var(--brand);cursor:pointer;padding:0 4px}
-  .pr-mod{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:8px 0;
-    border-bottom:1px solid var(--line-soft)}
-  .pr-mod:last-child{border-bottom:0}
-  .pr-mod select,.pr-mod input{min-width:0;max-width:100%}
-  .pr-mod .val{width:92px}
-  .pr-prev{display:grid;grid-template-columns:minmax(0,210px) minmax(0,1fr);gap:0 16px;font-size:13px}
-  .pr-prev>div{padding:7px 0;border-bottom:1px solid var(--line-soft);min-width:0;overflow-wrap:anywhere}
-  .pr-prev>div:nth-last-child(-n+2){border-bottom:0}
-  .pr-prev .k{color:var(--muted)}
-  .pr-warn{background:var(--amber-bg);border:1px solid color-mix(in srgb,var(--amber) 30%,transparent);
-    border-radius:10px;padding:10px 12px;font-size:12.5px;margin:12px 0}
-  .pr-warn b{color:var(--amber)}
-  .pr-safe{background:var(--green-bg);border:1px solid color-mix(in srgb,var(--green) 26%,transparent);
-    border-radius:10px;padding:10px 12px;font-size:12.5px;margin:12px 0}
-  @media (max-width:700px){
-    .pr-row{grid-template-columns:1fr;gap:4px;padding:9px 0}
-    .pr-prev{grid-template-columns:1fr;gap:0}
-    .pr-prev>div{border-bottom:0;padding:3px 0}
-    .pr-prev>div.k{padding-top:9px;border-top:1px solid var(--line-soft)}
-    .pr-prev>div:nth-child(1){border-top:0}
-    .pr-mod .val{width:78px}
+  .prs-src.own{color:var(--green);background:var(--green-bg);
+    border-color:color-mix(in srgb,var(--green) 26%,transparent)}
+  .prs-ren{font-size:11px;background:none;border:0;color:var(--brand);cursor:pointer;padding:2px 4px;
+    font-family:inherit}
+  .prs-sw{width:38px;height:22px;border-radius:999px;flex:0 0 auto;position:relative;
+    background:var(--surface-3);border:1px solid var(--line);transition:.16s}
+  .prs-sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+    background:var(--surface);box-shadow:0 1px 2px rgba(16,24,40,.25);transition:.16s}
+  .prs-set.on .prs-sw{background:var(--green);border-color:transparent}
+  .prs-set.on .prs-sw::after{left:18px}
+
+  /* Корректировка — карточка с человеческим текстом; поля раскрываются под ним */
+  .prs-mod{border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:8px;
+    background:var(--surface)}
+  .prs-mod-h{display:flex;align-items:center;gap:11px}
+  .prs-mod-ic{width:32px;height:32px;border-radius:9px;flex:0 0 auto;display:grid;place-items:center;
+    color:var(--qc,var(--brand));
+    background:linear-gradient(180deg,color-mix(in srgb,var(--qc,var(--brand)) 17%,var(--surface)),
+                                      color-mix(in srgb,var(--qc,var(--brand)) 8%,var(--surface)));
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--qc,var(--brand)) 24%,transparent)}
+  .prs-mod-t{flex:1;min-width:0;font-size:13px;font-weight:650;overflow-wrap:anywhere}
+  .prs-mod-t small{display:block;font-size:11.5px;color:var(--muted);font-weight:500;margin-top:2px}
+  .prs-mod-f{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  .prs-mod-f select,.prs-mod-f input{min-width:0;max-width:100%}
+  .prs-mod-f .val{width:96px}
+
+  /* Предпросмотр перед записью */
+  .prs-kv{display:grid;grid-template-columns:minmax(0,220px) minmax(0,1fr);gap:0 18px;font-size:13px}
+  .prs-kv>div{padding:8px 0;border-bottom:1px solid var(--line-soft);min-width:0;overflow-wrap:anywhere}
+  .prs-kv>div:nth-last-child(-n+2){border-bottom:0}
+  .prs-kv .k{color:var(--muted)}
+  .prs-note{--ac:var(--green);display:flex;align-items:flex-start;gap:11px;padding:12px 14px;
+    border-radius:11px;margin:14px 0;
+    border:1px solid color-mix(in srgb,var(--ac) 26%,transparent);
+    background:linear-gradient(96deg,color-mix(in srgb,var(--ac) 10%,var(--surface)),var(--surface) 74%)}
+  .prs-note.warn{--ac:var(--amber)}
+  .prs-note svg{width:19px;height:19px;flex:0 0 auto;color:var(--ac);margin-top:1px}
+  .prs-note b{display:block;font-size:13px;font-weight:700;
+    color:color-mix(in srgb,var(--ac) 64%,var(--ink))}
+  .prs-note span{display:block;font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.45}
+  .prs-note ul{margin:6px 0 0;padding-left:19px;font-size:12.5px;color:var(--muted);line-height:1.5}
+
+  @media (max-width:820px){
+    /* пять вкладок в строку на телефон не влезают — пусть строка прокручивается,
+       а не растягивает страницу. Правило локальное: .tabs используются и в других разделах */
+    #v_presets .tabs{display:flex;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;
+      scrollbar-width:none}
+    #v_presets .tabs::-webkit-scrollbar{display:none}
+    #v_presets .tabs .t{flex:0 0 auto;white-space:nowrap;padding:8px 12px}
+    /* коды настроек длинные (CAMPAIGN_EXACT_PHRASE_MATCHING_ENABLED) — на телефоне
+       уводим их и пометку под название, а не за край экрана */
+    .prs-set-t i,.prs-src{display:inline-block;margin-left:0;margin-top:5px;white-space:normal;
+      overflow-wrap:anywhere}
+    .prs-set-t i{margin-right:6px}
+    .prs-hdr{display:none}
+    .prs-row{grid-template-columns:1fr auto;gap:8px 12px;padding:13px 14px}
+    .prs-row>.prs-tags{grid-column:1/-1}
+    .prs-arw{display:none}
+    .prs-kv{grid-template-columns:1fr;gap:0}
+    .prs-kv>div{border-bottom:0;padding:3px 0}
+    .prs-kv>div.k{padding-top:9px;border-top:1px solid var(--line-soft)}
+    .prs-kv>div:nth-child(1){border-top:0}
+    .prs-mod-f .val{width:80px}
   }
   /* Сервер: состояние машины, проверки и обслуживание. Всё, за чем раньше лезли по SSH. */
   .sy-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px;margin-bottom:14px}
@@ -3261,16 +3312,26 @@ async function sysRunbook(){
 
 
 /* ---------- ШАБЛОНЫ КАМПАНИЙ ---------- */
-/* Стандарт агентства, описанный один раз: стратегия, минус-слова, UTM, атрибуция,
+/* Стандарт агентства, описанный один раз: стратегия, минус-фразы, параметры URL, атрибуция,
    корректировки. Кампания на новом проекте создаётся по нему одним нажатием.
-   Форма строится из справочника, который отдаёт сервер, — списки стратегий и настроек
-   не продублированы в разметке и не разъедутся. */
-let PRE={spec:null,blank:null,list:[],runs:[],edit:null,clients:null};
+   Раздел собран на тех же компонентах, что «Клиенты» и «Обзор»: строки с аватаром,
+   плитки, вкладки — чтобы не выглядел чужим. Справочники приходят с сервера. */
+let PRE={spec:null,blank:null,list:[],runs:[],edit:null,clients:null,tab:'strategy',q:''};
+
+const PRS_CHEV='<svg class="ic"><use href="#i-skip-forward"/></svg>';
+const PRS_COL=['brand','violet','cyan','green','amber','slate'];
+function prsAv(name){
+  const s=String(name||'?'); let h=0;
+  for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;
+  return `<span class="prs-av" style="--av:var(--${PRS_COL[h%PRS_COL.length]})">${esc(s.trim().charAt(0).toUpperCase()||'?')}</span>`;
+}
+function prsStrategyName(d){
+  const t=((d.strategy||{}).search||{}).type;
+  return ((PRE.spec&&PRE.spec.search_strategies)||[]).reduce((a,x)=>x.id===t?x.name:a,t||'—');
+}
 
 async function renderPresets(){
   const host=el('v_presets');
-  // справочник нужен и списку, и форме: грузим до развилки, иначе форма,
-  // открытая сразу (правка, слепок), рисуется в пустоту
   if(!PRE.spec){
     host.innerHTML=skeleton('rows',4);
     try{const s=await api('preset_spec');PRE.spec=s.spec;PRE.blank=s.blank;}
@@ -3278,194 +3339,270 @@ async function renderPresets(){
   }
   if(PRE.edit){presetDrawForm();return;}
   host.innerHTML=skeleton('cards',3);
-  try{
-    PRE.list=await api('presets_list');
-    PRE.runs=await api('preset_runs',30);
-  }catch(e){host.innerHTML=errBlock(e,()=>renderPresets());return;}
+  try{ PRE.list=await api('presets_list'); PRE.runs=await api('preset_runs',30); }
+  catch(e){host.innerHTML=errBlock(e,()=>renderPresets());return;}
 
-  const cards=PRE.list.map(p=>`<div class="pr-card">
-      <h4>${esc(p.name)}</h4>
-      <div class="pr-meta">
-        <span class="badge ${p.shared?'b-green':'b-grey'}">${p.shared?'общий':'личный'}</span>
-        ${p.modifiers?`<span>корректировок: ${p.modifiers}</span>`:''}
-        ${p.negatives?`<span>минус-слов: ${p.negatives}</span>`:''}
-        ${p.used_count?`<span>применяли ${fmtInt(p.used_count)} раз</span>`:'<span>ещё не применяли</span>'}
-      </div>
-      <div class="note">${esc(p.note||'')}</div>
-      <div class="pr-acts">
-        <button class="btn sm primary" onclick="presetApply(${p.id})"><svg class="ic"><use href="#i-sparkling-2"/></svg> Применить</button>
-        ${p.can_edit?`<button class="btn sm" onclick="presetEdit(${p.id})">Править</button>`:''}
-        ${p.can_edit?`<button class="btn sm danger" onclick="presetDrop(${p.id})">Удалить</button>`:''}
-      </div></div>`).join('');
+  const made=PRE.runs.filter(r=>r.ok).length;
+  const last=PRE.runs.find(r=>r.ok);
+  const tiles=`<div class="cards">
+    <div class="card" style="--cc:var(--brand)"><div class="card-top">
+      <span class="card-ic"><svg class="ic"><use href="#i-draft"/></svg></span>
+      <div><div class="card-k">Шаблонов</div><div class="card-v">${fmtInt(PRE.list.length)}</div></div></div>
+      <div class="card-s">${PRE.list.filter(p=>p.shared).length} общих, ${PRE.list.filter(p=>!p.shared).length} личных</div></div>
+    <div class="card" style="--cc:var(--green)"><div class="card-top">
+      <span class="card-ic"><svg class="ic"><use href="#i-sparkling-2"/></svg></span>
+      <div><div class="card-k">Создано кампаний</div><div class="card-v">${fmtInt(made)}</div></div></div>
+      <div class="card-s">${last?('последняя — '+esc(last.client)):'по шаблонам ещё не создавали'}</div></div>
+    <div class="card" style="--cc:var(--violet)"><div class="card-top">
+      <span class="card-ic"><svg class="ic"><use href="#i-focus-3"/></svg></span>
+      <div><div class="card-k">Последнее применение</div>
+        <div class="card-v" style="font-size:19px">${last?fmtWhen(last.at):'—'}</div></div></div>
+      <div class="card-s">${last?esc(last.preset||''):'нажми «Применить» у любого шаблона'}</div></div>
+  </div>`;
+
+  const q=(PRE.q||'').toLowerCase();
+  const rows=PRE.list.filter(p=>!q||(p.name+' '+(p.note||'')).toLowerCase().includes(q)).map(p=>`
+    <div class="prs-row" tabindex="0" role="button" onclick="presetApply(${p.id})"
+      onkeydown="if(event.key==='Enter')presetApply(${p.id})" title="Применить к проекту">
+      <div class="prs-who">${prsAv(p.name)}<div class="prs-nm">
+        <b>${esc(p.name)}</b><small>${esc(p.note||'без заметки')}</small></div></div>
+      <div class="prs-tags">
+        <span class="cli-st" style="--sc:var(--${p.shared?'green':'slate'})">${p.shared?'общий':'личный'}</span>
+        ${p.modifiers?`<span class="chip">корректировок ${p.modifiers}</span>`:''}
+        ${p.negatives?`<span class="chip">минус-фраз ${fmtInt(p.negatives)}</span>`:''}</div>
+      <div class="prs-cnt"><b>${fmtInt(p.used_count||0)}</b>${p.used_count?'применений':'не применяли'}</div>
+      <div onclick="event.stopPropagation()" style="display:flex;gap:6px;justify-content:flex-end">
+        ${p.can_edit?`<button class="btn sm" onclick="presetEdit(${p.id})" title="Править">
+          <svg class="ic"><use href="#i-quill-pen"/></svg></button>`:''}
+        ${p.can_edit?`<button class="btn sm danger" onclick="presetDrop(${p.id})" title="Удалить">
+          <svg class="ic"><use href="#i-delete-bin"/></svg></button>`:''}</div>
+      <div class="prs-arw">${PRS_CHEV}</div>
+    </div>`).join('');
 
   const runs=PRE.runs.length?`<div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-clock"/></svg></span> Что создавали по шаблонам</h3>
-    <div class="body">${PRE.runs.map(r=>`<div class="sy-row">
-      <span class="badge ${r.ok?'b-green':'b-red'}">${r.ok?'создано':'ошибка'}</span>
-      <span class="n">${esc(r.campaign||'')}<div class="pr-meta">${esc(r.client)} · шаблон «${esc(r.preset||'')}» · ${esc(r.who)}</div></span>
-      <span class="d">${fmtWhen(r.at)}</span>
+    <div class="body">${PRE.runs.map(r=>`<div class="att-row" style="--ac:var(--${r.ok?'green':'red'});margin-bottom:8px">
+      <span class="att-ic"><svg class="ic"><use href="#i-${r.ok?'checkbox-circle':'error-warning'}"/></svg></span>
+      <div style="flex:1;min-width:0"><span class="att-t">${esc(r.campaign||'')}</span>
+        <span class="att-s">${esc(r.client)} · шаблон «${esc(r.preset||'')}» · ${esc(r.who)} · ${fmtWhen(r.at)}</span>
+        ${r.error?`<span class="att-s" style="color:var(--red)">${esc(r.error)}</span>`:''}</div>
       ${r.ok&&r.campaign_id?`<button class="btn sm danger" onclick="presetUndo(${r.id})">Удалить кампанию</button>`:''}
-      ${r.error?`<span class="d" style="flex:1 1 100%;color:var(--red)">${esc(r.error)}</span>`:''}
     </div>`).join('')}</div></div>`:'';
 
   host.innerHTML=`<h2 class="title">Шаблоны кампаний<span class="t-demo">мега-демо</span></h2>
-    <p class="sub">Стандарт агентства, описанный один раз: стратегия, минус-слова, UTM, атрибуция,
-      корректировки. Дальше кампания на новом проекте создаётся по шаблону одним нажатием —
+    <p class="sub">Стандарт агентства, описанный один раз: стратегия, минус-фразы, параметры URL,
+      модель атрибуции, корректировки. Кампания на новом проекте создаётся по шаблону одним нажатием —
       одинаково у всех.</p>
-    <div class="ds-demo" style="margin-top:14px"><svg class="ic"><use href="#i-flask"/></svg>
-      <div><b>Мега-демо</b><span>Раздел новый и пишет в живые аккаунты Директа — первое время
-      перепроверяй результат в самом Директе после создания. Кампания появляется <b>черновиком</b>:
-      без групп и объявлений показов нет и деньги не тратятся, пока её не наполнят и не отправят
-      на модерацию. Перед созданием кабинет показывает, что именно уйдёт в Директ, а созданную
-      по ошибке кампанию можно удалить отсюда же.</span></div></div>
-    <div class="sy-acts">
+    ${tiles}
+    <div class="prs-note"><svg class="ic"><use href="#i-shield-check"/></svg>
+      <div><b>Кампания появляется черновиком</b><span>Без групп и объявлений Директ держит её в черновике:
+        показов нет и деньги не тратятся, пока её не наполнят и не отправят на модерацию. Перед созданием
+        кабинет показывает, что именно уйдёт в Директ, а созданную по ошибке кампанию можно удалить отсюда же.</span></div></div>
+    <div class="cli-tools">
+      <input class="cli-search" type="search" placeholder="Поиск по шаблонам…" value="${esc(PRE.q||'')}"
+        oninput="PRE.q=this.value;presetRows()">
       <button class="btn primary" onclick="presetNew()"><svg class="ic"><use href="#i-add-circle"/></svg> Новый шаблон</button>
       <button class="btn" onclick="presetGrab()"><svg class="ic"><use href="#i-focus-3"/></svg> Снять с готовой кампании</button>
     </div>
-    ${PRE.list.length?`<div class="pr-grid">${cards}</div>`:emptyState('<svg class="ic"><use href="#i-draft"/></svg>','Шаблонов пока нет','Быстрее всего — снять шаблон с кампании, которую уже настроили как надо: кабинет заберёт из неё стратегию, минус-слова, метки и корректировки.',{label:'Снять с готовой кампании',onclick:presetGrab})}
+    ${PRE.list.length?`<div class="panel cli-panel" style="margin-bottom:18px">
+      <div class="prs-hdr"><div>Шаблон</div><div>Что внутри</div><div>Применений</div><div></div><div></div></div>
+      <div id="prsRows">${rows}</div></div>`
+      :emptyState('<svg class="ic"><use href="#i-draft"/></svg>','Шаблонов пока нет',
+        'Быстрее всего — снять шаблон с кампании, которую уже настроили как надо: кабинет заберёт из неё стратегию, минус-фразы, метки и корректировки.',
+        {label:'Снять с готовой кампании',onclick:presetGrab})}
     ${runs}`;
+}
+/* Перерисовываем только строки: поиск не должен дёргать плитки и терять фокус. */
+function presetRows(){
+  const box=el('prsRows'); if(!box)return;
+  const q=(PRE.q||'').toLowerCase();
+  const list=PRE.list.filter(p=>!q||(p.name+' '+(p.note||'')).toLowerCase().includes(q));
+  if(!list.length){box.innerHTML='<div style="padding:18px 16px" class="muted">Ничего не нашлось</div>';return;}
+  box.innerHTML=list.map(p=>`
+    <div class="prs-row" tabindex="0" role="button" onclick="presetApply(${p.id})"
+      onkeydown="if(event.key==='Enter')presetApply(${p.id})" title="Применить к проекту">
+      <div class="prs-who">${prsAv(p.name)}<div class="prs-nm">
+        <b>${esc(p.name)}</b><small>${esc(p.note||'без заметки')}</small></div></div>
+      <div class="prs-tags">
+        <span class="cli-st" style="--sc:var(--${p.shared?'green':'slate'})">${p.shared?'общий':'личный'}</span>
+        ${p.modifiers?`<span class="chip">корректировок ${p.modifiers}</span>`:''}
+        ${p.negatives?`<span class="chip">минус-фраз ${fmtInt(p.negatives)}</span>`:''}</div>
+      <div class="prs-cnt"><b>${fmtInt(p.used_count||0)}</b>${p.used_count?'применений':'не применяли'}</div>
+      <div onclick="event.stopPropagation()" style="display:flex;gap:6px;justify-content:flex-end">
+        ${p.can_edit?`<button class="btn sm" onclick="presetEdit(${p.id})" title="Править">
+          <svg class="ic"><use href="#i-quill-pen"/></svg></button>`:''}
+        ${p.can_edit?`<button class="btn sm danger" onclick="presetDrop(${p.id})" title="Удалить">
+          <svg class="ic"><use href="#i-delete-bin"/></svg></button>`:''}</div>
+      <div class="prs-arw">${PRS_CHEV}</div>
+    </div>`).join('');
 }
 
 /* ---------- форма шаблона ---------- */
 async function presetNew(){
   if(!PRE.blank){try{const s=await api('preset_spec');PRE.spec=s.spec;PRE.blank=s.blank;}catch(e){return;}}
   PRE.edit={id:null,name:'',note:'',shared:false,data:JSON.parse(JSON.stringify(PRE.blank))};
-  renderPresets();
+  PRE.tab='strategy'; renderPresets();
 }
 async function presetEdit(id){
   try{const r=await api('preset_get',id);
-    PRE.edit={id:r.id,name:r.name,note:r.note||'',shared:r.shared,data:r.data};renderPresets();}
+    PRE.edit={id:r.id,name:r.name,note:r.note||'',shared:r.shared,data:r.data};
+    PRE.tab='strategy'; renderPresets();}
   catch(e){}
 }
 function presetCancel(){PRE.edit=null;renderPresets();}
+function presetTab(t){presetStash();PRE.tab=t;presetDrawForm();}
+
+const PRS_TABS=[
+  {id:'strategy', name:'Стратегия',     ic:'i-bar-chart'},
+  {id:'settings', name:'Настройки',     ic:'i-gear'},
+  {id:'words',    name:'Минус-фразы',   ic:'i-forbid-2'},
+  {id:'mods',     name:'Корректировки', ic:'i-equalizer'},
+  {id:'other',    name:'Прочее',        ic:'i-settings-3'},
+];
 
 function presetDrawForm(){
   const host=el('v_presets'), S=PRE.spec, d=PRE.edit.data;
-  const opt=(arr,cur)=>arr.map(x=>`<option value="${esc(String(x.id))}"${String(x.id)===String(cur)?' selected':''}>${esc(x.name)}${x.id&&/^[A-Z_]+$/.test(String(x.id))?' · '+esc(String(x.id)):''}</option>`).join('');
-  const s=d.strategy&&d.strategy.search||{}, n=d.strategy&&d.strategy.network||{};
-  const note=d.notification||{};
+  const opt=(arr,cur)=>arr.map(x=>`<option value="${esc(String(x.id))}"${String(x.id)===String(cur)?' selected':''}>${esc(x.name)}${/^[A-Z_]+$/.test(String(x.id))?' · '+esc(String(x.id)):''}</option>`).join('');
+  const s=d.strategy&&d.strategy.search||{}, n=d.strategy&&d.strategy.network||{}, note=d.notification||{};
+  const tabs=`<div class="tabs">${PRS_TABS.map(t=>`<div class="t${PRE.tab===t.id?' on':''}" onclick="presetTab('${t.id}')">
+      <svg class="ic"><use href="#${t.ic}"/></svg> ${esc(t.name)}</div>`).join('')}</div>`;
+
+  let body='';
+  if(PRE.tab==='strategy'){
+    body=`<div class="grid2">
+      <div class="field"><label>Стратегия</label><select id="prSearch">${opt(S.search_strategies,s.type)}</select></div>
+      <div class="field"><label>Стратегия в сетях</label><select id="prNet">${opt(S.network_strategies,n.type)}</select></div>
+      <div class="field"><label>Недельный бюджет, ₽</label>
+        <input id="prWeekly" type="number" min="300" step="100" value="${s.weekly!=null?s.weekly:''}" placeholder="3000">
+        <div class="hint">Директ не примет меньше 300 ₽ в неделю</div></div>
+      <div class="field"><label>Ограничение ставки, ₽</label>
+        <input id="prCeil" type="number" min="0" step="1" value="${s.bid_ceiling!=null?s.bid_ceiling:''}" placeholder="не ограничивать"></div>
+      <div class="field"><label>Цена конверсии, ₽</label>
+        <input id="prCpa" type="number" min="0" step="1" value="${s.cpa!=null?s.cpa:''}" placeholder="для стратегий по конверсиям"></div>
+      <div class="field"><label>Цена клика, ₽</label>
+        <input id="prCpc" type="number" min="0" step="1" value="${s.cpc!=null?s.cpc:''}" placeholder="для «Средней цены клика»"></div>
+      <div class="field"><label>Доля рекламных расходов, %</label>
+        <input id="prCrr" type="number" min="1" max="100" step="1" value="${s.crr!=null?s.crr:''}" placeholder="для стратегий по ДРР"></div>
+      <div class="field"><label>Модель атрибуции</label><select id="prAttr">${opt(S.attribution,d.attribution)}</select></div>
+      <div class="field"><label>Дневной бюджет, ₽</label>
+        <input id="prDaily" type="number" min="300" step="100" value="${(d.daily_budget&&d.daily_budget.amount!=null)?d.daily_budget.amount:''}" placeholder="не задавать">
+        <div class="hint">Директ принимает его только со стратегией «Максимум кликов с ручными ставками»</div></div>
+      <div class="field"><label>Режим дневного бюджета</label>
+        <select id="prDailyMode">
+          <option value="STANDARD"${((d.daily_budget||{}).mode!=='DISTRIBUTED')?' selected':''}>STANDARD — стандартный</option>
+          <option value="DISTRIBUTED"${((d.daily_budget||{}).mode==='DISTRIBUTED')?' selected':''}>DISTRIBUTED — распределённый</option>
+        </select></div>
+    </div>`;
+  } else if(PRE.tab==='settings'){
+    body=`<p class="sy-note">Подписи без пометки — как в интерфейсе Директа. С пометкой
+        <span class="prs-src">из API</span> — описание из справочника: дословной подписи Яндекс не публикует.
+        Видишь, как называется у тебя, — нажми «переименовать», и подпись станет общей.</p>
+      ${S.settings.map(f=>{const on=(d.settings||{})[f.id]==='YES';
+        return `<div class="prs-set${on?' on':''}" data-flag="${f.id}" onclick="presetFlag('${f.id}')">
+          <span class="prs-set-ic"><svg class="ic"><use href="#i-${on?'checkbox-circle':'checkbox-blank-circle'}"/></svg></span>
+          <div class="prs-set-t">${esc(f.name)}<i>${esc(f.id)}</i>${
+            f.src==='api'?'<span class="prs-src">из API</span>':
+            f.src==='code'?'<span class="prs-src">нет описания</span>':
+            f.src==='own'?'<span class="prs-src own">своя</span>':''}${
+            (ME&&ME.role==='admin')?`<button type="button" class="prs-ren" onclick="event.stopPropagation();presetLabel('${esc(f.id)}')">переименовать</button>`:''}</div>
+          <span class="prs-sw"></span></div>`;}).join('')}`;
+  } else if(PRE.tab==='words'){
+    body=`<div class="field"><label>Минус-фразы</label>
+        <textarea id="prNeg" rows="8" placeholder="по одной фразе в строке">${esc((d.negative_keywords||[]).join('\n'))}</textarea>
+        <div class="hint">По одной фразе в строке, не длиннее семи слов каждая, не больше 1000</div></div>
+      <div class="field"><label>Наборы минус-фраз</label>
+        <input id="prNegSets" value="${esc((d.negative_keyword_set_ids||[]).join(', '))}" placeholder="номера наборов через запятую">
+        <div class="hint">Не больше трёх. Наборы должны существовать на аккаунте клиента</div></div>
+      <div class="field"><label>Площадки, на которых запрещены показы</label>
+        <textarea id="prSites" rows="4" placeholder="по одному адресу в строке">${esc((d.excluded_sites||[]).join('\n'))}</textarea></div>
+      <div class="field"><label>Параметры URL</label>
+        <textarea id="prUtm" rows="3" placeholder="utm_source=...">${esc(d.tracking_params||'')}</textarea>
+        <div class="hint">Подставляются в ссылки объявлений — так же, как в Директе</div></div>`;
+  } else if(PRE.tab==='mods'){
+    body=`<div class="cli-tools" style="margin-bottom:12px">
+        <button class="btn primary" onclick="presetModAdd()"><svg class="ic"><use href="#i-add-circle"/></svg> Добавить корректировку</button>
+        <span class="muted" style="font-size:12.5px">100% — без изменений, 130% — поднять на 30%, 0% — показы выключены</span>
+      </div>
+      <div id="prMods"></div>
+      <details style="margin-top:12px"><summary class="sy-note" style="cursor:pointer">Чего нет в шаблоне и почему</summary>
+        <div style="margin-top:8px">${[].concat(S.not_portable||[],S.not_supported||[]).map(x=>`<div class="sy-key">
+          <span class="kk">${esc(x.name)}</span><span class="vv" style="font-family:inherit">${esc(x.why)}</span></div>`).join('')}</div></details>`;
+  } else {
+    body=`<div class="grid2">
+      <div class="field"><label>Дата окончания кампании</label>
+        <input id="prEndDays" type="number" min="1" step="1" value="${d.end_after_days!=null?d.end_after_days:''}" placeholder="без даты окончания">
+        <div class="hint">Через сколько дней после старта</div></div>
+      <div class="field"><label>Часовой пояс</label>
+        <input id="prTz" value="${esc(d.time_zone||'Europe/Moscow')}" placeholder="Europe/Moscow"></div>
+      <div class="field"><label>Почтовые уведомления</label>
+        <input id="prMail" value="${esc(note.email||'')}" placeholder="не отправлять"></div>
+      <div class="field"><label>Ценность конверсии, ₽</label>
+        <input id="prGoalVal" type="number" min="0" step="10" value="${d.goal_value!=null?d.goal_value:''}" placeholder="не задавать"></div>
+    </div>
+    <div class="prs-set${note.send_account_news==='YES'?' on':''}" data-opt="prNews" onclick="presetOpt('prNews')">
+      <span class="prs-set-ic"><svg class="ic"><use href="#i-mail"/></svg></span>
+      <div class="prs-set-t">Получать новости аккаунта<i>SendAccountNews</i></div><span class="prs-sw"></span></div>
+    <div class="prs-set${d.use_client_counter!==false?' on':''}" data-opt="prCnt" onclick="presetOpt('prCnt')">
+      <span class="prs-set-ic"><svg class="ic"><use href="#i-line-chart"/></svg></span>
+      <div class="prs-set-t">Подставлять счётчики Метрики клиента<i>CounterIds</i></div><span class="prs-sw"></span></div>
+    <div class="prs-set${d.use_client_goals!==false?' on':''}" data-opt="prGoals" onclick="presetOpt('prGoals')">
+      <span class="prs-set-ic"><svg class="ic"><use href="#i-focus-3"/></svg></span>
+      <div class="prs-set-t">Ключевые цели — те, что отмечены у клиента<i>PriorityGoals</i></div><span class="prs-sw"></span></div>
+    <p class="sy-note" style="margin-top:10px">Счётчика и целей в шаблоне нет намеренно: у каждого проекта
+      они свои, кабинет подставит их в момент применения.</p>`;
+  }
+
   host.innerHTML=`
     <h2 class="title">${PRE.edit.id?'Правка шаблона':'Новый шаблон'}<span class="t-demo">мега-демо</span></h2>
     <p class="sub">Это описание стандарта, а не кампания: пока шаблон не применён к проекту,
-      в Директе ничего не меняется. Подписи и коды настроек — из документации Директа.</p>
-
-    <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-draft"/></svg></span> Общее</h3><div class="body">
-      <div class="pr-row"><label for="prName">Название шаблона</label>
-        <input id="prName" value="${esc(PRE.edit.name)}" placeholder="Например: Поиск, оплата за клики"></div>
-      <div class="pr-row"><label for="prNote">Для чего он</label>
-        <input id="prNote" value="${esc(PRE.edit.note)}" placeholder="Короткая заметка для коллег"></div>
-      <div class="pr-row"><label for="prMask">Название кампании</label><div>
-        <input id="prMask" value="${esc(d.name_mask||'')}" placeholder="{клиент} — Поиск и Сети">
-        <div class="hint">Подстановки: <b>{клиент}</b> — имя проекта, <b>{дата}</b> — сегодня</div></div></div>
-      <div class="pr-row"><label for="prEndDays">Дата окончания кампании</label><div>
-        <input id="prEndDays" type="number" min="1" step="1" value="${d.end_after_days!=null?d.end_after_days:''}" placeholder="без даты окончания">
-        <div class="hint">Через сколько дней после старта. Пусто — кампания без даты окончания</div></div></div>
-      <div class="pr-row"><label for="prTz">Часовой пояс</label>
-        <input id="prTz" value="${esc(d.time_zone||'Europe/Moscow')}" placeholder="Europe/Moscow"></div>
-      ${(ME&&ME.role==='admin')?`<div class="pr-row"><label>Доступен всем</label>
-        <label class="pr-flag"><input type="checkbox" id="prShared"${PRE.edit.shared?' checked':''}>
-          <span>общий шаблон агентства (иначе — личный)</span></label></div>`:''}
+      в Директе ничего не меняется.</p>
+    <div class="panel" style="margin-bottom:16px"><div class="body">
+      <div class="grid2">
+        <div class="field"><label>Название шаблона</label>
+          <input id="prName" value="${esc(PRE.edit.name)}" placeholder="Например: Поиск, оплата за клики"></div>
+        <div class="field"><label>Для чего он</label>
+          <input id="prNote" value="${esc(PRE.edit.note)}" placeholder="Короткая заметка для коллег"></div>
+        <div class="field"><label>Название кампании</label>
+          <input id="prMask" value="${esc(d.name_mask||'')}" placeholder="{клиент} — Поиск и Сети">
+          <div class="hint">Подстановки: <b>{клиент}</b> — имя проекта, <b>{дата}</b> — сегодня</div></div>
+        ${(ME&&ME.role==='admin')?`<div class="field"><label>Кому доступен</label>
+          <div class="prs-set${PRE.edit.shared?' on':''}" data-opt="prShared" onclick="presetOpt('prShared')" style="margin:0">
+            <span class="prs-set-ic"><svg class="ic"><use href="#i-group"/></svg></span>
+            <div class="prs-set-t">Общий шаблон агентства</div><span class="prs-sw"></span></div></div>`:''}
+      </div>
     </div></div>
-
-    <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-bar-chart"/></svg></span> Стратегия</h3><div class="body">
-      <div class="pr-row"><label for="prSearch">Стратегия</label>
-        <select id="prSearch">${opt(S.search_strategies,s.type)}</select></div>
-      <div class="pr-row"><label for="prNet">Стратегия в сетях</label>
-        <select id="prNet">${opt(S.network_strategies,n.type)}</select></div>
-      <div class="pr-row"><label for="prWeekly">Недельный бюджет, ₽</label><div>
-        <input id="prWeekly" type="number" min="300" step="100" value="${s.weekly!=null?s.weekly:''}" placeholder="3000">
-        <div class="hint">Директ не примет меньше 300 ₽ в неделю</div></div></div>
-      <div class="pr-row"><label for="prCeil">Ограничение ставки, ₽</label>
-        <input id="prCeil" type="number" min="0" step="1" value="${s.bid_ceiling!=null?s.bid_ceiling:''}" placeholder="не ограничивать"></div>
-      <div class="pr-row"><label for="prCpa">Цена конверсии, ₽</label>
-        <input id="prCpa" type="number" min="0" step="1" value="${s.cpa!=null?s.cpa:''}" placeholder="для стратегий по конверсиям"></div>
-      <div class="pr-row"><label for="prCpc">Цена клика, ₽</label>
-        <input id="prCpc" type="number" min="0" step="1" value="${s.cpc!=null?s.cpc:''}" placeholder="для стратегии «Средняя цена клика»"></div>
-      <div class="pr-row"><label for="prCrr">Доля рекламных расходов, %</label>
-        <input id="prCrr" type="number" min="1" max="100" step="1" value="${s.crr!=null?s.crr:''}" placeholder="для стратегий по ДРР"></div>
-      <div class="pr-row"><label for="prDaily">Дневной бюджет, ₽</label><div>
-        <div class="pr-inline">
-          <input id="prDaily" type="number" min="300" step="100" style="width:150px"
-            value="${(d.daily_budget&&d.daily_budget.amount!=null)?d.daily_budget.amount:''}" placeholder="не задавать">
-          <select id="prDailyMode" style="width:auto">
-            <option value="STANDARD"${((d.daily_budget||{}).mode!=='DISTRIBUTED')?' selected':''}>STANDARD — стандартный</option>
-            <option value="DISTRIBUTED"${((d.daily_budget||{}).mode==='DISTRIBUTED')?' selected':''}>DISTRIBUTED — распределённый</option>
-          </select></div>
-        <div class="hint">Директ принимает дневной бюджет только со стратегией «Максимум кликов с ручными ставками»</div></div></div>
-      <div class="pr-row"><label for="prAttr">Модель атрибуции</label>
-        <select id="prAttr">${opt(S.attribution,d.attribution)}</select></div>
-    </div></div>
-
-    <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-gear"/></svg></span> Настройки кампании</h3><div class="body">
-      <p class="sy-note">Подписи без пометки — как в интерфейсе Директа. С пометкой
-        <span class="pr-src api">из API</span> — описание из справочника: дословной подписи
-        интерфейса Яндекс не публикует. Видишь, как называется у тебя, — нажми «переименовать»,
-        и подпись станет общей для всех.</p>
-      <div class="pr-flags">${S.settings.map(f=>`<label class="pr-flag">
-        <input type="checkbox" data-flag="${f.id}"${(d.settings||{})[f.id]==='YES'?' checked':''}>
-        <span>${esc(f.name)}<span class="pr-code">${esc(f.id)}</span>${
-          f.src==='api'?'<span class="pr-src api">из API</span>':
-          f.src==='code'?'<span class="pr-src api">нет описания</span>':
-          f.src==='own'?'<span class="pr-src own">своя</span>':''}${
-          (ME&&ME.role==='admin')?`<button type="button" class="pr-ren" onclick="event.preventDefault();presetLabel('${esc(f.id)}')">переименовать</button>`:''
-        }</span></label>`).join('')}</div>
-    </div></div>
-
-    <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-forbid-2"/></svg></span> Минус-фразы и запрет показов</h3><div class="body">
-      <div class="pr-row"><label for="prNeg">Минус-фразы</label><div>
-        <textarea id="prNeg" rows="6" placeholder="по одной фразе в строке">${esc((d.negative_keywords||[]).join('\n'))}</textarea>
-        <div class="hint">По одной фразе в строке, не длиннее семи слов каждая, не больше 1000</div></div></div>
-      <div class="pr-row"><label for="prNegSets">Наборы минус-фраз</label><div>
-        <input id="prNegSets" value="${esc((d.negative_keyword_set_ids||[]).join(', '))}" placeholder="номера наборов через запятую">
-        <div class="hint">Не больше трёх. Наборы должны существовать на аккаунте клиента</div></div></div>
-      <div class="pr-row"><label for="prSites">Площадки, на которых запрещены показы</label>
-        <textarea id="prSites" rows="3" placeholder="по одному адресу в строке">${esc((d.excluded_sites||[]).join('\n'))}</textarea></div>
-      <div class="pr-row"><label for="prUtm">Параметры URL</label><div>
-        <textarea id="prUtm" rows="2" placeholder="utm_source=...">${esc(d.tracking_params||'')}</textarea>
-        <div class="hint">Подставляются в ссылки объявлений — так же, как в Директе</div></div></div>
-    </div></div>
-
-    <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-equalizer"/></svg></span> Корректировки
-      <button class="btn sm" style="margin-left:auto" onclick="presetModAdd()"><svg class="ic"><use href="#i-add-circle"/></svg> Добавить</button></h3>
-      <div class="body"><div id="prMods"></div>
-        <p class="sy-note" style="margin-top:10px">100% — ставка без изменений, 130% — поднять на 30%,
-          0% — показы выключены.</p>
-        <details style="margin-top:8px"><summary class="sy-note" style="cursor:pointer">Чего нет в шаблоне и почему</summary>
-          <div style="margin-top:6px">${[].concat(S.not_portable||[],S.not_supported||[]).map(x=>`<div class="sy-key">
-            <span class="kk">${esc(x.name)}</span><span class="vv" style="font-family:inherit">${esc(x.why)}</span></div>`).join('')}</div>
-        </details></div></div>
-
-    <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-mail"/></svg></span> Почтовые уведомления</h3><div class="body">
-      <div class="pr-row"><label for="prMail">Адрес</label>
-        <input id="prMail" value="${esc(note.email||'')}" placeholder="не отправлять"></div>
-      <label class="pr-flag"><input type="checkbox" id="prNews"${note.send_account_news==='YES'?' checked':''}>
-        <span>Получать новости аккаунта<span class="pr-code">SendAccountNews</span></span></label>
-    </div></div>
-
-    <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-focus-3"/></svg></span> Что подставится от клиента</h3><div class="body">
-      <p class="sy-note">В шаблоне этого нет намеренно: у каждого проекта свой счётчик и свои цели.
-        Кабинет подставит их в момент применения.</p>
-      <label class="pr-flag"><input type="checkbox" id="prCnt"${d.use_client_counter!==false?' checked':''}>
-        <span>Счётчики Метрики клиента<span class="pr-code">CounterIds</span></span></label>
-      <label class="pr-flag"><input type="checkbox" id="prGoals"${d.use_client_goals!==false?' checked':''}>
-        <span>Ключевые цели — те, что отмечены у клиента в кабинете<span class="pr-code">PriorityGoals</span></span></label>
-      <div class="pr-row" style="margin-top:6px"><label for="prGoalVal">Ценность конверсии, ₽</label>
-        <input id="prGoalVal" type="number" min="0" step="10" value="${d.goal_value!=null?d.goal_value:''}" placeholder="не задавать"></div>
-    </div></div>
-
-    <div class="sy-acts" style="margin-top:4px">
+    ${tabs}
+    <div class="panel"><div class="body">${body}</div></div>
+    <div class="cli-tools" style="margin-top:16px">
       <button class="btn primary" onclick="presetSave()"><svg class="ic"><use href="#i-save-3"/></svg> Сохранить шаблон</button>
       <button class="btn" onclick="presetCancel()">Отмена</button>
     </div>`;
-  presetModsDraw();
+  if(PRE.tab==='mods')presetModsDraw();
 }
 
-function presetSyncStrategy(){/* поля стратегии подсказками, значения соберём при сохранении */}
+/* Переключатели: состояние держим в данных шаблона, а не в скрытых чекбоксах. */
+function presetFlag(code){
+  const d=PRE.edit.data; d.settings=d.settings||{};
+  d.settings[code]=d.settings[code]==='YES'?'NO':'YES';
+  presetDrawForm();
+}
+function presetOpt(key){
+  const d=PRE.edit.data;
+  if(key==='prShared'){PRE.edit.shared=!PRE.edit.shared;}
+  else if(key==='prCnt'){d.use_client_counter=d.use_client_counter===false;}
+  else if(key==='prGoals'){d.use_client_goals=d.use_client_goals===false;}
+  else if(key==='prNews'){d.notification=d.notification||{};
+    d.notification.send_account_news=d.notification.send_account_news==='YES'?'NO':'YES';}
+  presetStash(); presetDrawForm();
+}
 
 function presetModsDraw(){
   const box=el('prMods'); if(!box)return;
   const S=PRE.spec, mods=PRE.edit.data.modifiers||[];
   if(!mods.length){box.innerHTML='<p class="sy-note" style="margin:0">Корректировок нет.</p>';return;}
   const o=(arr,cur)=>arr.map(x=>`<option value="${esc(String(x.id))}"${String(x.id)===String(cur)?' selected':''}>${esc(x.name)}</option>`).join('');
+  const ICO={serp:'i-search-2',demography:'i-contacts',device:'i-smartphone',region:'i-focus-3',
+             income:'i-bank-card',video:'i-flashlight'};
+  const COL={serp:'brand',demography:'violet',device:'cyan',region:'green',income:'amber',video:'slate'};
   box.innerHTML=mods.map((m,i)=>{
     let mid='';
     if(m.kind==='serp')mid=`<select onchange="presetModSet(${i},'layout',this.value)">${o(S.serp_layouts,m.layout)}</select>`;
@@ -3473,23 +3610,45 @@ function presetModsDraw(){
       <select onchange="presetModSet(${i},'gender',this.value)">${o(S.genders,m.gender||'')}</select>`;
     else if(m.kind==='device')mid=`<select onchange="presetModSet(${i},'device',this.value)">${o(S.devices,m.device)}</select>`+
       (m.device==='mobile'?`<select onchange="presetModSet(${i},'os',this.value)">${o(S.mobile_os,m.os||'')}</select>`:'');
-    else if(m.kind==='region')mid=`<input type="number" style="width:130px" placeholder="номер региона" value="${m.region_id!=null?m.region_id:''}" onchange="presetModSet(${i},'region_id',this.value)">`;
+    else if(m.kind==='region')mid=`<input type="number" style="width:140px" placeholder="номер региона" value="${m.region_id!=null?m.region_id:''}" onchange="presetModSet(${i},'region_id',this.value)">`;
     else if(m.kind==='income')mid=`<select onchange="presetModSet(${i},'grade',this.value)">${o(S.income_grades,m.grade)}</select>`;
-    const lim=(S.modifier_kinds||[]).find(k=>k.kind===m.kind)||{min:0,max:1300};
-    return `<div class="pr-mod">
-      <select onchange="presetModKind(${i},this.value)">${o(S.modifier_kinds.map(k=>({id:k.kind,name:k.short})),m.kind)}</select>
-      ${mid}
-      <input class="val" type="number" min="${lim.min}" max="${lim.max}" value="${m.value!=null?m.value:''}" onchange="presetModSet(${i},'value',this.value)" title="${esc(lim.name||'')}">
-      <span class="d" style="font-size:12px;color:var(--muted)">% (${lim.min}–${lim.max})</span>
-      <button class="btn sm danger" onclick="presetModDrop(${i})">Убрать</button></div>`;
+    const lim=(S.modifier_kinds||[]).find(k=>k.kind===m.kind)||{min:0,max:1300,name:''};
+    return `<div class="prs-mod" style="--qc:var(--${COL[m.kind]||'brand'})">
+      <div class="prs-mod-h">
+        <span class="prs-mod-ic"><svg class="ic"><use href="#${ICO[m.kind]||'i-equalizer'}"/></svg></span>
+        <div class="prs-mod-t">${esc(presetModText(m))}<small>${esc(lim.name||'')}</small></div>
+        <button class="btn sm danger" onclick="presetModDrop(${i})" title="Убрать">
+          <svg class="ic"><use href="#i-delete-bin"/></svg></button></div>
+      <div class="prs-mod-f">
+        <select onchange="presetModKind(${i},this.value)">${o(S.modifier_kinds.map(k=>({id:k.kind,name:k.short})),m.kind)}</select>
+        ${mid}
+        <input class="val" type="number" min="${lim.min}" max="${lim.max}" value="${m.value!=null?m.value:''}"
+          onchange="presetModSet(${i},'value',this.value)">
+        <span class="muted" style="font-size:12px">% (${lim.min}–${lim.max})</span></div></div>`;
   }).join('');
 }
-function presetModAdd(){(PRE.edit.data.modifiers=PRE.edit.data.modifiers||[]).push({kind:'serp',layout:'ALONE',value:130});presetModsDraw();}
+/* Человеческий текст корректировки — тот же, что покажем в предпросмотре. */
+function presetModText(m){
+  const S=PRE.spec, pct=m.value==null?'':(Number(m.value)===0?'показы выключены':
+    (Number(m.value)===100?'без изменений':(Number(m.value)-100>0?'+':'')+(Number(m.value)-100)+'%'));
+  const find=(arr,id)=>((arr||[]).find(x=>String(x.id)===String(id))||{}).name;
+  let nm=m.kind;
+  if(m.kind==='serp')nm=find(S.serp_layouts,m.layout)||m.layout;
+  else if(m.kind==='demography'){const g=find(S.genders,m.gender||'');
+    nm='Возраст '+(find(S.ages,m.age)||m.age)+(g&&g!=='любой'?', пол '+g:'');}
+  else if(m.kind==='device'){nm=find(S.devices,m.device)||m.device;
+    if(m.os)nm+=', '+(find(S.mobile_os,m.os)||m.os);}
+  else if(m.kind==='region')nm='Регион '+(m.region_id||'');
+  else if(m.kind==='income')nm='Платежеспособность '+(m.grade||'');
+  else if(m.kind==='video')nm='Показ с видеодополнением';
+  return nm+' — '+pct;
+}
+function presetModAdd(){presetStash();(PRE.edit.data.modifiers=PRE.edit.data.modifiers||[]).push({kind:'serp',layout:'ALONE',value:130});presetModsDraw();}
 function presetModDrop(i){PRE.edit.data.modifiers.splice(i,1);presetModsDraw();}
 function presetModSet(i,k,v){
   const m=PRE.edit.data.modifiers[i];
   m[k]=(k==='value'||k==='region_id')?(v===''?null:Number(v)):v;
-  if(k==='device')presetModsDraw();     // у смартфонов появляется выбор операционной системы
+  presetModsDraw();
 }
 function presetModKind(i,kind){
   const def={serp:{kind:'serp',layout:'ALONE',value:130},
@@ -3501,32 +3660,48 @@ function presetModKind(i,kind){
   PRE.edit.data.modifiers[i]=def[kind]||def.serp; presetModsDraw();
 }
 
-function presetCollect(){
-  const v=id=>{const e=el(id);return e?String(e.value).trim():'';};
-  const num=id=>{const x=v(id);return x===''?null:Number(x);};
-  const lines=id=>v(id).split('\n').map(s=>s.trim()).filter(Boolean);
-  const on=id=>!!(el(id)&&el(id).checked);
-  const d=PRE.edit.data;
-  d.strategy={search:{type:v('prSearch'),weekly:num('prWeekly'),bid_ceiling:num('prCeil'),
-                      cpa:num('prCpa'),cpc:num('prCpc'),crr:num('prCrr')},
-              network:{type:v('prNet')}};
-  const daily=num('prDaily');
-  d.daily_budget=daily?{amount:daily,mode:v('prDailyMode')||'STANDARD'}:null;
-  d.attribution=v('prAttr');
-  d.settings={}; document.querySelectorAll('[data-flag]').forEach(c=>{d.settings[c.dataset.flag]=c.checked?'YES':'NO';});
-  d.negative_keywords=lines('prNeg');
-  d.negative_keyword_set_ids=v('prNegSets').split(/[,\s]+/).filter(Boolean).map(Number).filter(x=>!isNaN(x));
-  d.tracking_params=v('prUtm');
-  d.excluded_sites=lines('prSites');
-  d.end_after_days=num('prEndDays');
-  d.time_zone=v('prTz')||'Europe/Moscow';
-  const mail=v('prMail');
-  d.notification=mail?{email:mail, send_account_news:on('prNews')?'YES':'NO'}:null;
-  d.use_client_counter=on('prCnt');
-  d.use_client_goals=on('prGoals');
-  d.goal_value=num('prGoalVal');
-  d.name_mask=v('prMask');
-  return {name:v('prName'),note:v('prNote'),shared:on('prShared'),data:d};
+/* Поля живут на разных вкладках — забираем то, что сейчас на экране, чтобы не потерять. */
+function presetStash(){
+  const v=id=>{const e=el(id);return e?String(e.value).trim():null;};
+  const num=id=>{const x=v(id);return x===null?undefined:(x===''?null:Number(x));};
+  const lines=id=>{const x=v(id);return x===null?undefined:x.split('\n').map(s=>s.trim()).filter(Boolean);};
+  const d=PRE.edit.data, set=(o,k,val)=>{if(val!==undefined)o[k]=val;};
+  if(v('prName')!==null)PRE.edit.name=v('prName');
+  if(v('prNote')!==null)PRE.edit.note=v('prNote');
+  set(d,'name_mask',v('prMask')===null?undefined:v('prMask'));
+  if(v('prSearch')!==null){
+    d.strategy={search:{type:v('prSearch'),weekly:num('prWeekly'),bid_ceiling:num('prCeil'),
+                        cpa:num('prCpa'),cpc:num('prCpc'),crr:num('prCrr')},
+                network:{type:v('prNet')}};
+    const daily=num('prDaily');
+    d.daily_budget=daily?{amount:daily,mode:v('prDailyMode')||'STANDARD'}:null;
+    d.attribution=v('prAttr');
+  }
+  set(d,'negative_keywords',lines('prNeg'));
+  if(v('prNegSets')!==null)d.negative_keyword_set_ids=v('prNegSets').split(/[,\s]+/).filter(Boolean).map(Number).filter(x=>!isNaN(x));
+  set(d,'excluded_sites',lines('prSites'));
+  set(d,'tracking_params',v('prUtm')===null?undefined:v('prUtm'));
+  set(d,'end_after_days',num('prEndDays'));
+  if(v('prTz')!==null)d.time_zone=v('prTz')||'Europe/Moscow';
+  set(d,'goal_value',num('prGoalVal'));
+  if(v('prMail')!==null){
+    const mail=v('prMail');
+    d.notification=mail?{email:mail,send_account_news:(d.notification||{}).send_account_news||'NO'}:null;
+  }
+  return d;
+}
+async function presetSave(){
+  presetStash();
+  if(!PRE.edit.name){toast('Дай шаблону название','err');return;}
+  try{await api('preset_save',PRE.edit.id,PRE.edit.name,PRE.edit.note,PRE.edit.data,PRE.edit.shared);
+    toast('Шаблон сохранён','ok');PRE.edit=null;renderPresets();}
+  catch(e){}
+}
+async function presetDrop(id){
+  const p=PRE.list.find(x=>x.id===id)||{};
+  if(!await askConfirm('Удалить шаблон «'+(p.name||'')+'»? Уже созданные по нему кампании останутся на месте.',
+    {title:'Удаление шаблона',ok:'Удалить',danger:true}))return;
+  try{await api('preset_delete',id);toast('Шаблон удалён','ok');renderPresets();}catch(e){}
 }
 /* Подпись настройки: справка Яндекса называет дословно не всё, поэтому вместо выдумки
    показываем описание из справочника API — а тот, кто видит интерфейс, подписывает точно. */
@@ -3544,20 +3719,6 @@ async function presetLabel(code){
     toast(t.trim()?'Подпись сохранена':'Вернул описание из справочника','ok');
     presetDrawForm();}
   catch(e){}
-}
-
-async function presetSave(){
-  const f=presetCollect();
-  if(!f.name){toast('Дай шаблону название','err');return;}
-  try{await api('preset_save',PRE.edit.id,f.name,f.note,f.data,f.shared);
-    toast('Шаблон сохранён','ok');PRE.edit=null;renderPresets();}
-  catch(e){}
-}
-async function presetDrop(id){
-  const p=PRE.list.find(x=>x.id===id)||{};
-  if(!await askConfirm('Удалить шаблон «'+(p.name||'')+'»? Уже созданные по нему кампании останутся на месте.',
-    {title:'Удаление шаблона',ok:'Удалить',danger:true}))return;
-  try{await api('preset_delete',id);toast('Шаблон удалён','ok');renderPresets();}catch(e){}
 }
 
 /* ---------- снять шаблон с готовой кампании ---------- */
@@ -3583,6 +3744,7 @@ async function presetGrab(){
     if(!PRE.spec){const s=await api('preset_spec');PRE.spec=s.spec;PRE.blank=s.blank;}
     PRE.edit={id:null,name:'Стандарт: '+(r.source||'').slice(0,60),note:'Снят с кампании «'+(r.source||'')+'»',
               shared:false,data:r.data};
+    PRE.tab='strategy';
     toast('Сняли настройки'+(r.modifiers_found?', корректировок: '+r.modifiers_found:''),'ok');
     renderPresets();
   }catch(e){}
@@ -3625,24 +3787,40 @@ async function presetApply(id){
   toast('Готовлю предпросмотр…');
   try{pv=await api('preset_preview',id,login);}catch(e){return;}
   const host=el('v_presets');
+  const mods=pv.lines.filter(l=>l.k==='Корректировка');
+  const kv=pv.lines.filter(l=>l.k!=='Корректировка');
   host.innerHTML=`<h2 class="title">Проверь, что уйдёт в Директ<span class="t-demo">мега-демо</span></h2>
     <p class="sub">Проект <b>${esc(pv.client)}</b> (${esc(pv.login)}), шаблон «${esc(pv.preset)}».
       Пока не нажмёшь «Создать», в Директе ничего не меняется.</p>
+    <div class="cards">
+      <div class="card" style="--cc:var(--brand)"><div class="card-top">
+        <span class="card-ic"><svg class="ic"><use href="#i-bar-chart"/></svg></span>
+        <div><div class="card-k">Стратегия</div>
+          <div class="card-v" style="font-size:17px">${esc(String((kv.find(l=>l.k==='Стратегия')||{}).v||'—').split(',')[0])}</div></div></div>
+        <div class="card-s">${esc(String((kv.find(l=>l.k==='Стратегия')||{}).v||'').split(',').slice(1).join(',')||'без ограничений')}</div></div>
+      <div class="card" style="--cc:var(--violet)"><div class="card-top">
+        <span class="card-ic"><svg class="ic"><use href="#i-equalizer"/></svg></span>
+        <div><div class="card-k">Корректировок</div><div class="card-v">${mods.length}</div></div></div>
+        <div class="card-s">${mods.length?esc(String(mods[0].v)):'ни одной'}</div></div>
+      <div class="card" style="--cc:var(--green)"><div class="card-top">
+        <span class="card-ic"><svg class="ic"><use href="#i-forbid-2"/></svg></span>
+        <div><div class="card-k">Минус-фраз</div>
+          <div class="card-v">${esc(String((kv.find(l=>l.k==='Минус-фразы')||{}).v||'0').replace(' шт.',''))}</div></div></div>
+        <div class="card-s">${esc(String((kv.find(l=>l.k==='Счётчики Метрики')||{}).v||'').slice(0,40))}</div></div>
+    </div>
     <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-eye"/></svg></span> Что будет создано</h3>
       <div class="body">
-        <div class="pr-row"><label for="prCampName">Название кампании</label>
-          <input id="prCampName" value="${esc(pv.name)}"></div>
-        <div class="pr-prev" style="margin-top:10px">${pv.lines.map(l=>
-          `<div class="k">${esc(l.k)}</div><div>${esc(String(l.v))}</div>`).join('')}</div>
-        ${pv.warnings.length?`<div class="pr-warn"><b>На что обратить внимание:</b><ul style="margin:6px 0 0;padding-left:20px">
-          ${pv.warnings.map(w=>`<li>${esc(w)}</li>`).join('')}</ul></div>`:
-          '<div class="pr-safe" style="margin-top:12px">Замечаний нет — можно создавать.</div>'}
-        <div class="pr-safe">Кампания создастся <b>без объявлений</b>, то есть черновиком: показов нет и
-          деньги не тратятся. Наполнить и отправить на модерацию — уже руками в Директе.</div>
-        <div class="ds-demo"><svg class="ic"><use href="#i-flask"/></svg>
-          <div><b>Мега-демо</b><span>Функция новая, и это запись в живой аккаунт. После создания
-          загляни в Директ и сверь настройки глазами — так спокойнее, пока раздел не обкатан.</span></div></div>
-        <div class="sy-acts">
+        <div class="field"><label>Название кампании</label><input id="prCampName" value="${esc(pv.name)}"></div>
+        ${mods.length?`<div style="margin:4px 0 14px">${mods.map(m=>`<span class="chip">${esc(String(m.v))}</span>`).join('')}</div>`:''}
+        <div class="prs-kv">${kv.map(l=>`<div class="k">${esc(l.k)}</div><div>${esc(String(l.v))}</div>`).join('')}</div>
+        ${pv.warnings.length?`<div class="prs-note warn"><svg class="ic"><use href="#i-error-warning"/></svg>
+          <div><b>На что обратить внимание</b><ul>${pv.warnings.map(w=>`<li>${esc(w)}</li>`).join('')}</ul></div></div>`:
+          `<div class="prs-note"><svg class="ic"><use href="#i-checkbox-circle"/></svg>
+            <div><b>Замечаний нет</b><span>Можно создавать.</span></div></div>`}
+        <div class="prs-note warn"><svg class="ic"><use href="#i-flask"/></svg>
+          <div><b>Мега-демо</b><span>Кампания создастся <b>без объявлений</b>, то есть черновиком: показов нет
+            и деньги не тратятся. После создания загляни в Директ и сверь настройки глазами — функция новая.</span></div></div>
+        <div class="cli-tools">
           <button class="btn primary" onclick="presetApplyGo(${id},'${esc(login)}')"><svg class="ic"><use href="#i-sparkling-2"/></svg> Создать кампанию</button>
           <button class="btn" onclick="renderPresets()">Отмена</button>
         </div>
@@ -3659,8 +3837,9 @@ async function presetApplyGo(id,login){
   PRE.edit=null; renderPresets();
 }
 async function presetUndo(runId){
-  const w=await askText('Кампания будет удалена из Директа. Это возможно, пока по ней не было показов.\n\n'+
-    'Введи слово УДАЛИТЬ, чтобы подтвердить.','',
+  const w=await askText(`Кампания будет удалена из Директа. Это возможно, пока по ней не было показов.
+
+Введи слово УДАЛИТЬ, чтобы подтвердить.`,'',
     {title:'Удаление кампании',ok:'Удалить',danger:true,placeholder:'УДАЛИТЬ'});
   if(!w||w.trim().toUpperCase()!=='УДАЛИТЬ'){if(w!==null)toast('Слово не совпало — ничего не менял','err');return;}
   try{const r=await api('preset_undo',runId);toast('Кампания '+r.deleted+' удалена','ok');renderPresets();}
