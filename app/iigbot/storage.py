@@ -142,6 +142,8 @@ class Storage:
         ("ix_logins_user",        "logins(user_id, at)"),
         ("ix_cache_at",           "cache(at)"),
         ("ix_cpu_day",            "cpu_usage(day)"),
+        ("ix_presets_owner",      "presets(owner)"),
+        ("ix_presetruns_login",   "preset_runs(login, at)"),
     ]
 
     def _ensure_indexes(self):
@@ -290,6 +292,68 @@ class Storage:
         self.conn.execute("DELETE FROM cpu_usage WHERE day < ?", (edge,))
         self.conn.commit()
 
+    # ─────────── шаблоны кампаний ───────────
+    # Шаблон — это наш стандарт настройки кампании. Общий (owner=NULL) виден всем,
+    # личный — только автору и администратору: так же, как устроены клиенты.
+    def preset_list(self, owner=None, all_visible=False):
+        if all_visible or owner is None:
+            rows = self.conn.execute("SELECT * FROM presets ORDER BY name COLLATE NOCASE").fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM presets WHERE owner IS NULL OR owner=? ORDER BY name COLLATE NOCASE",
+                (owner,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def preset_get(self, preset_id):
+        r = self.conn.execute("SELECT * FROM presets WHERE id=?", (preset_id,)).fetchone()
+        return dict(r) if r else None
+
+    def preset_save(self, preset_id, name, note, data, owner=None):
+        if preset_id:
+            self.conn.execute(
+                "UPDATE presets SET name=?, note=?, data=?, updated_at=? WHERE id=?",
+                (name, note, data, _now(), preset_id))
+            self.conn.commit()
+            return preset_id
+        cur = self.conn.execute(
+            "INSERT INTO presets(name,note,data,owner,created_at,updated_at,used_count) "
+            "VALUES(?,?,?,?,?,?,0)", (name, note, data, owner, _now(), _now()))
+        self.conn.commit()
+        return cur.lastrowid
+
+    def preset_delete(self, preset_id):
+        self.conn.execute("DELETE FROM presets WHERE id=?", (preset_id,))
+        self.conn.commit()
+
+    def preset_used(self, preset_id):
+        self.conn.execute(
+            "UPDATE presets SET used_count=COALESCE(used_count,0)+1, last_used=? WHERE id=?",
+            (_now(), preset_id))
+        self.conn.commit()
+
+    def preset_run_log(self, preset_id, preset_name, login, campaign_id, campaign,
+                       by_user, ok, error=None):
+        """Что и когда создали по шаблону: без этого нельзя ни проверить, ни откатить."""
+        self.conn.execute(
+            "INSERT INTO preset_runs(preset_id,preset_name,login,campaign_id,campaign,"
+            "by_user,at,ok,error) VALUES(?,?,?,?,?,?,?,?,?)",
+            (preset_id, preset_name, login, campaign_id, campaign, by_user, _now(),
+             1 if ok else 0, error))
+        self.conn.commit()
+
+    def preset_runs(self, limit=50, logins=None):
+        if logins is None:
+            rows = self.conn.execute(
+                "SELECT * FROM preset_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        else:
+            if not logins:
+                return []
+            marks = ",".join("?" * len(logins))
+            rows = self.conn.execute(
+                "SELECT * FROM preset_runs WHERE login IN ({}) ORDER BY id DESC LIMIT ?".format(marks),
+                tuple(logins) + (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
     def maintenance(self):
         """Обслуживание базы: пересчёт статистики и сжатие. Зовётся по кнопке из кабинета —
         VACUUM переписывает файл целиком, в фоне при каждом старте это лишнее."""
@@ -421,6 +485,31 @@ class Storage:
                 secs   REAL,        -- процессорное время, накопленное за день
                 calls  INTEGER,
                 PRIMARY KEY (day, method)
+            )""")
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS presets (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT NOT NULL,
+                note       TEXT,
+                data       TEXT NOT NULL,   -- сам шаблон, JSON
+                owner      INTEGER,         -- NULL = общий шаблон агентства
+                created_at TEXT,
+                updated_at TEXT,
+                used_count INTEGER DEFAULT 0,
+                last_used  TEXT
+            )""")
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS preset_runs (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                preset_id   INTEGER,
+                preset_name TEXT,
+                login       TEXT,            -- на каком аккаунте создали
+                campaign_id INTEGER,
+                campaign    TEXT,
+                by_user     INTEGER,
+                at          TEXT,
+                ok          INTEGER,
+                error       TEXT
             )""")
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS audit (

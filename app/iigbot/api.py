@@ -2001,6 +2001,309 @@ class Api:
                         "created": dt.datetime.fromtimestamp(os.path.getmtime(p)).isoformat(timespec="seconds")})
         return {"items": out[:30], "last": self.db.get_kv("backup_last")}
 
+    # ═══════════ шаблоны кампаний ═══════════
+    # Стандарт агентства, описанный один раз: стратегия, минус-слова, UTM, атрибуция,
+    # корректировки. Дальше кампания на новом проекте создаётся по нему одним нажатием,
+    # одинаково у всех специалистов. Всё клиент-специфичное (счётчик, цели, название)
+    # подставляется в момент применения — в самом шаблоне этого нет.
+
+    def _preset_visible(self, row):
+        """Общий шаблон виден всем, личный — автору и админу."""
+        if not row:
+            return False
+        if self._is_admin() or row.get("owner") is None:
+            return True
+        return row.get("owner") == (self.user or {}).get("id")
+
+    def _preset_editable(self, row):
+        """Править общий шаблон может только админ: он один на всё агентство."""
+        if self._is_admin():
+            return True
+        return bool(row) and row.get("owner") == (self.user or {}).get("id")
+
+    def _preset_load(self, preset_id, need_edit=False):
+        row = self.db.preset_get(int(preset_id))
+        if not row or not self._preset_visible(row):
+            raise RuntimeError("Шаблон не найден")
+        if need_edit and not self._preset_editable(row):
+            raise RuntimeError("Общий шаблон агентства правит только администратор")
+        try:
+            row["preset"] = json.loads(row["data"] or "{}")
+        except (ValueError, TypeError):
+            row["preset"] = {}
+        return row
+
+    def _client_goal_ids(self, login):
+        """Цели клиента, отмеченные «в отчёт», — их и делаем приоритетными в кампании."""
+        c = dict(self.db.get_client(login) or {})   # sqlite отдаёт Row, а не словарь
+        try:
+            items = json.loads(c.get("goals") or "[]")
+        except (ValueError, TypeError):
+            items = []
+        out = []
+        for g in items:
+            if isinstance(g, dict) and g.get("active") is not False and g.get("id"):
+                out.append(str(g["id"]))
+            elif not isinstance(g, dict) and g:
+                out.append(str(g))
+        return out
+
+    def _client_goal_names(self, login):
+        c = dict(self.db.get_client(login) or {})
+        try:
+            items = json.loads(c.get("goals") or "[]")
+        except (ValueError, TypeError):
+            items = []
+        return [(g.get("name") or ("Цель " + str(g.get("id")))) for g in items
+                if isinstance(g, dict) and g.get("active") is not False]
+
+    @safe
+    def preset_spec(self):
+        """Справочники для формы шаблона: стратегии, настройки, корректировки, атрибуция.
+
+        Отдаём с сервера, а не держим списками в разметке: иначе они разъедутся при
+        первом же изменении в Директе."""
+        from . import presets as P
+        return {"spec": P.spec(), "blank": P.blank()}
+
+    @safe
+    def presets_list(self):
+        """Шаблоны, доступные текущему пользователю."""
+        rows = self.db.preset_list(owner=(self.user or {}).get("id"),
+                                   all_visible=self._is_admin() or self.user is None)
+        out = []
+        for r in rows:
+            try:
+                data = json.loads(r["data"] or "{}")
+            except (ValueError, TypeError):
+                data = {}
+            out.append({"id": r["id"], "name": r["name"], "note": r["note"],
+                        "shared": r["owner"] is None, "owner": r["owner"],
+                        "can_edit": self._preset_editable(r),
+                        "used_count": r.get("used_count") or 0, "last_used": r.get("last_used"),
+                        "updated_at": r.get("updated_at"),
+                        "modifiers": len(data.get("modifiers") or []),
+                        "negatives": len(data.get("negative_keywords") or [])})
+        return out
+
+    @safe
+    def preset_get(self, preset_id):
+        """Шаблон целиком — для формы правки."""
+        row = self._preset_load(preset_id)
+        return {"id": row["id"], "name": row["name"], "note": row["note"],
+                "shared": row["owner"] is None, "can_edit": self._preset_editable(row),
+                "data": row["preset"]}
+
+    @safe
+    def preset_save(self, preset_id, name, note, data, shared=None):
+        """Создать или обновить шаблон. Проверяем до записи — чтобы кривой шаблон
+        не дожил до момента применения на живом аккаунте."""
+        self._require_write()
+        from . import presets as P
+        nm = (name or "").strip()
+        if not nm:
+            raise RuntimeError("У шаблона должно быть название")
+        if not isinstance(data, dict):
+            raise RuntimeError("Шаблон повреждён")
+        bad = P.validate(data)
+        if bad:
+            raise RuntimeError("Так шаблон не сохранить: " + "; ".join(bad))
+        owner = (self.user or {}).get("id")
+        if preset_id:
+            row = self._preset_load(preset_id, need_edit=True)
+            new_id = self.db.preset_save(row["id"], nm, note, json.dumps(data, ensure_ascii=False))
+            self._audit("preset_save", nm, "правка шаблона")
+        else:
+            # общий шаблон агентства заводит только админ, остальные — личный
+            if shared and not self._is_admin():
+                raise RuntimeError("Общий шаблон может завести только администратор")
+            new_id = self.db.preset_save(None, nm, note, json.dumps(data, ensure_ascii=False),
+                                         owner=None if shared else owner)
+            self._audit("preset_save", nm, "новый шаблон")
+        return {"id": new_id}
+
+    @safe
+    def preset_delete(self, preset_id):
+        row = self._preset_load(preset_id, need_edit=True)
+        self.db.preset_delete(row["id"])
+        self._audit("preset_delete", row["name"], "шаблон удалён")
+        return {"ok": True}
+
+    @safe
+    def client_campaigns(self, login):
+        """Кампании клиента: выбрать эталон для слепка или просто посмотреть, что есть."""
+        self._require_owned(login)
+        token = load_secrets()["yandex_oauth_token"]
+        from . import yandex
+        camps = yandex.campaigns_brief(token, login)
+        return [{"id": c.get("Id"), "name": c.get("Name"), "type": c.get("Type"),
+                 "state": c.get("State"), "status": c.get("Status")} for c in camps]
+
+    @safe
+    def preset_from_campaign(self, login, campaign_id):
+        """Снять шаблон с существующей кампании. Самый короткий путь: специалист один раз
+        собрал эталон руками — забираем оттуда всё, что переносится на другой аккаунт."""
+        self._require_owned(login)
+        from . import yandex, presets as P
+        token = load_secrets()["yandex_oauth_token"]
+        full = yandex.campaign_full(token, login, campaign_id)
+        try:
+            mods = yandex.bidmodifiers_for(token, login, [campaign_id])
+        except Exception:  # noqa: BLE001 — без корректировок слепок всё равно полезен
+            mods = []
+        data = P.from_campaign(full, mods)
+        return {"data": data, "source": full.get("Name"), "modifiers_found": len(mods),
+                "describe": [{"k": k, "v": v} for k, v in P.describe(data)]}
+
+    @safe
+    def preset_preview(self, preset_id, login, custom_name=None):
+        """Что именно появится на аккаунте. Показываем до записи — и только после
+        подтверждения человеком что-то создаётся."""
+        self._require_owned(login)
+        from . import yandex, presets as P
+        row = self._preset_load(preset_id)
+        data = row["preset"]
+        client = dict(self.db.get_client(login) or {})
+        token = load_secrets()["yandex_oauth_token"]
+        counters = []
+        counter_err = None
+        try:
+            counters = yandex.get_campaign_counters(token, login)
+        except Exception as e:  # noqa: BLE001 — счётчик не обязателен, но причину скажем
+            counter_err = str(e)[:200]
+        goals = self._client_goal_names(login)
+        lines = P.describe(data, client.get("name") or login, counters=counters, goals=goals)
+        warn = []
+        if not counters and data.get("use_client_counter", True):
+            warn.append("У клиента не нашли счётчик Метрики" +
+                        (": " + counter_err if counter_err else
+                         " — кампания создастся без него, привяжешь вручную"))
+        if not goals and data.get("use_client_goals", True):
+            warn.append("У клиента не отмечены цели — кампания создастся без приоритетных целей")
+        warn.extend(P.validate(data))
+        return {"name": P.campaign_name(data, client.get("name") or login, custom_name),
+                "lines": [{"k": k, "v": v} for k, v in lines],
+                "warnings": warn, "preset": row["name"], "login": login,
+                "client": client.get("name") or login,
+                "modifiers": len(data.get("modifiers") or [])}
+
+    @safe
+    def preset_apply(self, preset_id, login, custom_name=None):
+        """Создать кампанию по шаблону. Фоном: два обращения к Директу, а процесс один.
+
+        Кампания создаётся без групп и объявлений — Директ держит такую черновиком:
+        показов нет, деньги не тратятся, пока специалист её не наполнит.
+        """
+        self._require_write()
+        self._require_owned(login)
+        row = self._preset_load(preset_id)
+        from . import presets as P
+        bad = P.validate(row["preset"])
+        if bad:
+            raise RuntimeError("Шаблон надо поправить: " + "; ".join(bad))
+        return self._job_start("preset_apply", "Создаю кампанию по шаблону",
+                               lambda say: self._preset_apply_run(row, login, custom_name, say))
+
+    def _preset_apply_run(self, row, login, custom_name=None, say=None):
+        from . import yandex, presets as P
+        token = load_secrets()["yandex_oauth_token"]
+        data = row["preset"]
+        client = dict(self.db.get_client(login) or {})
+        name = P.campaign_name(data, client.get("name") or login, custom_name)
+
+        if say:
+            say("собираю настройки…")
+        counters = []
+        if data.get("use_client_counter", True):
+            try:
+                counters = yandex.get_campaign_counters(token, login)
+            except Exception:  # noqa: BLE001 — без счётчика кампания всё равно создастся
+                counters = []
+        goal_ids = self._client_goal_ids(login) if data.get("use_client_goals", True) else []
+        payload = P.to_payload(data, client.get("name") or login, counters=counters,
+                               goal_ids=goal_ids, custom_name=custom_name)
+
+        if say:
+            say("создаю кампанию…")
+        try:
+            res = yandex.campaigns_add(token, login, [payload])
+        except Exception as e:  # noqa: BLE001 — в журнал попадает и неудача
+            self.db.preset_run_log(row["id"], row["name"], login, None, name,
+                                   (self.user or {}).get("id"), False, str(e)[:300])
+            raise
+        first = (res or [{}])[0]
+        if first.get("Errors"):
+            msg = "; ".join("{} ({})".format(e.get("Message"), e.get("Details"))
+                            for e in first["Errors"])[:400]
+            self.db.preset_run_log(row["id"], row["name"], login, None, name,
+                                   (self.user or {}).get("id"), False, msg)
+            raise RuntimeError("Директ не принял кампанию: " + msg)
+        camp_id = first.get("Id")
+        warnings = ["{}".format(w.get("Message")) for w in (first.get("Warnings") or [])]
+
+        mods_done, mods_failed = 0, []
+        payload_mods = P.modifiers_payload(data, camp_id)
+        if payload_mods:
+            if say:
+                say("вешаю корректировки…")
+            try:
+                mres = yandex.bidmodifiers_add(token, login, payload_mods)
+                for m in (mres or []):
+                    if m.get("Errors"):
+                        mods_failed.append("; ".join(e.get("Message", "") for e in m["Errors"]))
+                    else:
+                        mods_done += len(m.get("Ids") or ([m["Id"]] if m.get("Id") else []))
+            except Exception as e:  # noqa: BLE001 — кампания уже создана, это отдельная беда
+                mods_failed.append(str(e)[:200])
+
+        self.db.preset_used(row["id"])
+        self.db.preset_run_log(row["id"], row["name"], login, camp_id, name,
+                               (self.user or {}).get("id"), True, None)
+        self._audit("preset_apply", login,
+                    "создана кампания {} ({}) по шаблону «{}»".format(name, camp_id, row["name"]))
+        return {"campaign_id": camp_id, "name": name, "modifiers": mods_done,
+                "modifiers_failed": mods_failed, "warnings": warnings,
+                "counters": counters, "goals": len(goal_ids), "login": login}
+
+    @safe
+    def preset_runs(self, limit=50):
+        """Что создавали по шаблонам: свои проекты — специалисту, всё — админу."""
+        logins = None if (self._is_admin() or self.user is None) else sorted(self._owned_set())
+        rows = self.db.preset_runs(int(limit or 50), logins=logins)
+        names = {u["id"]: (u["name"] or u["email"]) for u in self.db.list_users()}
+        clients = {c["login"]: c["name"] for c in self.db.list_clients("all")}
+        return [{"id": r["id"], "preset": r["preset_name"], "login": r["login"],
+                 "client": clients.get(r["login"]) or r["login"],
+                 "campaign_id": r["campaign_id"], "campaign": r["campaign"],
+                 "who": names.get(r["by_user"], "—"), "at": r["at"],
+                 "ok": bool(r["ok"]), "error": r["error"]} for r in rows]
+
+    @safe
+    def preset_undo(self, run_id):
+        """Удалить кампанию, созданную по шаблону. Директ разрешает удалять только те,
+        по которым не было открутки, — то есть ровно наш случай промаха."""
+        self._require_write()
+        rows = [r for r in self.db.preset_runs(200) if r["id"] == int(run_id)]
+        if not rows:
+            raise RuntimeError("Запись не найдена")
+        run = rows[0]
+        if not run.get("campaign_id"):
+            raise RuntimeError("В этой записи кампания не создавалась")
+        self._require_owned(run["login"])
+        from . import yandex
+        token = load_secrets()["yandex_oauth_token"]
+        res = yandex.campaigns_delete(token, run["login"], [run["campaign_id"]])
+        first = (res or [{}])[0]
+        if first.get("Errors"):
+            msg = "; ".join(e.get("Message", "") for e in first["Errors"])
+            raise RuntimeError("Директ не дал удалить: " + msg[:200])
+        self.db.preset_run_log(run.get("preset_id"), run.get("preset_name"), run["login"],
+                               run["campaign_id"], "удалена: " + (run.get("campaign") or ""),
+                               (self.user or {}).get("id"), True, None)
+        self._audit("preset_undo", run["login"],
+                    "удалена кампания {} ({})".format(run.get("campaign"), run["campaign_id"]))
+        return {"deleted": run["campaign_id"]}
+
     # ═══════════ система: состояние машины и обслуживание (только админ) ═══════════
     # Всё это раньше делалось по SSH: посмотреть, жив ли процесс, цела ли база,
     # какой код сейчас на сервере, откуда откатываться. Теперь — из кабинета.

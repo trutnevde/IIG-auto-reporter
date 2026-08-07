@@ -1,14 +1,26 @@
 # -*- coding: utf-8 -*-
-"""Чтение списка клиентов агентства из API Яндекс.Директа (метод agencyclients.get).
+"""Работа с API Яндекс.Директа: клиенты агентства, кампании, объявления, корректировки.
 
-Только чтение, изменяющих вызовов нет. Используется тот же OAuth-токен, что и в
-weekly_report.ps1 (secrets.json -> yandex_oauth_token).
+Основная часть — только чтение (список клиентов, кампании, счётчики, тексты объявлений).
+Отдельным блоком внизу — вызовы, которые СОЗДАЮТ сущности на аккаунте клиента: они нужны
+для шаблонов кампаний. Все изменяющие вызовы собраны в одном месте и идут через call(),
+чтобы их было видно и легко проверить.
+
+Версии API. v5 — привычный эндпоинт, на нём работает вся отчётность. v501 — эндпоинт
+Единой перфоманс-кампании (ЕПК): с переходом Директа на ЕПК новые кампании создаются
+только так, и все кампании агентства уже этого типа. Поэтому шаблоны работают на v501.
+
+Токен — тот же, из secrets.json -> yandex_oauth_token.
 """
 import requests
 
 from . import net
 
 API = "https://api.direct.yandex.com/json/v5/"
+# эндпоинт Единой перфоманс-кампании: создание кампаний живёт только здесь
+API501 = "https://api.direct.yandex.com/json/v501/"
+# песочница — изолированная копия API: там можно создавать что угодно, боевых данных нет
+SANDBOX501 = "https://api-sandbox.direct.yandex.com/json/v501/"
 
 # коды Директа, у которых есть человеческое объяснение: иначе в кабинете
 # показывался сырой технический текст, по которому непонятно, что делать
@@ -166,3 +178,119 @@ def get_campaign_counters(token, login, _post=None):
         for x in items:
             ids.add(str(x))
     return sorted(ids)
+
+
+# ═══════════════════════ общий вызов API (v5 и v501) ═══════════════════════
+def _headers(token, login=None):
+    h = {
+        "Authorization": "Bearer {}".format(token),
+        "Accept-Language": "ru",
+        "Content-Type": "application/json; charset=utf-8",
+    }
+    if login:
+        h["Client-Login"] = login
+    return h
+
+
+def call(token, service, method, params, login=None, base=None, timeout=90):
+    """Один вызов API Директа. Возвращает result; на ошибке бросает понятное исключение.
+
+    base позволяет увести вызов в песочницу — тем же кодом, что работает на бою.
+    """
+    url = (base or API501) + service
+    r = net.post("Директ", url, json={"method": method, "params": params},
+                 headers=_headers(token, login), timeout=timeout)
+    try:
+        data = r.json()
+    except ValueError:
+        # без куска тела такую ошибку невозможно разбирать: HTTP 500 у Директа
+        # может быть и сбоем сервиса, и жалобой на конкретное поле
+        body = (r.text or "").strip().replace("\n", " ")[:200]
+        raise RuntimeError("Директ вернул не-JSON (HTTP {}){}".format(
+            r.status_code, ": " + body if body else ""))
+    if isinstance(data, dict) and data.get("error"):
+        raise RuntimeError(_explain(data["error"], getattr(r, "status_code", None)))
+    return data.get("result") or {}
+
+
+def campaigns_brief(token, login, base=None):
+    """Кампании клиента с типом и состоянием — чтобы выбрать эталон для шаблона."""
+    res = call(token, "campaigns", "get", {
+        "SelectionCriteria": {},
+        "FieldNames": ["Id", "Name", "Type", "Status", "State"],
+    }, login=login, base=base)
+    camps = res.get("Campaigns", [])
+    camps.sort(key=lambda c: (c.get("Name") or "").lower())
+    return camps
+
+
+# Поля, которые вообще имеет смысл снимать в шаблон. Всё остальное (деньги на счёте,
+# статистика, идентификаторы) к настройкам не относится.
+SNAPSHOT_COMMON = ["Id", "Name", "Type", "StartDate", "EndDate", "TimeZone", "DailyBudget",
+                   "NegativeKeywords", "BlockedIps", "ExcludedSites", "TimeTargeting"]
+SNAPSHOT_UNIFIED = ["BiddingStrategy", "Settings", "CounterIds", "PriorityGoals",
+                    "AttributionModel", "TrackingParams", "NegativeKeywordSharedSetIds"]
+
+
+def campaign_full(token, login, campaign_id, base=None):
+    """Все настройки одной кампании — исходник для «снять шаблон с этой кампании»."""
+    res = call(token, "campaigns", "get", {
+        "SelectionCriteria": {"Ids": [int(campaign_id)]},
+        "FieldNames": SNAPSHOT_COMMON,
+        "UnifiedCampaignFieldNames": SNAPSHOT_UNIFIED,
+    }, login=login, base=base)
+    camps = res.get("Campaigns") or []
+    if not camps:
+        raise RuntimeError("Кампания не найдена или недоступна под этим доступом")
+    return camps[0]
+
+
+def bidmodifiers_for(token, login, campaign_ids, base=None):
+    """Корректировки ставок кампаний — вторая половина слепка."""
+    ids = [int(x) for x in campaign_ids]
+    if not ids:
+        return []
+    res = call(token, "bidmodifiers", "get", {
+        "SelectionCriteria": {"Levels": ["CAMPAIGN"], "CampaignIds": ids},
+        "FieldNames": ["Id", "CampaignId", "Level", "Type"],
+        "DemographicsAdjustmentFieldNames": ["Age", "Gender", "BidModifier"],
+        "SerpLayoutAdjustmentFieldNames": ["SerpLayout", "BidModifier"],
+        "MobileAdjustmentFieldNames": ["BidModifier", "OperatingSystemType"],
+        "DesktopAdjustmentFieldNames": ["BidModifier"],
+        "TabletAdjustmentFieldNames": ["BidModifier"],
+        "SmartTvAdjustmentFieldNames": ["BidModifier"],
+        "RegionalAdjustmentFieldNames": ["RegionId", "BidModifier"],
+    }, login=login, base=base)
+    return res.get("BidModifiers", [])
+
+
+# ═══════════════════════ ИЗМЕНЯЮЩИЕ ВЫЗОВЫ ═══════════════════════
+# Ниже — всё, что создаёт и удаляет сущности на аккаунте клиента. Держим в одном
+# месте намеренно: любой такой вызов виден при чтении файла, а не спрятан по коду.
+
+def campaigns_add(token, login, campaigns, base=None):
+    """Создать кампании. Возвращает [{'Id'} | {'Errors': [...], 'Warnings': [...]}].
+
+    Кампания без групп и объявлений создаётся черновиком: показов нет, деньги не тратятся,
+    пока специалист не наполнит её и не отправит на модерацию.
+    """
+    res = call(token, "campaigns", "add", {"Campaigns": campaigns},
+               login=login, base=base, timeout=120)
+    return res.get("AddResults", [])
+
+
+def campaigns_delete(token, login, ids, base=None):
+    """Удалить кампании — нужно, чтобы можно было убрать промах сразу после создания.
+    Директ разрешает удалять только кампании без открутки."""
+    res = call(token, "campaigns", "delete",
+               {"SelectionCriteria": {"Ids": [int(x) for x in ids]}},
+               login=login, base=base, timeout=120)
+    return res.get("DeleteResults", [])
+
+
+def bidmodifiers_add(token, login, modifiers, base=None):
+    """Повесить корректировки ставок. В одном элементе допустима ровно одна корректировка —
+    Директ отвечает ошибкой 5009, если положить две, поэтому каждая уходит отдельно."""
+    res = call(token, "bidmodifiers", "add", {"BidModifiers": modifiers},
+               login=login, base=base, timeout=120)
+    return res.get("AddResults", [])
