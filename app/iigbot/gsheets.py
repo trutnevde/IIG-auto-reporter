@@ -130,21 +130,69 @@ def sheet_title(gc, sid):
     return gc.open_by_key(sid).title
 
 
-def copy_as_autoreporter(source_id, domain, gc=None, title=None):
-    """Сделать копию таблицы клиента под именем, по которому её находит выгрузка.
+def copy_as_autoreporter(source_id, domain, owner_email=None, title=None, notify=True):
+    """Скопировать таблицу клиента под именем, по которому её находит выгрузка.
 
-    Исходную таблицу не трогаем: клиент в ней работает, и переименовывать её ради нашего
-    поиска нельзя. Копия получает название «Auto-Reporter ОТЧЕТ <домен>» и те же права,
-    что у оригинала, — чтобы у людей не пропал доступ и не открылось лишнего.
+    ВАЖНО: работает только там, где служебному аккаунту есть куда положить файл —
+    в Google Workspace или на общем диске. У обычного служебного аккаунта места на Диске
+    нет вовсе (проверено: Google отвечает «storage quota has been exceeded»), поэтому
+    копию делает человек — и сразу оказывается её владельцем, что и требуется.
+
+    Исходную таблицу не трогаем: клиент в ней работает, переименовывать её нельзя.
+    Если копию всё же создаёт служебный аккаунт, владельцем сначала оказывается он — это
+    хрупко: сменится ключ, и файл останется без хозяина. Поэтому сразу же:
+      * человеку выдаётся право редактора;
+      * ему же уходит передача владения. Для обычных gmail-аккаунтов Google требует,
+        чтобы новый владелец её принял, — до этого он остаётся редактором, а файл рабочим.
+
+    Права исходной таблицы не копируем намеренно: служебный аккаунт видит её только на
+    чтение и списка доступов прочитать не может, а раздавать наугад чужой доступ нельзя.
     """
-    import gspread
     from google.oauth2.service_account import Credentials
+    from google.auth.transport.requests import AuthorizedSession
     creds = Credentials.from_service_account_file(key_path(), scopes=SCOPES_COPY)
-    gc = gc or gspread.authorize(creds)
+    s = AuthorizedSession(creds)
     name = title or "Auto-Reporter ОТЧЕТ {}".format(str(domain).strip().lower())
-    sh = gc.copy(source_id, title=name, copy_permissions=True)
-    return {"id": sh.id, "title": name,
-            "url": "https://docs.google.com/spreadsheets/d/{}".format(sh.id)}
+
+    r = s.post("https://www.googleapis.com/drive/v3/files/{}/copy".format(source_id),
+               json={"name": name}, params={"fields": "id,name"}, timeout=GOOGLE_TIMEOUT)
+    if r.status_code != 200:
+        body = (r.text or "")[:300]
+        if "storage quota" in body:
+            # У служебного аккаунта без Google Workspace нет собственного места на Диске:
+            # он умеет читать и править чужие файлы, но владеть своими — нет. Поэтому
+            # копию делает человек, и он же сразу оказывается владельцем.
+            raise RuntimeError(
+                "Служебный аккаунт не может владеть файлами: у него нет места на Google-диске. "
+                "Копию нужно сделать из своего аккаунта: Файл → Создать копию, назвать "
+                "«{}» и дать служебному аккаунту право редактора.".format(name))
+        raise RuntimeError("Не удалось скопировать таблицу: HTTP {} {}".format(r.status_code, body))
+    new_id = r.json()["id"]
+    out = {"id": new_id, "title": name, "owner": None, "pending": False,
+           "url": "https://docs.google.com/spreadsheets/d/{}".format(new_id)}
+    if not owner_email:
+        return out
+
+    p = s.post("https://www.googleapis.com/drive/v3/files/{}/permissions".format(new_id),
+               json={"type": "user", "role": "writer", "emailAddress": owner_email},
+               params={"sendNotificationEmail": "true" if notify else "false",
+                       "fields": "id,role"}, timeout=GOOGLE_TIMEOUT)
+    if p.status_code != 200:
+        out["error"] = "доступ не выдан: HTTP {} {}".format(p.status_code, (p.text or "")[:160])
+        return out
+    out["owner"] = owner_email
+    perm_id = p.json().get("id")
+
+    # передача владения: у обычных аккаунтов — приглашением, которое человек принимает
+    t = s.patch("https://www.googleapis.com/drive/v3/permissions/{}".format(perm_id),
+                json={"role": "writer", "pendingOwner": True},
+                params={"fileId": new_id, "fields": "id,pendingOwner"}, timeout=GOOGLE_TIMEOUT)
+    if t.status_code == 200 and t.json().get("pendingOwner"):
+        out["pending"] = True
+    else:
+        out["transfer_note"] = "передача владения не отправилась (HTTP {}): {}".format(
+            t.status_code, (t.text or "")[:160])
+    return out
 
 
 def discover(gc=None, force=False):
