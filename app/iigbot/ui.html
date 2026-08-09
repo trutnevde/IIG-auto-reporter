@@ -433,6 +433,24 @@
     table{page-break-inside:auto}tr{page-break-inside:avoid}
     thead{display:table-header-group}
   }
+  /* Группы срочности в «Ждут ответа» и напоминание в «Сторонних» */
+  .dlg-grp{display:flex;align-items:center;gap:9px;margin:16px 0 8px;font-size:13px;font-weight:700}
+  .dlg-grp .n{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;
+    color:color-mix(in srgb,var(--gc) 68%,var(--ink));
+    background:color-mix(in srgb,var(--gc) 14%,var(--surface));
+    border:1px solid color-mix(in srgb,var(--gc) 26%,transparent)}
+  .dlg-grp .l{width:8px;height:8px;border-radius:50%;background:var(--gc);flex:0 0 auto}
+  .ext-late{--ac:var(--amber);display:flex;align-items:flex-start;gap:11px;padding:12px 14px;
+    border-radius:11px;margin-bottom:14px;
+    border:1px solid color-mix(in srgb,var(--ac) 26%,transparent);
+    background:linear-gradient(96deg,color-mix(in srgb,var(--ac) 10%,var(--surface)),var(--surface) 74%)}
+  .ext-late svg{width:19px;height:19px;flex:0 0 auto;color:var(--ac);margin-top:1px}
+  .ext-late b{display:block;font-size:13px;font-weight:700;color:color-mix(in srgb,var(--ac) 64%,var(--ink))}
+  .ext-late span{display:block;font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.45}
+  .ext-days{font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:7px;white-space:nowrap;
+    color:color-mix(in srgb,var(--dc) 68%,var(--ink));
+    background:color-mix(in srgb,var(--dc) 13%,var(--surface));
+    border:1px solid color-mix(in srgb,var(--dc) 24%,transparent)}
   /* ══════════ Шаблоны кампаний ══════════ */
   /* Строка шаблона повторяет строку клиента: та же сетка, аватар и стрелка —
      раздел не должен выглядеть чужим среди остальных. */
@@ -4358,6 +4376,9 @@ async function doImportHistory(){
     setTimeout(renderDialogs,1200);
   }catch(e){errToast(e);res.textContent='Ошибка: '+e.message;}
 }
+
+/* «Только мои» в списке ожидающих: у специалиста своих проектов пять, а список общий. */
+function dlgMine(on){remember('dialogs',{mine:!!on});renderDialogs();}
 async function renderDialogs(){
   const host=el('v_dialogs');host.innerHTML=skeleton('rows',5);
   let d;try{d=await api('dialogs');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
@@ -4365,14 +4386,30 @@ async function renderDialogs(){
   const nb=el('navDialogs');if(nb){const n=d.counts.waiting;nb.textContent=n;nb.style.display=n?'':'none';}
   const rowCls=h=>h>=d.crit_h?'dlg-crit':(h>=d.warn_h?'dlg-warn':'');
   const canAct=true;   // список ведут все, включая работодателя
-  const rows=w.map(r=>`<tr class="${rowCls(r.wait_h)}" data-sw-act="dlgOff" data-sw-id="${r.chat_id}" data-sw-label="Ответ не нужен">
+  // Список был одной кучей: срочное тонуло среди свежего, а свои проекты — среди чужих.
+  const dlgF=recall('dialogs',{mine:false});
+  const mineOn=dlgF.mine&&ME&&ME.id;
+  const wAll=w, wf=mineOn?w.filter(r=>r.owner===ME.id):w;
+  const dlgRow=r=>`<tr class="${rowCls(r.wait_h)}" data-sw-act="dlgOff" data-sw-id="${r.chat_id}" data-sw-label="Ответ не нужен">
       <td><b>${esc(r.client_name||r.chat_title||'—')}</b><div class="mini-2">${esc(r.chat_title||'')}</div></td>
       <td class="nowrap"><b style="color:${r.wait_h>=d.crit_h?'var(--red)':(r.wait_h>=d.warn_h?'var(--amber)':'var(--ink)')}">${waitFmt(r.wait_h)}</b><div class="mini-2">${fmtWhen(r.last_client_at)}</div></td>
       <td><div class="dlg-msg">${esc(r.last_client_text||'—')}</div><div class="mini-2">от: ${esc(r.last_client_name||'клиент')}</div></td>
       <td class="nowrap mini-2">${r.owner_name?esc(r.owner_name):'<span class="muted">без владельца</span>'}</td>
       <td class="nowrap mini-2">${r.last_our_at?('мы: '+fmtWhen(r.last_our_at)):'<span class="muted">мы не писали</span>'}</td>
       <td class="nowrap">${canAct?`<button class="btn sm" onclick="dlgOff(${r.chat_id},this)" title="Клиент написал «Отлично» — отвечать нечего. Уберём из списка до его следующего сообщения."><svg class="ic"><use href="#i-checkbox-circle"/></svg> Ответ не нужен</button>`:''}</td>
-    </tr>`).join('');
+    </tr>`;
+  // три группы по срочности: сначала то, что горит
+  const dlgGroups=[
+    {key:'crit', name:'Больше суток', col:'red',   pick:r=>(r.wait_h||0)>=d.crit_h},
+    {key:'warn', name:'Больше '+d.warn_h+' часов', col:'amber',
+      pick:r=>(r.wait_h||0)>=d.warn_h&&(r.wait_h||0)<d.crit_h},
+    {key:'fresh',name:'Свежие',       col:'slate', pick:r=>(r.wait_h||0)<d.warn_h},
+  ].map(g=>({...g, items:wf.filter(g.pick)})).filter(g=>g.items.length);
+  const rows=dlgGroups.map(g=>
+    `<tr><td colspan="6" style="border:0;padding:0">
+       <div class="dlg-grp" style="--gc:var(--${g.col})"><span class="l"></span>${esc(g.name)}
+         <span class="n">${g.items.length}</span></div></td></tr>`+
+    g.items.map(dlgRow).join('')).join('');
   const hidRows=hid.map(r=>`<tr>
       <td><b>${esc(r.client_name||r.chat_title||'—')}</b><div class="mini-2">${esc(r.chat_title||'')}</div></td>
       <td><div class="dlg-msg">${esc(r.last_client_text||'—')}</div><div class="mini-2">${fmtWhen(r.last_client_at)}${r.wait_off_by_name?(' · снял: '+esc(r.wait_off_by_name)):''}</div></td>
@@ -4386,6 +4423,11 @@ async function renderDialogs(){
   host.innerHTML=`
     <h2 class="title"><svg class="ic"><use href="#i-time"/></svg> Ждут ответа</h2>
     <p class="sub">Клиенты, которые написали в чат, а мы им ещё не ответили. Считается по реальной переписке: отчёт бота ответом не считается. Жёлтый — ждёт больше ${d.warn_h} ч, красный — больше суток (тогда же прилетает уведомление владельцу проекта).</p>
+    ${(ME&&ME.id)?`<div class="cli-tools">
+      <div class="cli-chips">
+        <button class="btn sm${mineOn?'':' primary'}" style="border:0;border-radius:0" onclick="dlgMine(false)">Все (${wAll.length})</button>
+        <button class="btn sm${mineOn?' primary':''}" style="border:0;border-radius:0" onclick="dlgMine(true)">Только мои (${wAll.filter(r=>r.owner===ME.id).length})</button>
+      </div></div>`:''}
     ${!d.has_data?`<div class="note" style="margin-bottom:14px"><svg class="ic"><use href="#i-inbox-2"/></svg> Пока нет данных о переписке — Telegram не отдаёт боту историю задним числом, учёт идёт с момента подключения. Ниже можно подтянуть прошлое.</div>`:''}
     ${(ME&&ME.role!=='observer')?`<details style="margin-bottom:14px"><summary class="muted" style="cursor:pointer;font-size:13px"><svg class="ic"><use href="#i-inbox-archive"/></svg> Подтянуть историю задним числом</summary>
       <div class="panel" style="margin-top:8px"><div class="body">
@@ -5019,6 +5061,8 @@ const CHANGELOG=[
   '<b>Клавиша «/» ставит курсор в поиск</b> текущего раздела.',
   '<b>Кабинет можно печатать.</b> На бумагу уходит только содержимое раздела — без меню, шапки и кнопок.',
   '<b>Вкладку не закрыть молча посреди долгой операции</b> — браузер переспросит.',
+  '<b>«Ждут ответа» разложены по срочности.</b> Три группы — больше суток, больше нескольких часов, свежие — и переключатель «Только мои»: в общем списке своих проектов было не найти.',
+  '<b>«Сторонние»: видно, когда клиента сдавали в последний раз.</b> Их собирают руками, поэтому про них проще всего забыть. У каждого стоит отметка «9 дн. назад» или «не собирали», а сверху — напоминание, кого не сдавали больше недели.',
   '<b>Работа с клавиатуры и читалкой экрана.</b> У всех таблиц появились заголовки столбцов и подписи, у полей — имена; там, где поле стоит в строке таблицы, имя собирается из заголовка столбца и клиента в строке.',
  ]},
 {date:'2026-08-08',tag:'fix',title:'Перезагрузка больше не выкидывает в Обзор, а раздел «Шаблоны» — на компонентах кабинета',
@@ -5882,11 +5926,32 @@ async function copyToClip(text,okmsg,btn){
     try{document.execCommand('copy');done();}catch(_){toast('Не удалось скопировать','err');}ta.remove();}
 }
 let EXT_SHOWALL=false;
+
+/* Сколько дней назад клиента сдавали в последний раз — цветом, как в бюджетах. */
+function extDaysChip(d){
+  if(d===null||d===undefined)return '<span class="ext-days" style="--dc:var(--red)">не собирали</span>';
+  const col=d>=14?'red':(d>=7?'amber':'green');
+  const w=d===0?'сегодня':(d===1?'вчера':d+' дн. назад');
+  return '<span class="ext-days" style="--dc:var(--'+col+')">'+w+'</span>';
+}
+function extPlural(n){
+  const t=n%100, o=n%10;
+  if(t>=11&&t<=14)return 'клиентов';
+  return o===1?'клиент':(o>=2&&o<=4?'клиента':'клиентов');
+}
 async function renderExternal(){
   const host=el('v_external');host.innerHTML=skeleton('rows',5);
   let cls;
   try{cls=await api('clients');CLIENTS=cls;}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   const ext=cls.filter(c=>c.delivery==='external');
+  // Сторонних собирают руками, и про них проще всего забыть: показываем, когда сдавали
+  // в последний раз, и отдельно — кого не сдавали больше недели.
+  const extDays=c=>{
+    if(!c.last_sent)return null;
+    const t=new Date(c.last_sent); if(isNaN(t))return null;
+    return Math.floor((Date.now()-t.getTime())/86400000);
+  };
+  const late=ext.filter(c=>{const d=extDays(c);return d===null||d>=7;});
   const shownCls=EXT_SHOWALL?cls:ext;
   const canEdit=ME&&ME.role!=='observer';
   const rows=shownCls.map(c=>{
@@ -5897,13 +5962,17 @@ async function renderExternal(){
     return `<label class="ext-pick"><input type="checkbox" class="extchk" value="${esc(c.login)}" ${isExt?'checked':''}>
       <span class="ext-nm">${esc(c.name||c.login)}</span>
       <span class="muted" style="font-size:12px">${esc(c.login)}</span>
-      ${badge}<span class="grow"></span>${toggle}</label>`;
+      ${badge}${isExt?extDaysChip(extDays(c)):''}<span class="grow"></span>${toggle}</label>`;
   }).join('');
   host.innerHTML=`
     <h2 class="title">Сторонний мессенджер</h2>
     <p class="sub">Клиенты, помеченные как <b><svg class="ic"><use href="#i-upload-2"/></svg> Сторонний</b> (WhatsApp, VK, MAX, Яндекс и т.п.), не участвуют
       в бот-рассылке — их отчёты собираешь тут и вставляешь в чат вручную. <b>Сбор отчёта = зачёт в «Контроле»</b>
       (работодатель видит клиента сданным). Пометить клиента — тумблером ниже или в его карточке.</p>
+    ${late.length?`<div class="ext-late"><svg class="ic"><use href="#i-error-warning"/></svg>
+      <div><b>Давно не собирали: ${late.length} ${extPlural(late.length)}</b>
+        <span>${late.slice(0,8).map(c=>esc(c.name||c.login)+' — '+(extDays(c)===null?'ни разу':('' + extDays(c) + ' дн.'))).join(', ')}${late.length>8?' и ещё '+(late.length-8):''}.
+        Сторонние клиенты не участвуют в бот-рассылке — их собирают руками, и про них легко забыть.</span></div></div>`:''}
     <div class="panel" style="padding:14px;margin-bottom:14px">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
         <b>${EXT_SHOWALL?'Все клиенты':'Сторонние'} (${shownCls.length}):</b>

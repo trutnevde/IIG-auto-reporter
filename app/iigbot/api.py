@@ -380,6 +380,7 @@ class Api:
     def clients(self):
         binds = {b["login"]: b for b in self.db.list_bindings(self._owner())}
         out = []
+        sent = self.db.last_send_map()
         for c in self.db.list_clients(self._owner()):
             b = binds.get(c["login"])
             try:
@@ -394,6 +395,8 @@ class Api:
                 "added_at": (c["added_at"] if "added_at" in c.keys() else None) or c["updated_at"],
                 "chat_id": b["chat_id"] if b else None,
                 "chat_title": self._chat_title(b["chat_id"]) if b else None,
+                # когда клиента последний раз сдавали: у сторонних по этому видно, кого забыли
+                "last_sent": sent.get(c["login"]),
             })
         return out
 

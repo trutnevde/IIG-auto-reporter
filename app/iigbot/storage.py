@@ -1018,6 +1018,19 @@ class Storage:
         r = self.conn.execute("SELECT login FROM excuses WHERE id=?", (excuse_id,)).fetchone()
         return r["login"] if r else None
 
+    def last_send_map(self, logins=None):
+        """Когда по каждому клиенту последний раз уходил отчёт — одним запросом.
+
+        По одному last_send_at на четыреста клиентов — четыреста обращений к базе;
+        разделу «Сторонние» нужна вся картина сразу."""
+        rows = self.conn.execute(
+            "SELECT login, MAX(sent_at) m FROM send_log WHERE status='sent' GROUP BY login").fetchall()
+        out = {r["login"]: r["m"] for r in rows}
+        if logins is None:
+            return out
+        keep = set(logins)
+        return {k: v for k, v in out.items() if k in keep}
+
     def last_send_at(self, login):
         r = self.conn.execute(
             "SELECT MAX(sent_at) m FROM send_log WHERE login=? AND status='sent'", (login,)).fetchone()
