@@ -2079,7 +2079,8 @@ class Api:
         Отдаём с сервера, а не держим списками в разметке: иначе они разъедутся при
         первом же изменении в Директе."""
         from . import presets as P
-        return {"spec": P.spec(self._preset_labels()), "blank": P.blank()}
+        return {"spec": P.spec(self._preset_labels()), "blank": P.blank(),
+                "standard": P.agency_standard()}
 
     @safe
     def preset_label_set(self, code, text):

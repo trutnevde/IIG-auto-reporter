@@ -75,6 +75,9 @@ NETWORK_STRATEGIES = [
 # Дневной бюджет Директ принимает только с ручными ставками: на автоматических стратегиях
 # бюджетом управляет сама стратегия.
 MANUAL_SEARCH = {"HIGHEST_POSITION"}
+# «Максимум кликов с ручными ставками» Директ принимает только с выключенными сетями:
+# на любую другую сетевую стратегию отвечает «Стратегии не совместимы» (проверено запросом).
+MANUAL_NETWORK = "SERVING_OFF"
 
 # Настройки кампании. src говорит, откуда взята подпись:
 #   "ui"  — так настройка называется в интерфейсе Директа (проверено по справке);
@@ -182,6 +185,19 @@ MODIFIER_KINDS = [
 # Чего в списке нет и почему. Первые две Директ отклоняет для Единой перфоманс-кампании
 # («Корректировка данного типа не поддерживается» — проверено), остальные ссылаются на
 # объекты конкретного аккаунта и на другом аккаунте не существуют.
+# Настройки, которых нет в API Директа: через кабинет их не выставить, только руками.
+NOT_IN_API = [
+    {"name": "Приоритизация объявлений",
+     "why": "в списке полей ЕПК такого нет; ближе всего настройка с кодом "
+            "CAMPAIGN_EXACT_PHRASE_MATCHING_ENABLED — «Включает отбор фразы по точности "
+            "соответствия». Если в интерфейсе это она и есть, переименуй её кнопкой рядом"},
+    {"name": "Персонализация",
+     "why": "среди полей ЕПК и настроек Settings такого нет — выставляется только в интерфейсе"},
+    {"name": "Блок «Директ помогает» целиком",
+     "why": "через API доступна только одна его настройка — ALTERNATIVE_TEXTS_ENABLED "
+            "(«Оптимизировать текст объявлений»); остальное в интерфейсе"},
+]
+
 NOT_SUPPORTED = [
     {"name": "Отключение показов по IP-адресам",
      "why": "Директ отвечает «Поле задано неверно: BlockedIps» на любой адрес — в ЕПК не работает"},
@@ -237,6 +253,7 @@ def spec(labels=None):
         "attribution": ATTRIBUTION,
         "modifier_kinds": MODIFIER_KINDS,
         "not_portable": MODIFIERS_NOT_PORTABLE, "not_supported": NOT_SUPPORTED,
+        "not_in_api": NOT_IN_API,
         "ages": AGES, "genders": GENDERS, "devices": DEVICES, "serp_layouts": SERP_LAYOUTS,
         "income_grades": INCOME_GRADES, "mobile_os": MOBILE_OS,
         "substitutions": SUBSTITUTIONS,
@@ -265,6 +282,38 @@ def blank():
         "use_client_counter": True,
         "name_mask": "{клиент} — Поиск и Сети",
     }
+
+
+def agency_standard():
+    """Стандарт агентства одной кнопкой — ровно то, что выставляют руками на каждом проекте.
+
+    Что сюда попало и почему именно так:
+      * «Максимум кликов с ручными ставками» и, как требует Директ, выключенные сети;
+      * бюджет — поле DailyBudget: у ручных ставок Директ показывает его недельным
+        и пересчитывает сам, отдельного недельного поля в API нет;
+      * мониторинг сайта включён, расширенный географический таргетинг выключен,
+        «Оптимизировать текст объявлений» выключено;
+      * корректировки: младше 18 — показы выключены, эксклюзивное размещение и
+        продвижение в саджесте по +30%.
+    Минус-фразы и метку каждый досыпает свои — их тут нет намеренно.
+    """
+    p = blank()
+    p["strategy"] = {"search": {"type": "HIGHEST_POSITION"},
+                     "network": {"type": MANUAL_NETWORK}}
+    p["settings"] = {x["id"]: x["default"] for x in SETTINGS}
+    p["settings"]["ENABLE_SITE_MONITORING"] = "YES"
+    p["settings"]["ENABLE_AREA_OF_INTEREST_TARGETING"] = "NO"
+    p["settings"]["ENABLE_CURRENT_AREA_TARGETING"] = "NO"
+    p["settings"]["ENABLE_REGULAR_AREA_TARGETING"] = "NO"
+    p["settings"]["ALTERNATIVE_TEXTS_ENABLED"] = "NO"
+    p["settings"]["CAMPAIGN_EXACT_PHRASE_MATCHING_ENABLED"] = "YES"
+    p["modifiers"] = [
+        {"kind": "demography", "age": "AGE_0_17", "gender": "", "value": 0},
+        {"kind": "serp", "layout": "SUGGEST", "value": 130},
+        {"kind": "serp", "layout": "ALONE", "value": 130},
+    ]
+    p["name_mask"] = "{клиент} — Поиск"
+    return p
 
 
 # ─────────────────────────── снять шаблон с готовой кампании ───────────────────────────
@@ -576,6 +625,9 @@ def validate(preset):
     n = (p.get("strategy") or {}).get("network") or {}
     if n.get("type") and n["type"] not in {x["id"] for x in NETWORK_STRATEGIES}:
         bad.append("Неизвестная стратегия в сетях")
+    if s.get("type") in MANUAL_SEARCH and n.get("type") != MANUAL_NETWORK:
+        bad.append("С «Максимумом кликов с ручными ставками» Директ принимает только "
+                   "выключённые показы в сетях — поставь «Показы отключены»")
     if p.get("attribution") and p["attribution"] not in {x["id"] for x in ATTRIBUTION}:
         bad.append("Неизвестная модель атрибуции")
     for kw in (p.get("negative_keywords") or []):

@@ -3543,7 +3543,7 @@ async function renderPresets(){
   const host=el('v_presets');
   if(!PRE.spec){
     host.innerHTML=skeleton('rows',4);
-    try{const s=await api('preset_spec');PRE.spec=s.spec;PRE.blank=s.blank;}
+    try{const s=await api('preset_spec');PRE.spec=s.spec;PRE.blank=s.blank;PRE.std=s.standard;}
     catch(e){host.innerHTML=errBlock(e,()=>renderPresets());return;}
   }
   if(PRE.edit){presetDrawForm();return;}
@@ -3609,8 +3609,9 @@ async function renderPresets(){
     <div class="cli-tools">
       <input class="cli-search" type="search" placeholder="Поиск по шаблонам…" value="${esc(PRE.q||'')}"
         oninput="PRE.q=this.value;presetRows()">
-      <button class="btn primary" onclick="presetNew()"><svg class="ic"><use href="#i-add-circle"/></svg> Новый шаблон</button>
+      <button class="btn primary" onclick="presetStd()"><svg class="ic"><use href="#i-sparkling-2"/></svg> Стандарт агентства</button>
       <button class="btn" onclick="presetGrab()"><svg class="ic"><use href="#i-focus-3"/></svg> Снять с готовой кампании</button>
+      <button class="btn" onclick="presetNew()"><svg class="ic"><use href="#i-add-circle"/></svg> Пустой шаблон</button>
     </div>
     ${PRE.list.length?`<div class="panel cli-panel" style="margin-bottom:18px">
       <div class="prs-hdr"><div>Шаблон</div><div>Что внутри</div><div>Применений</div><div></div><div></div></div>
@@ -3646,8 +3647,20 @@ function presetRows(){
 }
 
 /* ---------- форма шаблона ---------- */
+
+/* Стандарт агентства одной кнопкой: ровно тот набор, что выставляют руками на каждом проекте.
+   Минус-фразы, метку и бюджет досыпаешь свои — они у всех разные. */
+async function presetStd(){
+  if(!PRE.spec){try{const s=await api('preset_spec');PRE.spec=s.spec;PRE.blank=s.blank;PRE.std=s.standard;}catch(e){return;}}
+  if(!PRE.std){try{const s=await api('preset_spec');PRE.std=s.standard;}catch(e){return;}}
+  PRE.edit={id:null,name:'Стандарт агентства',note:'Ручные ставки, сети выключены, корректировки и мониторинг',
+            shared:!!(ME&&ME.role==='admin'),data:JSON.parse(JSON.stringify(PRE.std))};
+  PRE.tab='strategy';
+  toast('Заготовка собрана — впиши бюджет, минус-фразы и метку','ok');
+  renderPresets();
+}
 async function presetNew(){
-  if(!PRE.blank){try{const s=await api('preset_spec');PRE.spec=s.spec;PRE.blank=s.blank;}catch(e){return;}}
+  if(!PRE.blank){try{const s=await api('preset_spec');PRE.spec=s.spec;PRE.blank=s.blank;PRE.std=s.standard;}catch(e){return;}}
   PRE.edit={id:null,name:'',note:'',shared:false,data:JSON.parse(JSON.stringify(PRE.blank))};
   PRE.tab='strategy'; renderPresets();
 }
@@ -3668,6 +3681,15 @@ const PRS_TABS=[
   {id:'other',    name:'Прочее',        ic:'i-settings-3'},
 ];
 
+
+/* Ручные ставки Директ принимает только с выключенными сетями — переключаем сразу,
+   иначе он отобьёт запрос словами «Стратегии не совместимы». */
+function presetStrat(v){
+  presetStash();
+  PRE.edit.data.strategy.search.type=v;
+  if(v==='HIGHEST_POSITION')PRE.edit.data.strategy.network={type:'SERVING_OFF'};
+  presetDrawForm();
+}
 function presetDrawForm(){
   const host=el('v_presets'), S=PRE.spec, d=PRE.edit.data;
   const opt=(arr,cur)=>arr.map(x=>`<option value="${esc(String(x.id))}"${String(x.id)===String(cur)?' selected':''}>${esc(x.name)}${/^[A-Z_]+$/.test(String(x.id))?' · '+esc(String(x.id)):''}</option>`).join('');
@@ -3678,7 +3700,9 @@ function presetDrawForm(){
   let body='';
   if(PRE.tab==='strategy'){
     body=`<div class="grid2">
-      <div class="field"><label>Стратегия</label><select id="prSearch">${opt(S.search_strategies,s.type)}</select></div>
+      <div class="field"><label>Стратегия</label>
+        <select id="prSearch" onchange="presetStrat(this.value)">${opt(S.search_strategies,s.type)}</select>
+        ${s.type==='HIGHEST_POSITION'?'<div class="hint">С ручными ставками Директ принимает только выключенные сети, а бюджет берёт из поля «Дневной бюджет» и показывает его недельным</div>':''}</div>
       <div class="field"><label>Стратегия в сетях</label><select id="prNet">${opt(S.network_strategies,n.type)}</select></div>
       <div class="field"><label>Недельный бюджет, ₽</label>
         <input id="prWeekly" type="number" min="300" step="100" value="${s.weekly!=null?s.weekly:''}" placeholder="3000">
@@ -3733,7 +3757,7 @@ function presetDrawForm(){
       </div>
       <div id="prMods"></div>
       <details style="margin-top:12px"><summary class="sy-note" style="cursor:pointer">Чего нет в шаблоне и почему</summary>
-        <div style="margin-top:8px">${[].concat(S.not_portable||[],S.not_supported||[]).map(x=>`<div class="sy-key">
+        <div style="margin-top:8px">${[].concat(S.not_portable||[],S.not_supported||[],S.not_in_api||[]).map(x=>`<div class="sy-key">
           <span class="kk">${esc(x.name)}</span><span class="vv" style="font-family:inherit">${esc(x.why)}</span></div>`).join('')}</div></details>`;
   } else {
     body=`<div class="grid2">
@@ -3950,7 +3974,7 @@ async function presetGrab(){
   if(!cid)return;
   try{
     const r=await api('preset_from_campaign',login,cid);
-    if(!PRE.spec){const s=await api('preset_spec');PRE.spec=s.spec;PRE.blank=s.blank;}
+    if(!PRE.spec){const s=await api('preset_spec');PRE.spec=s.spec;PRE.blank=s.blank;PRE.std=s.standard;}
     PRE.edit={id:null,name:'Стандарт: '+(r.source||'').slice(0,60),note:'Снят с кампании «'+(r.source||'')+'»',
               shared:false,data:r.data};
     PRE.tab='strategy';
@@ -5048,6 +5072,12 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-09',tag:'fix',title:'Шаблоны: кнопка «Стандарт агентства» и защита от несочетаемых стратегий',
+ sum:'Наш набор одним нажатием; Директ больше не отбивает запрос',items:[
+  '<b>Кнопка «Стандарт агентства».</b> Собирает заготовку с нашим набором сразу: ручные ставки, сети выключены, мониторинг сайта включён, расширенный географический таргетинг выключен, «Оптимизировать текст объявлений» выключено, корректировки — младше 18 показы выключены, продвижение в саджесте и эксклюзивное размещение по +30%. Бюджет, минус-фразы и метку вписываешь свои — они у всех разные.',
+  '<b>Найдено и исправлено: ручные ставки не сочетаются с сетями.</b> Директ отвечает «Стратегии не совместимы» на любую сетевую стратегию, кроме выключенных показов. Раньше шаблон с ручными ставками и сетями «Как на поиске» сохранялся, а разваливался только в момент создания кампании. Теперь кабинет говорит об этом при сохранении, а при выборе ручных ставок сам ставит «Показы отключены».',
+  '<b>Видно, чего в API Директа нет вообще.</b> «Приоритизация объявлений» и «Персонализация» среди полей ЕПК отсутствуют — их выставляют только в интерфейсе Директа. Это написано в разделе «Чего нет в шаблоне и почему», чтобы не искать.',
+ ]},
 {date:'2026-08-09',tag:'fix',title:'Даты в одном формате, страницы в длинных списках, фильтры и печать',
  sum:'09.08.2026 везде, журнал с поиском и группировкой, выгрузка долгов',items:[
   '<b>Дата теперь везде выглядит одинаково: 09.08.2026.</b> Раньше в разных местах было три вида — «9 августа», «07.08.26» и сырое «2026-08-07»; в истории отправок время писалось машинным «2026-08-08 02:19».',
