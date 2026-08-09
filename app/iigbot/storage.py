@@ -517,6 +517,14 @@ class Storage:
                 ok          INTEGER,
                 error       TEXT
             )""")
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS sheet_cols (
+                login    TEXT NOT NULL,       -- клиент
+                title    TEXT NOT NULL,       -- заголовок столбца как он написан в шапке листа
+                goal_ids TEXT NOT NULL,       -- id целей через запятую; пусто = не заполнять
+                at       TEXT,
+                PRIMARY KEY (login, title)
+            )""")
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS audit (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -645,6 +653,36 @@ class Storage:
         rows = self.conn.execute(
             "SELECT login, sheet_id FROM clients WHERE sheet_id IS NOT NULL AND sheet_id<>''").fetchall()
         return {r["login"]: r["sheet_id"] for r in rows}
+
+    def set_sheet_col(self, login, title, goal_ids):
+        """Ручная разметка столбца таблицы: какие цели в него складывать.
+
+        goal_ids=None — снять разметку (вернуться к угадыванию по названию).
+        goal_ids=[]   — «столбец наш, но не заполнять»: так помечают колонки, которые
+                        ведут руками или тянут из Calltouch/Callibri.
+        """
+        t = (title or "").strip()
+        if not t:
+            return
+        if goal_ids is None:
+            self.conn.execute("DELETE FROM sheet_cols WHERE login=? AND title=?", (login, t))
+        else:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO sheet_cols(login,title,goal_ids,at) VALUES(?,?,?,?)",
+                (login, t, ",".join(str(g) for g in goal_ids), _now()))
+        self.conn.commit()
+
+    def sheet_cols(self, login=None):
+        """Разметка столбцов: для клиента — {заголовок: [id]}, без логина — {логин: {…}}."""
+        if login:
+            rows = self.conn.execute(
+                "SELECT title, goal_ids FROM sheet_cols WHERE login=?", (login,)).fetchall()
+            return {r["title"]: [x for x in (r["goal_ids"] or "").split(",") if x] for r in rows}
+        out = {}
+        for r in self.conn.execute("SELECT login, title, goal_ids FROM sheet_cols").fetchall():
+            out.setdefault(r["login"], {})[r["title"]] = [
+                x for x in (r["goal_ids"] or "").split(",") if x]
+        return out
 
     def set_client_delivery(self, login, mode):
         """Способ доставки клиента: 'external' (копипаст, сторонний мессенджер) или

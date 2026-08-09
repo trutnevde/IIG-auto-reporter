@@ -195,6 +195,26 @@ def copy_as_autoreporter(source_id, domain, owner_email=None, title=None, notify
     return out
 
 
+def domain_key(s):
+    """Домен к единому виду: без пробелов, регистра и www."""
+    return str(s or "").strip().lower().replace("www.", "")
+
+
+def match_sheet_domain(sheet_key, domains):
+    """Домен таблицы → домен клиента. Название таблицы пишет человек, и пишет по-разному:
+    «Auto-Reporter ОТЧЕТ Gabitex» вместо «gabitex.ru». Сначала ищем точное совпадение,
+    потом — по имени без зоны, но только если кандидат ровно один: иначе gabitex.ru и
+    gabitex.com оказались бы неразличимы."""
+    k = domain_key(sheet_key)
+    if k in domains:
+        return k
+    base = k.split(".")[0]
+    if not base:
+        return None
+    cands = [d for d in domains if d.split(".")[0] == base]
+    return cands[0] if len(cands) == 1 else None
+
+
 def discover(gc=None, force=False):
     """{домен: {'id','title'}} по всем таблицам, расшаренным на сервисный аккаунт.
 
@@ -230,11 +250,26 @@ _METRIC = {
 _COST_NOVAT = {"расход (без ндс)/евро", "расход (без ндс)", "расход без ндс", "расход (без ндс)/€"}
 
 
+_TAG_RE = re.compile(r"^[0-9a-zа-яё]{1,8}\s*[_.:]\s*")
+
+
+def _untag(n):
+    """Снимает служебную приставку-пространство имён: «е_переход в мессенджер» →
+    «переход в мессенджер». Разделители только _ . : — дефис не берём, он часто
+    внутри самого названия («18-25 лет»)."""
+    return _TAG_RE.sub("", n, count=1).strip()
+
+
 def match_goal(title, goals):
     """Сопоставляет заголовок столбца с целью Метрики. Возвращает goal_id или None.
 
-    Сначала точное совпадение имени, затем — по суффиксу (у mnak цели названы с
-    категориальным префиксом «Ticketsсloud …», а в столбце он вынесен в шапку-категорию).
+    Три захода, каждый следующий мягче предыдущего и срабатывает только при
+    ЕДИНСТВЕННОМ кандидате — иначе молча привяжем столбец не к той цели:
+      1) точное совпадение имени;
+      2) суффикс через пробел: у mnak цели названы «Ticketsсloud …», а в столбце
+         приставка вынесена в шапку-категорию;
+      3) без служебной приставки через _ . : — у gabitex цели названы «е_…»,
+         и по названию они сходятся со столбцом, а приставка мешала это увидеть.
     """
     n = _norm(title)
     if not n:
@@ -245,19 +280,34 @@ def match_goal(title, goals):
     cands = [g for g in goals if _norm(g["name"]).endswith(" " + n)]
     if len(cands) == 1:
         return cands[0]["id"]
+    bare = _untag(n)
+    cands = [g for g in goals if _untag(_norm(g["name"])) == bare]
+    if len(cands) == 1:
+        return cands[0]["id"]
     return None
 
 
-def classify_columns(header, formula_row, goals):
+def _spec(i, title, kind, gids=None):
+    gids = list(gids or [])
+    return {"idx": i, "title": title, "kind": kind,
+            "goal_id": gids[0] if gids else None, "goal_ids": gids}
+
+
+def classify_columns(header, formula_row, goals, overrides=None):
     """Размечает столбцы листа.
 
     header       — строка-шапка (отображаемые заголовки).
     formula_row  — любая строка С ДАННЫМИ в режиме FORMULA (чтобы понять, где формула).
     goals        — список целей клиента [{'id','name'}].
+    overrides    — ручная разметка из кабинета: {заголовок: [id целей]}. Пустой список —
+                   «столбец наш, но не заполнять» (данные ведут руками). Ручная разметка
+                   сильнее угадывания по названию: столбец «Отправка всех форм» — это сумма
+                   семи целей «е_Отправка формы - …», по названию такое не выводится.
 
-    Возвращает список спеков по столбцам: {idx, title, kind, goal_id}.
+    Возвращает список спеков по столбцам: {idx, title, kind, goal_id, goal_ids}.
     kind: period | metric:<key> | goal | formula | cost_novat | external | empty
     """
+    man = {_norm(k): list(v or []) for k, v in (overrides or {}).items()}
     specs = []
     for i, h in enumerate(header):
         title = str(h or "").strip()
@@ -265,27 +315,59 @@ def classify_columns(header, formula_row, goals):
         cell = str(formula_row[i]) if i < len(formula_row) else ""
         is_formula = cell.startswith("=")
         if not title:
-            specs.append({"idx": i, "title": title, "kind": "empty", "goal_id": None})
+            specs.append(_spec(i, title, "empty"))
             continue
         if is_formula:
-            specs.append({"idx": i, "title": title, "kind": "formula", "goal_id": None})
+            specs.append(_spec(i, title, "formula"))
+            continue
+        if n in man:                      # ручная разметка: сильнее всего, кроме формул
+            gids = man[n]
+            specs.append(_spec(i, title, "goal" if gids else "external", gids))
             continue
         if n in _PERIOD:
-            specs.append({"idx": i, "title": title, "kind": "period", "goal_id": None})
+            specs.append(_spec(i, title, "period"))
             continue
         if n in _METRIC:
-            specs.append({"idx": i, "title": title, "kind": "metric:" + _METRIC[n], "goal_id": None})
+            specs.append(_spec(i, title, "metric:" + _METRIC[n]))
             continue
         if n in _COST_NOVAT:
-            specs.append({"idx": i, "title": title, "kind": "cost_novat", "goal_id": None})
+            specs.append(_spec(i, title, "cost_novat"))
             continue
         gid = match_goal(title, goals)
         if gid:
-            specs.append({"idx": i, "title": title, "kind": "goal", "goal_id": gid})
+            specs.append(_spec(i, title, "goal", [gid]))
             continue
         # value-столбец без источника в Директе/Метрике (Callibri/Ticketscloud-данные и пр.)
-        specs.append({"idx": i, "title": title, "kind": "external", "goal_id": None})
+        specs.append(_spec(i, title, "external"))
     return specs
+
+
+def spec_goal_ids(s):
+    """Цели столбца списком: ручная разметка даёт несколько, угаданная — одну."""
+    return list(s.get("goal_ids") or ([s["goal_id"]] if s.get("goal_id") else []))
+
+
+def goal_defs_for(specs, goals):
+    """Цели, которые надо запросить у Директа для этих столбцов (без повторов).
+
+    Имена берём из справочника целей, а не из заголовка столбца: один столбец теперь может
+    складывать несколько целей, и подпись «Отправка всех форм» ни одной из них не равна.
+    """
+    gname = {g["id"]: g.get("name") for g in (goals or [])}
+    seen, out = set(), []
+    for s in specs:
+        if s["kind"] != "goal":
+            continue
+        for gid in spec_goal_ids(s):
+            if gid in seen:
+                continue
+            seen.add(gid)
+            out.append({"id": gid, "name": gname.get(gid) or s["title"]})
+    return out
+
+
+def _goal_sum(by_goal, s):
+    return int(round(sum((by_goal or {}).get(g, 0.0) for g in spec_goal_ids(s))))
 
 
 def find_header_row(values):
@@ -390,7 +472,7 @@ def build_weekly_row(specs, data, date_from, date_to, target_row, from_row,
         elif k == "metric:pos_clk":
             out.append(round(data["pos_clk"], 2) if data["pos_clk"] else "")
         elif k == "goal":
-            out.append(int(round(data["by_goal"].get(s["goal_id"], 0))))
+            out.append(_goal_sum(data["by_goal"], s))
         elif k == "formula":
             f = str(tmpl_formula_row[s["idx"]]) if s["idx"] < len(tmpl_formula_row) else ""
             out.append(bump_formula(f, from_row, target_row) if f.startswith("=") else "")
@@ -470,7 +552,7 @@ def _is_input(kind):
 
 
 def fill_weekly(ws, token, login, all_goals, date_from, date_to, query_to=None,
-                attribution=DEFAULT_ATTR, dry_run=True, grain="week"):
+                attribution=DEFAULT_ATTR, dry_run=True, grain="week", overrides=None):
     """Заполняет строку-период (неделя/месяц) в листе-ленте «свежими данными».
 
     date_from/date_to — границы периода для ПОДПИСИ (полная неделя Пн–Вс / месяц).
@@ -492,8 +574,8 @@ def fill_weekly(ws, token, login, all_goals, date_from, date_to, query_to=None,
 
     # образец для разметки/формата: сама строка (если обновляем) или последняя строка-период
     tmpl = existing if existing is not None else (periods[-1] if periods else _last_data_row(values, hi))
-    specs = classify_columns(header, formulas[tmpl], all_goals)
-    goal_defs = [{"id": s["goal_id"], "name": s["title"]} for s in specs if s["kind"] == "goal"]
+    specs = classify_columns(header, formulas[tmpl], all_goals, overrides)
+    goal_defs = goal_defs_for(specs, all_goals)
     data = account_period(token, login, date_from, query_to, goal_defs, attribution,
                           want_positions=True)
     sample_period = next((str(values[tmpl][s["idx"]]) for s in specs
@@ -574,7 +656,7 @@ def build_breakdown_values(res):
     return out
 
 
-def _lenta_goal_defs(sh, all_goals):
+def _lenta_goal_defs(sh, all_goals, overrides=None):
     """Цели, по которым считает лента «Общий по неделям» (её целевые колонки) — чтобы разрезы
     («тотал по РК/группам/…») считали конверсии по ТЕМ ЖЕ целям и цифры сходились с «по неделям».
     Запас: если ленты/целевых колонок нет — активные цели клиента. Лимит 10 (RC.build шлёт цели
@@ -593,14 +675,15 @@ def _lenta_goal_defs(sh, all_goals):
         return active[:GOALS_PER_REQUEST]
     hidx = find_header_row(fv)
     frow = fv[hidx + 1] if len(fv) > hidx + 1 else []
-    specs = classify_columns(fv[hidx], frow, all_goals)
-    gids = {s["goal_id"] for s in specs if s["kind"] == "goal" and s["goal_id"]}
+    specs = classify_columns(fv[hidx], frow, all_goals, overrides)
+    gids = {g for s in specs if s["kind"] == "goal" for g in spec_goal_ids(s)}
     picked = [g for g in all_goals if g["id"] in gids]
     return (picked or active)[:GOALS_PER_REQUEST]
 
 
 def push_breakdown(gc, sid, token, login, which, date_from, date_to,
-                   attribution=DEFAULT_ATTR, limit=200, replace=True, goals=None):
+                   attribution=DEFAULT_ATTR, limit=200, replace=True, goals=None,
+                   overrides=None):
     """Создаёт НОВЫЙ лист-снимок разреза за период (имя «По группам (Июнь 2026)»).
 
     which — ключ из BREAKDOWNS. Конверсии считаются по ТЕМ ЖЕ ключевым целям, что и лента
@@ -613,7 +696,7 @@ def push_breakdown(gc, sid, token, login, which, date_from, date_to,
         raise RuntimeError("Неизвестный разрез: {}".format(which))
     name, level, segments = BREAKDOWNS[which]
     sh = gc.open_by_key(sid)
-    goal_defs = _lenta_goal_defs(sh, goals) if goals else None
+    goal_defs = _lenta_goal_defs(sh, goals, overrides) if goals else None
     res = RC.build(token, login, level, date_from, date_to, attribution=attribution,
                    goal_defs=goal_defs, segments=segments, limit=limit)
     values = build_breakdown_values(res)
@@ -681,7 +764,7 @@ def _build_entity_row(specs, ent, target_row, from_row, tmpl_formula_row, name=N
         elif k == "metric:pos_clk":
             out.append(round(ent["pos_clk"], 2) if ent.get("pos_clk") else "")
         elif k == "goal":
-            out.append(int(round(ent["by_goal"].get(s["goal_id"], 0))))
+            out.append(_goal_sum(ent["by_goal"], s))
         elif k == "formula":
             f = str(tmpl_formula_row[s["idx"]]) if s["idx"] < len(tmpl_formula_row) else ""
             out.append(bump_formula(f, from_row, target_row) if f.startswith("=") else "")
@@ -690,16 +773,78 @@ def _build_entity_row(specs, ent, target_row, from_row, tmpl_formula_row, name=N
     return out
 
 
-def _block_bounds(values, header_idx):
+_RANGE_RE = re.compile(r"\$?[A-Za-z]{1,3}\$?(\d+)\s*:\s*\$?[A-Za-z]{1,3}\$?(\d+)")
+
+
+def _spans_rows(cell):
+    """Формула складывает диапазон из нескольких строк? Так отличается строка-итог блока
+    от пустого слота, где формулы считают собственную строку."""
+    s = str(cell or "")
+    if not s.startswith("="):
+        return False
+    return any(a != b for a, b in _RANGE_RE.findall(s))
+
+
+def _block_bounds(values, header_idx, formulas=None):
     """(индексы строк-данных, индекс футера|None) для блока, начиная под шапкой header_idx,
-    до строки-итога (NONPERIOD) или конца."""
+    до строки-итога или конца.
+
+    Итог узнаём двумя способами: по подписи («Контекст итог», «Итого») и — если передали
+    formulas — по формуле, складывающей диапазон из НЕСКОЛЬКИХ строк (=SUM(F17:F22)). Просто
+    «нет подписи, но есть формулы» этим признаком быть не может: так выглядит и пустой слот
+    недели, у него формулы считают собственную строку (=IFERROR(C22/B22;0)).
+    Без признака итога блок считался идущим до конца листа, и перезапись вычистила бы
+    итоговые ячейки клиента.
+    """
     foot = None
     for i in range(header_idx + 1, len(values)):
-        if _norm(values[i][0]) in _NONPERIOD:
+        a = _norm(values[i][0]) if values[i] else ""
+        if a in _NONPERIOD:
+            foot = i
+            break
+        if not a and formulas is not None and i < len(formulas) \
+                and any(_spans_rows(c) for c in formulas[i]):
             foot = i
             break
     end = (foot - 1) if foot is not None else (len(values) - 1)
     return list(range(header_idx + 1, end + 1)), foot
+
+
+_WEEK_LABEL_RE = re.compile(r"^\s*\d{1,2}[.\-/]\d{1,2}(?:[.\-/]\d{2,4})?\s*[-–—]\s*\d{1,2}[.\-/]\d{1,2}")
+
+
+def _header_rows(values):
+    """Строки-шапки блоков составного листа: несколько подписей, среди них базовая метрика."""
+    out = []
+    for i, r in enumerate(values):
+        names = {_norm(c) for c in r if str(c).strip()}
+        if len(names) >= 4 and ({"показы", "клики"} & names):
+            out.append(i)
+    return out
+
+
+def _split_blocks(values):
+    """(шапка блока по кампаниям, шапка недельного блока) составного помесячного листа.
+
+    Раньше блоки различали по первой ячейке шапки: «Кампания» — кампании, «Период»/«Неделя» —
+    недели. У части клиентов недельный блок тоже подписан «Кампания» (а над ним отдельной
+    строкой «Яндекс по неделям») — недели не находились и молча не заполнялись, хотя данные
+    ведут именно там. Поэтому смотрим не на подпись шапки, а на первую строку данных под ней:
+    «01.07-05.07» — это недели.
+    """
+    camp = week = None
+    for h in _header_rows(values):
+        first = ""
+        for i in range(h + 1, len(values)):
+            a = str(values[i][0]).strip() if values[i] else ""
+            if a:
+                first = a
+                break
+        if _WEEK_LABEL_RE.match(first) or _norm(values[h][0]) in ("период", "неделя"):
+            week = h if week is None else week
+        elif camp is None:
+            camp = h
+    return camp, week
 
 
 def _derive_month_label(template_title, month_from):
@@ -758,7 +903,7 @@ def ensure_month_detail(gc, sid, month_from):
 
 
 def fill_month_detail(ws, token, login, all_goals, month_from, query_to, weeks=None,
-                      reset=False, attribution=DEFAULT_ATTR, dry_run=True):
+                      reset=False, attribution=DEFAULT_ATTR, dry_run=True, overrides=None):
     """Составной помесячный лист («Июнь 26»): обновляет верхний блок по кампаниям за месяц
     (1-е..сегодня) и недели в нижнем под-блоке. Пишет только входные ячейки — формулы, футеры
     и внешние столбцы (Комиссия) не трогает.
@@ -771,45 +916,46 @@ def fill_month_detail(ws, token, login, all_goals, month_from, query_to, weeks=N
     values = ws.get_all_values()
     formulas = ws.get_all_values(value_render_option="FORMULA")
 
-    top_h = next((i for i, r in enumerate(values) if r and _norm(r[0]) == "кампания"), None)
-    bot_h = next((i for i, r in enumerate(values) if r and _norm(r[0]) in ("период", "неделя")), None)
-    if top_h is None:
-        raise RuntimeError("Не нашёл шапку «Кампания» в составном листе")
+    top_h, bot_h = _split_blocks(values)
+    if top_h is None and bot_h is None:
+        raise RuntimeError("Не нашёл ни блока по кампаниям, ни недельного в составном листе")
 
     batch = []
     info = {}
 
     # --- верхний блок: по кампаниям ---
-    tf_top = formulas[top_h + 1] if top_h + 1 < len(formulas) else []
-    top_specs = classify_columns(values[top_h], tf_top, all_goals)
-    top_goals = [{"id": s["goal_id"], "name": s["title"]} for s in top_specs if s["kind"] == "goal"]
-    camps = _campaign_period(token, login, month_from, query_to, top_goals, attribution)
-    camp_list = sorted(camps.values(), key=lambda c: -c["cost"])
-    slots, _ = _block_bounds(values[:bot_h] if bot_h else values, top_h)
-    for k, ridx in enumerate(slots):
-        tr = ridx + 1
-        if k < len(camp_list):
-            row = _build_entity_row(top_specs, camp_list[k], tr, top_h + 2, tf_top)
-        else:
-            row = None  # лишний слот — чистим входы
-        for j, s in enumerate(top_specs):
-            if s["idx"] == 0 or _is_input(s["kind"]):
-                batch.append({"range": rowcol_to_a1(tr, s["idx"] + 1),
-                              "values": [[row[j] if row else ""]]})
-    info["campaigns"] = len(camp_list)
+    if top_h is not None:
+        tf_top = formulas[top_h + 1] if top_h + 1 < len(formulas) else []
+        top_specs = classify_columns(values[top_h], tf_top, all_goals, overrides)
+        top_goals = goal_defs_for(top_specs, all_goals)
+        camps = _campaign_period(token, login, month_from, query_to, top_goals, attribution)
+        camp_list = sorted(camps.values(), key=lambda c: -c["cost"])
+        upto = values[:bot_h] if bot_h else values
+        slots, _ = _block_bounds(upto, top_h, formulas[:bot_h] if bot_h else formulas)
+        for k, ridx in enumerate(slots):
+            tr = ridx + 1
+            if k < len(camp_list):
+                row = _build_entity_row(top_specs, camp_list[k], tr, top_h + 2, tf_top)
+            else:
+                row = None  # лишний слот — чистим входы
+            for j, s in enumerate(top_specs):
+                if s["idx"] == 0 or _is_input(s["kind"]):
+                    batch.append({"range": rowcol_to_a1(tr, s["idx"] + 1),
+                                  "values": [[row[j] if row else ""]]})
+        info["campaigns"] = len(camp_list)
 
     # --- нижний блок: недели ---
     if bot_h is not None:
         tf_bot = formulas[bot_h + 1] if bot_h + 1 < len(formulas) else []
-        bot_specs = classify_columns(values[bot_h], tf_bot, all_goals)
-        bot_goals = [{"id": s["goal_id"], "name": s["title"]} for s in bot_specs if s["kind"] == "goal"]
+        bot_specs = classify_columns(values[bot_h], tf_bot, all_goals, overrides)
+        bot_goals = goal_defs_for(bot_specs, all_goals)
         week_rows = []
 
         if reset:
             # ПЕРЕПИСАТЬ блок с нуля: все недели месяца по порядку в строки блока (свежий клон)
             if weeks is None:
                 weeks = _month_weeks(month_from, query_to)
-            block_rows, _foot = _block_bounds(values, bot_h)
+            block_rows, _foot = _block_bounds(values, bot_h, formulas)
             for i, ridx in enumerate(block_rows):
                 tr = ridx + 1
                 if i < len(weeks):
@@ -837,14 +983,34 @@ def fill_month_detail(ws, token, login, all_goals, month_from, query_to, weeks=N
                 monday = today.fromordinal(today.toordinal() - today.weekday())
                 weeks = [(monday.isoformat(),
                           monday.fromordinal(monday.toordinal() + 6).isoformat(), query_to)]
-            bperiods = [i for i in _block_bounds(values, bot_h)[0]
+            block_rows, bfoot = _block_bounds(values, bot_h, formulas)
+            bperiods = [i for i in block_rows
                         if values[i] and re.search(r"\d", str(values[i][0]))
                         and _norm(values[i][0]) not in _NONPERIOD]
             append_at = (bperiods[-1] if bperiods else bot_h) + 1
             last_p = bperiods[-1] if bperiods else bot_h
+            # Куда можно дописать неделю: строго до строки-итога, и только в строку, где
+            # входные ячейки пусты. Раньше предела не было вовсе — новая неделя могла лечь
+            # поверх итогов клиента. Пустой слот с формулами (=IFERROR(C22/B22;0)) под это
+            # подходит: формулы там есть, а значений нет.
+            def _free(idx):
+                if bfoot is not None and idx >= bfoot:
+                    return False
+                if idx >= len(values):
+                    return True                      # ниже последней строки листа — чисто
+                row = values[idx]
+                if str(row[0]).strip() if row else "":
+                    return False
+                return not any(str(row[s["idx"]]).strip() for s in bot_specs
+                               if _is_input(s["kind"]) and s["idx"] < len(row))
+
+            skipped = []
             for (wf, wt, wq) in weeks:
-                wdata = account_period(token, login, wf, wq, bot_goals, attribution, want_positions=True)
                 existing = next((i for i in bperiods if _row_start_iso(values[i][0]) == wf), None)
+                if existing is None and not _free(append_at):
+                    skipped.append(wf)
+                    continue
+                wdata = account_period(token, login, wf, wq, bot_goals, attribution, want_positions=True)
                 if existing is not None:
                     tr, tmpl_i = existing + 1, existing
                 else:
@@ -858,6 +1024,8 @@ def fill_month_detail(ws, token, login, all_goals, month_from, query_to, weeks=N
                     if s["idx"] == 0 or _is_input(s["kind"]):
                         batch.append({"range": rowcol_to_a1(tr, s["idx"] + 1), "values": [[wrow[j]]]})
                 week_rows.append(tr)
+            if skipped:
+                info["skipped_weeks"] = skipped
         info["week_rows"] = week_rows
 
     if dry_run:
@@ -868,7 +1036,7 @@ def fill_month_detail(ws, token, login, all_goals, month_from, query_to, weeks=N
 
 
 # ---- высокоуровневая выгрузка по клиенту (общая для кнопки и headless-синка) ----
-def push_timeseries(gc, sid, token, login, all_goals):
+def push_timeseries(gc, sid, token, login, all_goals, overrides=None):
     """Заполняет листы-ленты («по неделям»/«по месяцам») + составной лист текущего месяца:
     ПРОШЛЫЙ закрытый период (финализация) + ТЕКУЩИЙ (live до сегодня). Список результатов."""
     from datetime import date, timedelta
@@ -905,14 +1073,14 @@ def push_timeseries(gc, sid, token, login, all_goals):
                 parts = []
                 for df, dl, qt in plan[grain]:
                     r = fill_weekly(ws, token, login, all_goals, df, dl, query_to=qt,
-                                    dry_run=False, grain=grain)
+                                    dry_run=False, grain=grain, overrides=overrides)
                     parts.append("{} — {} (стр {})".format(
                         df, mode.get(r.get("mode"), "записано"), r.get("target_row")))
                 status = "; ".join(parts)
             elif _label_key(ws.title, "month") == cur_key:
                 r = fill_month_detail(ws, token, login, all_goals, first.isoformat(), tod,
                                       weeks=(None if md_new else comp_weeks),
-                                      reset=md_new, dry_run=False)
+                                      reset=md_new, dry_run=False, overrides=overrides)
                 grain = "month-detail"
                 status = "{}кампаний {}, недель {}".format(
                     "СОЗДАН + " if md_new else "", r.get("campaigns"), len(r.get("week_rows") or []))
@@ -946,11 +1114,12 @@ def goals_for_login(token, login):
     return goals
 
 
-def sync_all(token, log=None, do_breakdowns=False, links=None):
+def sync_all(token, log=None, do_breakdowns=False, links=None, col_map=None):
     """Headless-выгрузка по ВСЕМ клиентам с таблицами (для cron/планировщика).
 
     Таблица берётся двумя путями: сначала явная привязка из кабинета (links: {логин: id}),
-    затем поиск в Drive по названию «Auto-Reporter ОТЧЕТ <домен>» — как было раньше."""
+    затем поиск в Drive по названию «Auto-Reporter ОТЧЕТ <домен>» — как было раньше.
+    col_map — ручная разметка столбцов из кабинета: {логин: {заголовок: [id целей]}}."""
     from datetime import date
     from . import yandex
     log = log or (lambda *a: None)
@@ -968,7 +1137,8 @@ def sync_all(token, log=None, do_breakdowns=False, links=None):
     for login, sid in sorted(linked.items()):
         targets.append((login, login, sid))
     for domain, sh in sorted(sheets.items()):
-        login = dom2login.get(domain) or dom2login.get(domain.replace("www.", ""))
+        matched = match_sheet_domain(domain, dom2login)
+        login = dom2login.get(matched) if matched else None
         if login and login in linked:
             continue                                        # уже взяли по явной привязке
         targets.append((domain, login, sh["id"]))
@@ -981,19 +1151,21 @@ def sync_all(token, log=None, do_breakdowns=False, links=None):
             continue
         try:
             goals = goals_for_login(token, login)
-            results = push_timeseries(gc, sh["id"], token, login, goals)
+            ovr = (col_map or {}).get(login)
+            results = push_timeseries(gc, sh["id"], token, login, goals, overrides=ovr)
             if do_breakdowns:
                 t = date.today()
                 for which in BREAKDOWNS:
                     try:
                         push_breakdown(gc, sh["id"], token, login, which,
-                                       t.replace(day=1).isoformat(), t.isoformat(), goals=goals)
+                                       t.replace(day=1).isoformat(), t.isoformat(), goals=goals,
+                                       overrides=ovr)
                     except Exception as e:  # noqa: BLE001
                         log("    ! {} разрез {}: {}".format(domain, which, str(e)[:80]))
             errs = [r for r in results if r["status"].startswith("ошибка")]
             log("  ✓ {} ({}): листов {}{}".format(
                 domain, login, len(results), (", ошибок " + str(len(errs))) if errs else ""))
-            out.append({"domain": domain, "login": login, "ok": True,
+            out.append({"domain": domain, "login": login, "ok": True, "sheet_id": sh["id"],
                         "tabs": len(results), "errors": len(errs)})
         except Exception as e:  # noqa: BLE001
             log("  ✗ {} ({}): {}".format(domain, login, str(e)[:120]))

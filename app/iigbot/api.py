@@ -1342,8 +1342,9 @@ class Api:
                 sid, how = linked[c["login"]], "ссылка"
             else:
                 for d in self._client_domains(c["name"]):
-                    key = str(d).strip().lower().replace("www.", "")
-                    if key in sheets:
+                    # название таблицы пишет человек: «ОТЧЕТ Gabitex» вместо «gabitex.ru»
+                    key = G.match_sheet_domain(d, {k: 1 for k in sheets})
+                    if key:
                         sid, title, how = sheets[key]["id"], sheets[key]["title"], "по названию"
                         break
             if not sid:
@@ -1392,6 +1393,93 @@ class Api:
                 "url": "https://docs.google.com/spreadsheets/d/{}".format(sid) if sid else "",
                 "sa_email": _sa_email()}
 
+    def _denied_counters(self, login):
+        """Счётчики кампаний клиента, к которым у нашего токена нет доступа.
+
+        Пока их не видно, отсутствие цели выглядит как «цели такой нет», хотя на деле она
+        есть в нерасшаренном счётчике: у gabitex так потерялась «Отправка всех форм» — два
+        счётчика из трёх отвечают Access is denied.
+        """
+        from . import metrika
+        token = load_secrets()["yandex_oauth_token"]
+        try:
+            ids = sorted({int(c) for c in yandex.get_campaign_counters(token, login)})
+        except Exception:  # noqa: BLE001
+            return []
+        out = []
+        for cid in ids:
+            try:
+                # counter_available отдаёт словарь {ok, error}, а не «да/нет»:
+                # без .get("ok") проверка всегда истинна, и недоступных как будто нет
+                if not metrika.counter_available(token, cid).get("ok"):
+                    out.append(cid)
+            except Exception:  # noqa: BLE001 — недоступен и есть
+                out.append(cid)
+        return out
+
+    @safe
+    def sheet_columns(self, login, tab=None):
+        """Разметка столбцов ленты: что программа заполнит, а что не тронет.
+
+        Названия целей у клиентов свои («е_Отправка формы - Замер»), и одна колонка часто
+        складывает несколько целей («Отправка всех форм» — семь). По заголовку такое не
+        выводится, поэтому здесь показываем угаданное и даём переназначить руками.
+        """
+        self._require_owned(login)
+        from . import gsheets as G
+        if not G.available():
+            raise RuntimeError("Нет ключа сервисного аккаунта Google")
+        c = self.db.get_client(login)
+        if not c:
+            raise RuntimeError("Клиент не найден")
+        gc = G.client(readonly=True)
+        sid = self.db.client_sheets().get(login) or self._find_client_sheet(gc, c["name"])[0]
+        if not sid:
+            raise RuntimeError("К клиенту не привязана Google-таблица")
+        sh = gc.open_by_key(sid)
+        tabs = [w.title for w in sh.worksheets()]
+        pick = tab if tab in tabs else next(
+            (t for t in tabs if "по недел" in t.lower() or "общий" in t.lower()), tabs[0])
+        ws = sh.worksheet(pick)
+        vals = ws.get_all_values()
+        forms = ws.get_all_values(value_render_option="FORMULA")
+        hi = G.find_header_row(vals)
+        goals = self._metrika_goals_for(login).get("goals", [])
+        manual = self.db.sheet_cols(login)
+        specs = G.classify_columns(vals[hi], forms[hi + 1] if len(forms) > hi + 1 else [],
+                                   goals, manual)
+        gname = {str(g["id"]): g.get("name") for g in goals}
+        cols = []
+        for s in specs:
+            if not s["title"]:
+                continue
+            gids = [str(g) for g in G.spec_goal_ids(s)]
+            cols.append({"title": s["title"], "kind": s["kind"], "goal_ids": gids,
+                         "goals": [gname.get(g) or g for g in gids],
+                         "manual": s["title"] in manual,
+                         "fills": G._is_input(s["kind"])})
+        return {"sheet_id": sid, "title": sh.title, "tab": pick, "tabs": tabs, "columns": cols,
+                "goals": [{"id": str(g["id"]), "name": g.get("name")} for g in goals],
+                "denied_counters": self._denied_counters(login),
+                "url": "https://docs.google.com/spreadsheets/d/{}".format(sid)}
+
+    @safe
+    def sheet_column_set(self, login, title, goal_ids=None, clear=False):
+        """Задать разметку столбца. clear=True — вернуть угадывание по названию.
+        goal_ids=[] — «наш столбец, но не заполнять» (ведут руками / Calltouch)."""
+        self._require_write()
+        self._require_owned(login)
+        gids = None if clear else [str(g) for g in (goal_ids or [])]
+        self.db.set_sheet_col(login, title, gids)
+        if clear:
+            what = "разметка снята"
+        elif gids:
+            what = "цели: {}".format(len(gids))
+        else:
+            what = "не заполнять"
+        self._audit("sheet_col", login, "столбец «{}» — {}".format(title, what))
+        return {"ok": True}
+
     @staticmethod
     def _last_full_month():
         """(date_from, date_to) прошлого ПОЛНОГО месяца относительно сегодня."""
@@ -1424,7 +1512,8 @@ class Api:
         if not sid:
             raise RuntimeError("Не нашёл Google-таблицу «Auto-Reporter ОТЧЕТ …» для клиента {} "
                                "(домен из карточки: {})".format(c["name"] or login, c["name"]))
-        results = G.push_timeseries(gc, sid, token, login, goals)
+        results = G.push_timeseries(gc, sid, token, login, goals,
+                                    overrides=self.db.sheet_cols(login))
         if not results:
             raise RuntimeError("В таблице нет листов-лент («Общий по неделям»/«по месяцам»).")
         return {"domain": domain, "results": results}
@@ -1457,7 +1546,8 @@ class Api:
         results = []
         for k in keys:
             try:
-                r = G.push_breakdown(gc, sid, token, login, k, date_from, date_to, goals=goals)
+                r = G.push_breakdown(gc, sid, token, login, k, date_from, date_to, goals=goals,
+                                     overrides=self.db.sheet_cols(login))
                 results.append({"which": k,
                                 "status": "создан «{}» ({} из {} строк)".format(
                                     r["created"], r["n_rows"], r["n_total"])})

@@ -7,12 +7,60 @@ agencyclients). Нужны только secrets.json (yandex_oauth_token) и sa_
 
 Запуск:  python -m iigbot gsheets-sync            (только ленты + составной лист текущего месяца)
          python -m iigbot gsheets-sync --breakdowns   (+ пересоздать листы-разрезы за текущий месяц)
+         python -m iigbot gsheets-sync --notify       (+ написать в чат клиента, что отчёт обновлён)
 """
+import os
 import re
 import sys
 
 from .settings import load_secrets
 from . import gsheets as G
+
+
+def notify_map():
+    """{логин: chat_id} для оповещений — из переменной IIG_SYNC_NOTIFY вида
+    «porg-i26kekp2:-1003043371831,e-17442362:-100…».
+
+    Через переменную, а не через базу: ежедневная выгрузка ходит в GitHub Actions, базы там нет.
+    И не строкой в коде: id клиентских чатов в репозиторий не кладём.
+    """
+    out = {}
+    for pair in (os.environ.get("IIG_SYNC_NOTIFY") or "").split(","):
+        login, _, chat = pair.partition(":")
+        if login.strip() and chat.strip():
+            out[login.strip()] = chat.strip()
+    return out
+
+
+def notify(results):
+    """Сообщение в чат клиента о том, что отчёт обновлён. Шлём только тем, кто явно указан
+    в IIG_SYNC_NOTIFY, и только если выгрузка по нему прошла без ошибок."""
+    who = notify_map()
+    if not who:
+        print("Оповещение: IIG_SYNC_NOTIFY не задан — некому писать.")
+        return
+    token = (load_secrets().get("telegram_bot_token") or "").strip()
+    if not token or "ВСТАВЬ" in token:
+        print("Оповещение: нет токена бота в secrets.json — пропуск.")
+        return
+    from .telegram_api import Telegram
+    tg = Telegram(token)
+    by_login = {r.get("login"): r for r in results if r.get("login")}
+    for login, chat in who.items():
+        r = by_login.get(login)
+        if not r:
+            print("Оповещение: {} в выгрузке не участвовал — пропуск.".format(login))
+            continue
+        if not r.get("ok"):
+            print("Оповещение: {} выгрузился с ошибкой — не пишу.".format(login))
+            continue
+        text = ("Отчёт обновлён — в таблице свежие данные по рекламе.\n\n"
+                "https://docs.google.com/spreadsheets/d/{}".format(r.get("sheet_id") or ""))
+        try:
+            tg.send_message(chat, text)
+            print("Оповещение отправлено: {} -> {}".format(login, chat))
+        except Exception as e:  # noqa: BLE001 — молчащий бот не должен ронять выгрузку
+            print("Оповещение НЕ отправлено ({}): {}".format(login, str(e)[:120]))
 
 
 def clean_token(raw):
@@ -59,11 +107,22 @@ def main():
         return 0
 
     do_break = any(f in ("breakdowns", "break") for f in flags)
+    # Привязки таблиц и ручную разметку столбцов задают в кабинете — cron их читает из базы,
+    # иначе ночная выгрузка размечала бы столбцы иначе, чем кнопка «Выгрузить».
+    links, col_map = None, None
+    try:
+        from .storage import Storage
+        db = Storage()
+        links, col_map = db.client_sheets(), db.sheet_cols()
+    except Exception as e:  # noqa: BLE001 — без базы синк всё равно работает по названиям
+        print("База недоступна ({}), иду только по названиям таблиц".format(str(e)[:80]))
     print("Старт выгрузки в Google-таблицы{}…".format(" (+ разрезы)" if do_break else ""))
-    res = G.sync_all(token, log=print, do_breakdowns=do_break)
+    res = G.sync_all(token, log=print, do_breakdowns=do_break, links=links, col_map=col_map)
     ok = sum(1 for r in res if r.get("ok"))
     bad = len(res) - ok
     print("Готово: {} ок, {} с ошибкой, всего таблиц {}.".format(ok, bad, len(res)))
+    if "notify" in flags:
+        notify(res)
     return 0 if bad == 0 else 2
 
 

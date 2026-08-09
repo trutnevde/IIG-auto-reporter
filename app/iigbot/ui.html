@@ -1750,6 +1750,16 @@
     <button class="btn primary" id="askOk" onclick="askSubmit()">Продолжить</button></footer>
 </div>
 
+<!-- РАЗМЕТКА СТОЛБЦА ТАБЛИЦЫ: на десктопе окно по центру, на телефоне — шторка снизу (одни стили) -->
+<div class="modal-bg" id="gsColBg" onclick="gsColClose()"></div>
+<div class="modal" id="gsColModal" role="dialog" aria-modal="true" aria-labelledby="gsColHead">
+  <header><h3 id="gsColHead">Столбец</h3><span class="x" onclick="gsColClose()">×</span></header>
+  <div class="body" id="gsColBody"></div>
+  <footer><button class="btn" onclick="gsColClose()">Отмена</button>
+    <button class="btn" onclick="gsColSave(GS_COL_I,true)" title="Снять ручную разметку — снова угадывать по названию столбца">Вернуть как угадали</button>
+    <button class="btn primary" onclick="gsColSave(GS_COL_I)">Сохранить</button></footer>
+</div>
+
 <div class="modal-bg" id="modalBg" onclick="closeOnboard()"></div>
 <div class="modal" id="modal">
   <header><h3>Подключить клиента</h3><span class="x" onclick="closeOnboard()">×</span></header>
@@ -5072,6 +5082,16 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-09',tag:'new',title:'Google-таблицы: разметка столбцов и цели с приставками',
+ sum:'Видно, что кабинет пишет в каждый столбец, и это можно переназначить',items:[
+  '<b>Столбцы с приставками наконец находятся.</b> У части клиентов цели названы «е_Переход в мессенджер», а столбец в таблице — просто «Переход в мессенджер». Кабинет сравнивал названия целиком и такую пару не видел, поэтому столбец оставался пустым. Теперь служебная приставка через «_», «.» или «:» при сравнении отбрасывается — но привязка засчитывается, только если подошла ровно одна цель, иначе можно молча писать не туда.',
+  '<b>Один столбец может складывать несколько целей.</b> «Отправка всех форм» — это сумма семи целей «е_Отправка формы - …»: по названию столбца такое не выводится никак. В разделе «Google-таблицы» появилась «Разметка столбцов»: видно, что кабинет заполнит, а что не тронет, и любой столбец можно назначить на нужные цели.',
+  '<b>Столбец можно оставить за человеком.</b> Если в разметке не отметить ни одной цели, кабинет этот столбец не трогает — так помечают «Звонки» и прочее, что приходит из Calltouch или заносится руками.',
+  '<b>Ночная выгрузка размечает так же, как кнопка.</b> Раньше cron не знал ни про привязки таблиц ссылкой, ни про разметку — теперь читает их из базы, и результат не зависит от того, кто запустил выгрузку.',
+  '<b>Недельный блок в помесячных листах наконец заполняется.</b> Его искали по первой ячейке шапки — «Период» или «Неделя». У трёх клиентов из четырёх там написано «Кампания» (а «Яндекс по неделям» — отдельной строкой выше), поэтому блок не находился и молча оставался пустым, хотя цифры ведут именно в нём. Теперь блок определяется по первой строке данных: «01.07-05.07» — значит недели.',
+  '<b>Видно, когда список целей неполный.</b> Если к счётчику Метрики нет доступа, его цели не приходят — и столбец выглядит как «такой цели не существует», хотя она есть. У gabitex так и было: два счётчика из трёх отвечают «доступ запрещён», и цель «Отправка всех форм» оттуда просто не видна. Теперь в разметке столбцов пишется, каких счётчиков не хватает.',
+  '<b>Новая неделя больше не может лечь поверх итогов.</b> Предела у блока не было, и дописывание шло в первую попавшуюся строку ниже. Теперь строка-итог распознаётся по формуле, складывающей несколько строк (=SUM(F17:F22)), и запись идёт только в свободный слот; если места нет — неделя не пишется, а попадает в отчёт о выгрузке.',
+ ]},
 {date:'2026-08-09',tag:'fix',title:'Шаблоны: кнопка «Стандарт агентства» и защита от несочетаемых стратегий',
  sum:'Наш набор одним нажатием; Директ больше не отбивает запрос',items:[
   '<b>Кнопка «Стандарт агентства».</b> Собирает заготовку с нашим набором сразу: ручные ставки, сети выключены, мониторинг сайта включён, расширенный географический таргетинг выключен, «Оптимизировать текст объявлений» выключено, корректировки — младше 18 показы выключены, продвижение в саджесте и эксклюзивное размещение по +30%. Бюджет, минус-фразы и метку вписываешь свои — они у всех разные.',
@@ -6223,6 +6243,16 @@ async function renderGSheets(){
       </div>
       <div id="gsResult" class="note" style="margin-top:14px;white-space:pre-line;display:none"></div>
     </div></div>
+    <div class="panel" style="margin-top:14px"><h3><span class="h3-ic"><svg class="ic"><use href="#i-file-list-2"/></svg></span> Разметка столбцов</h3><div class="body">
+      <p class="sy-note">Что именно кабинет пишет в каждый столбец ленты. Столбец «Отправка всех форм»
+        может складывать несколько целей сразу, а «Звонки» — приходить из Calltouch и заполняться руками:
+        по названию такое не угадывается, поэтому задаётся здесь.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" onclick="gsCols()"><svg class="ic"><use href="#i-file-list-2"/></svg> Показать разметку</button>
+        <span class="muted" style="font-size:12.5px;align-self:center">для клиента, выбранного выше</span>
+      </div>
+      <div id="gsColsBox" style="margin-top:14px"></div>
+    </div></div>
     ${links}
     <div class="panel" style="margin-top:14px"><h3><span class="h3-ic"><svg class="ic"><use href="#i-file-list-2"/></svg></span> Таблицы на сервисном аккаунте (${(st.sheets||[]).length})</h3>
       <div class="body"><ul style="margin:0;padding-left:18px;line-height:1.8">${sheetList}</ul></div></div>`;
@@ -6233,6 +6263,70 @@ function gsSyncLink(){
   const c=(GS_CLIENTS||[]).find(x=>x.login===sel.value);
   if(c&&c.url){a.href=c.url;a.style.display='';a.title='Открыть «'+c.sheet+'»';}
   else{a.href='#';a.style.display='none';}
+}
+/* Разметка столбцов: показываем, что кабинет заполнит, и даём переназначить руками.
+   Держим последний ответ целиком — в шторке редактора нужны и цели клиента, и текущий выбор. */
+let GS_COLS=null;
+const GS_KIND={period:'период',formula:'формула',cost_novat:'расход без НДС',external:'не заполняем',
+  'metric:imp':'показы','metric:clicks':'клики','metric:cost':'расход','metric:pos_imp':'ср. позиция показов',
+  'metric:pos_clk':'ср. позиция кликов',goal:'цели Метрики'};
+async function gsCols(tab){
+  const login=el('gsClient')&&el('gsClient').value;
+  if(!login){toast('Выбери клиента','err');return;}
+  const box=el('gsColsBox'); box.innerHTML=skeleton('rows',4);
+  let r; try{r=await api('sheet_columns',login,tab||null);}catch(e){box.innerHTML=errBlock(e,()=>gsCols(tab));return;}
+  GS_COLS=r;
+  const tabs=(r.tabs||[]).map(t=>'<button class="t'+(t===r.tab?' on':'')+'" onclick="gsCols('+JSON.stringify(t).replace(/"/g,'&quot;')+')">'+esc(t)+'</button>').join('');
+  const rows=(r.columns||[]).map((c,i)=>{
+    const editable=(c.kind==='goal'||c.kind==='external');
+    const what=c.kind==='goal'
+      ? (c.goals.length?c.goals.map(g=>'<span class="chip" style="margin:2px 4px 2px 0">'+esc(g)+'</span>').join(''):'<span class="muted">цель не найдена</span>')
+      : '<span class="muted">'+esc(GS_KIND[c.kind]||c.kind)+'</span>';
+    return '<div class="cli-row"><div><b>'+esc(c.title)+'</b>'+
+      (c.manual?' <span class="chip" style="padding:1px 6px;font-size:10.5px">вручную</span>':'')+
+      '<div style="margin-top:4px">'+what+'</div></div>'+
+      '<div style="text-align:right;white-space:nowrap">'+
+        (c.fills?'<span class="chip" style="padding:1px 8px;color:var(--green);background:var(--green-bg);border-color:transparent">заполняем</span>':'<span class="chip" style="padding:1px 8px">не трогаем</span>')+
+        (editable?' <button class="btn" style="margin-left:8px" onclick="gsColEdit('+i+')">Настроить</button>':'')+
+      '</div></div>';
+  }).join('');
+  // Нерасшаренный счётчик — самая коварная причина «цели нет»: она есть, просто мы её не видим.
+  const denied=(r.denied_counters||[]).length?'<div class="note" style="margin-bottom:10px"><svg class="ic"><use href="#i-error-warning"/></svg> '+
+    'Список целей неполный: нет доступа к счётчикам Метрики '+r.denied_counters.join(', ')+
+    '. Цель может существовать, но нам её не видно — попроси открыть доступ, и столбец сопоставится сам.</div>':'';
+  box.innerHTML='<div class="tabs" style="margin-bottom:10px">'+tabs+'</div>'+denied+
+    '<div class="muted" style="font-size:12.5px;margin-bottom:8px">Лист «'+esc(r.tab)+'» таблицы «'+esc(r.title)+'» · целей у клиента '+(r.goals||[]).length+'</div>'+rows;
+}
+let GS_COL_I=-1;
+function gsColEdit(i){
+  GS_COL_I=i;
+  const c=GS_COLS.columns[i], have=new Set(c.goal_ids||[]);
+  const list=(GS_COLS.goals||[]).map(g=>'<label style="display:flex;gap:9px;align-items:flex-start;padding:5px 0;cursor:pointer">'+
+    '<input type="checkbox" value="'+esc(g.id)+'"'+(have.has(g.id)?' checked':'')+' style="width:auto;margin:2px 0 0">'+
+    '<span style="font-size:13.5px;line-height:1.4">'+esc(g.name||g.id)+'</span></label>').join('')
+    ||'<div class="muted">У клиента не подтянуты цели Метрики.</div>';
+  el('gsColHead').textContent='Столбец «'+c.title+'»';
+  el('gsColBody').innerHTML='<p class="sy-note">Отметь цели, которые складываются в этот столбец. '+
+    'Ничего не отмечено — столбец остаётся за человеком, кабинет его не трогает.</p>'+
+    '<div id="gsColGoals" style="max-height:44vh;overflow:auto;margin-top:10px">'+list+'</div>';
+  el('gsColBg').classList.add('on');
+  el('gsColModal').classList.add('on');
+}
+function gsColClose(){
+  el('gsColBg').classList.remove('on');
+  el('gsColModal').classList.remove('on');
+  GS_COL_I=-1;
+}
+async function gsColSave(i,clear){
+  if(i<0||!GS_COLS)return;
+  const c=GS_COLS.columns[i], login=el('gsClient').value;
+  const ids=clear?[]:Array.from(document.querySelectorAll('#gsColGoals input:checked')).map(x=>x.value);
+  try{
+    await api('sheet_column_set',login,c.title,ids,!!clear);
+    gsColClose();
+    toast(clear?'Вернул угадывание по названию':(ids.length?('Столбец «'+c.title+'» — целей '+ids.length):'Столбец «'+c.title+'» кабинет не трогает'),'ok');
+    gsCols(GS_COLS.tab);
+  }catch(e){}
 }
 function gsShow(t){const r=el('gsResult');r.style.display='block';r.textContent=t;}
 async function gsPush(login){

@@ -9,7 +9,13 @@ name: Google-таблицы — ежедневная выгрузка
 
 on:
   schedule:
-    - cron: "0 5 * * *"          # каждый день в 05:00 UTC (08:00 МСК)
+    # GitHub запускает расписание «когда освободятся раннеры», и опоздание бывает большим:
+    # за первую декаду августа разброс дошёл до +3ч28м (03.08 старт в 08:28 UTC = 11:28 МСК).
+    # Поэтому берём запас: основной прогон в 03:00 UTC (06:00 МСК) укладывается в «до 11:00»
+    # даже с таким опозданием, а второй — подстраховка, если первый не поднялся вовсе.
+    # Повтор безопасен: выгрузка обновляет строку периода на месте, а не дописывает вторую.
+    - cron: "0 3 * * *"          # 06:00 МСК — основной
+    - cron: "30 5 * * *"         # 08:30 МСК — подстраховка
   workflow_dispatch:             # + кнопка ручного запуска во вкладке Actions
     inputs:
       check:
@@ -18,6 +24,10 @@ on:
         default: false
       breakdowns:
         description: "Пересоздать листы-разрезы за текущий месяц"
+        type: boolean
+        default: false
+      notify:
+        description: "Написать клиентам в чат, что отчёт обновлён (только тем, кто в IIG_SYNC_NOTIFY)"
         type: boolean
         default: false
 
@@ -55,7 +65,17 @@ jobs:
 
       - name: Выгрузка в Google-таблицы
         working-directory: app
-        run: python -m iigbot gsheets-sync ${{ (github.event_name == 'workflow_dispatch' && inputs.check) && '--check' || '' }} ${{ (github.event_name == 'workflow_dispatch' && inputs.breakdowns) && '--breakdowns' || '' }}
+        # TELEGRAM_BOT_TOKEN и IIG_SYNC_NOTIFY — необязательные. Пока их нет, --notify просто
+        # печатает «некому писать» и ничего не отправляет: включение оповещений — отдельное
+        # решение, а не побочный эффект выката.
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          IIG_SYNC_NOTIFY: ${{ secrets.IIG_SYNC_NOTIFY }}
+        run: |
+          if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+            python -c "import json,os; p='../secrets.json'; s=json.load(open(p)); s['telegram_bot_token']=os.environ['TELEGRAM_BOT_TOKEN'].strip(); json.dump(s,open(p,'w'))"
+          fi
+          python -m iigbot gsheets-sync ${{ (github.event_name == 'workflow_dispatch' && inputs.check) && '--check' || '' }} ${{ (github.event_name == 'workflow_dispatch' && inputs.breakdowns) && '--breakdowns' || '' }} ${{ (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.notify)) && '--notify' || '' }}
 
       - name: Убрать ключи
         if: always()
