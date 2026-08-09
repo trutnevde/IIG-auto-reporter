@@ -409,6 +409,30 @@
     .ds-cut input[type="checkbox"]{width:20px;height:20px;min-height:20px;flex:0 0 auto}
   }
 
+  /* Пагинация длинных списков — та же, что в «Клиентах», но пригодная для любого раздела */
+  .pgr{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 2px 2px;
+    font-size:12.5px;color:var(--muted)}
+  .pgr-b{display:inline-flex;gap:5px;margin-left:auto}
+  .pgr-b button{min-width:34px}
+  /* Подпись только для читалок с экрана: таблице нужен заголовок, глазами он лишний */
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+    clip:rect(0 0 0 0);white-space:nowrap;border:0}
+  @media print{
+    /* На печать уходит только содержимое раздела: без меню, шапки, кнопок и подсказок */
+    .side,.side-bg,.top,.tabbar,.gm-fab,.toast,.cmdk,.cmdk-bg,.drawer,.drawer-bg,
+    .sheet,.sheet-bg,.modal,.busy-bar,.pgr-b,.cli-tools .btn,.sy-acts,.row-actions,
+    .qa,.notif-drop{display:none!important}
+    .app,.main,.content{display:block!important;margin:0!important;padding:0!important;
+      height:auto!important;overflow:visible!important}
+    body{background:#fff!important;color:#000!important}
+    .panel,.card,.cli-row,.prs-row,.att-row{break-inside:avoid;box-shadow:none!important;
+      border-color:#ccc!important}
+    section[data-view]{display:none!important}
+    section[data-view].on{display:block!important}
+    a[href]::after{content:""}
+    table{page-break-inside:auto}tr{page-break-inside:avoid}
+    thead{display:table-header-group}
+  }
   /* ══════════ Шаблоны кампаний ══════════ */
   /* Строка шаблона повторяет строку клиента: та же сетка, аватар и стрелка —
      раздел не должен выглядеть чужим среди остальных. */
@@ -1888,7 +1912,7 @@ function fmtAgo(iso){
   if(d===1)return 'вчера';
   if(d<7)return d+' дн назад';
   if(d<31)return Math.floor(d/7)+' нед назад';
-  return t.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit'});
+  return fmtD(t);
 }
 /* короткая вспышка строки, которая только что изменилась */
 function flash(node){
@@ -2454,13 +2478,14 @@ function go(v){
   goShow(v);
 }
 function goShow(v){
+  scrollRemember();        // прежний раздел запомнит, где его читали
   if(typeof sheetClose==='function'&&el('sheet')&&el('sheet').classList.contains('on'))sheetClose();
   document.querySelectorAll('section[data-view]').forEach(s=>s.classList.toggle('on',s.dataset.view===v));
   document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('active',a.dataset.go===v));
   el('crumb').textContent=NAMES[v]||'';
   render(v);
   if(typeof tabbarSync==='function')tabbarSync(v);
-  const c=document.querySelector('.content'); if(c)c.scrollTop=0;      // новый раздел — с начала
+  scrollRestore(v);        // возвращаемся туда, где были в этом разделе
   document.body.classList.remove('hdr-hide');
 }
 window.addEventListener('popstate',()=>{
@@ -2476,7 +2501,10 @@ document.getElementById('nav').addEventListener('click',e=>{
 function toggleNav(){document.body.classList.toggle('nav-open');}   // мобильный бургер
 function closeNav(){document.body.classList.remove('nav-open');}
 let CURRENT='dashboard';
-function render(v){CURRENT=v;setTimeout(()=>{const s=document.querySelector('section[data-view="'+v+'"]');mobilizeTables(s);clampSubs(s);mobilizeToolbar(s);},60);({dashboard:renderDashboard,clients:renderClients,chats:renderChats,dialogs:renderDialogs,match:renderMatch,reports:renderReports,budgets:renderBudgets,presets:renderPresets,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,system:renderSystem,guide:renderGuide,changelog:renderChangelog}[v]||(()=>{}))();}
+function render(v){CURRENT=v;setTimeout(()=>{const s=document.querySelector('section[data-view="'+v+'"]');mobilizeTables(s);clampSubs(s);mobilizeToolbar(s);a11yFix(s);},60);
+  setTimeout(()=>a11yFix(document.querySelector('section[data-view="'+v+'"]')),700);
+  a11yWatch();
+  ({dashboard:renderDashboard,clients:renderClients,chats:renderChats,dialogs:renderDialogs,match:renderMatch,reports:renderReports,budgets:renderBudgets,presets:renderPresets,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,system:renderSystem,guide:renderGuide,changelog:renderChangelog}[v]||(()=>{}))();}
 function refresh(){render(CURRENT);loadBadges();}
 
 /* ---------- бейджи/статус ---------- */
@@ -3224,7 +3252,7 @@ async function renderSystem(){
           <button class="btn sm" onclick="sysRotated(${i})">Отметить обновление</button></div>
         <div style="margin-top:6px">${(it.keys||[]).map(k=>`<div class="sy-key"><span class="kk">${esc(k.title)}</span><span class="vv">${esc(k.value)}</span></div>`).join('')}</div>
         <div class="sy-key" style="margin-top:4px"><span class="kk">Файл</span><span class="vv">${esc(it.path||'—')}</span></div>
-        <div class="sy-key"><span class="kk">Менялся</span><span class="vv">${esc(it.rotated||it.changed||'—')}</span></div>
+        <div class="sy-key"><span class="kk">Менялся</span><span class="vv">${esc(fmtDT(it.rotated||it.changed)||'—')}</span></div>
       </div>`).join('')}
     </div></div>`;
 
@@ -3329,6 +3357,150 @@ async function sysRunbook(){
   catch(e){box.innerHTML='';}
 }
 
+
+
+/* ═════════ длинные списки, память настроек, доступность ═════════ */
+
+/* Пагинация. Раньше её имели только «Клиенты», а история отправок, журнал ошибок и
+   контроль вываливали всё разом: тысяча строк в разметке тормозит даже прокрутку. */
+const PAGES={};
+function pagerSlice(key,items,per){
+  const p=Math.max(1,PAGES[key]||1), n=per||pagerPer();
+  const pages=Math.max(1,Math.ceil(items.length/n));
+  const cur=Math.min(p,pages); PAGES[key]=cur;
+  return {rows:items.slice((cur-1)*n,cur*n),page:cur,pages:pages,per:n,total:items.length};
+}
+function pagerPer(){return innerWidth<700?15:40;}
+function pagerHtml(key,st,word){
+  if(st.total<=st.per)return st.total?`<div class="pgr">Всего: ${fmtInt(st.total)}</div>`:'';
+  const b=(n,label,dis,cur)=>`<button class="btn sm${cur?' primary':''}"${dis?' disabled':''}
+    onclick="pagerGo('${key}',${n})">${label}</button>`;
+  const out=[];
+  out.push(b(st.page-1,'‹',st.page<=1));
+  const from=Math.max(1,st.page-2), to=Math.min(st.pages,from+4);
+  for(let i=from;i<=to;i++)out.push(b(i,String(i),false,i===st.page));
+  out.push(b(st.page+1,'›',st.page>=st.pages));
+  return `<div class="pgr">Показано ${fmtInt(st.rows.length)} из ${fmtInt(st.total)} ${esc(word||'')}
+    · страница ${st.page} из ${st.pages}<span class="pgr-b">${out.join('')}</span></div>`;
+}
+function pagerGo(key,n){PAGES[key]=n;refresh();}
+
+/* Память настроек раздела: фильтры и поиск переживают перезагрузку. Раньше после F5
+   всё сбрасывалось, и отбор приходилось выставлять заново. */
+function remember(key,val){try{localStorage.setItem('iig-'+key,JSON.stringify(val));}catch(e){}}
+function recall(key,def){
+  try{const v=localStorage.getItem('iig-'+key);return v===null?def:JSON.parse(v);}
+  catch(e){return def;}
+}
+
+/* Доступность одним проходом по разделу. Править 19 таблиц и два десятка полей руками —
+   значит забыть при следующей правке; здесь это чинится после каждой отрисовки. */
+function a11yFix(sec){
+  if(!sec)return;
+  sec.querySelectorAll('table').forEach(t=>{
+    t.querySelectorAll('thead th').forEach(th=>{if(!th.getAttribute('scope'))th.setAttribute('scope','col');});
+    if(!t.querySelector('caption')){
+      let head=t.closest('.panel')&&t.closest('.panel').querySelector('h3');
+      if(!head)head=sec.querySelector('h2.title');
+      if(head){
+        const c=document.createElement('caption');
+        c.className='sr-only'; c.textContent=head.textContent.trim();
+        t.insertBefore(c,t.firstChild);
+      }
+    }
+  });
+  sec.querySelectorAll('input,select,textarea').forEach(f=>{
+    if(f.type==='hidden'||f.getAttribute('aria-label')||f.closest('label'))return;
+    if(f.id&&sec.querySelector('label[for="'+f.id+'"]'))return;
+    const cut=s=>String(s||'').replace(/\s+/g,' ').trim().slice(0,60);
+    let t='';
+    const td=f.closest('td');
+    if(td){
+      // поле внутри таблицы: имя собирается из заголовка столбца и первой ячейки строки —
+      // «Клиент: almaznn.ru», иначе читалка озвучит просто «список»
+      const tr=td.closest('tr'), tbl=td.closest('table');
+      const col=[...tr.cells].indexOf(td);
+      const th=tbl&&tbl.querySelectorAll('thead th')[col];
+      const row=tr.cells[0]&&tr.cells[0]!==td?cut(tr.cells[0].innerText):'';
+      t=[th?cut(th.textContent):'',row].filter(Boolean).join(': ');
+    }
+    if(!t){
+      const lab=f.closest('.field')&&f.closest('.field').querySelector('label');
+      t=cut(lab&&lab.textContent)||cut(f.placeholder)||cut(f.title);
+    }
+    if(!t){
+      // подпись стоит слева от поля («Кому:», «Привязывать на специалиста:») —
+      // идём назад по соседям и берём первый непустой текст
+      let p=f.previousSibling;
+      while(p&&!t){
+        const s=cut(p.nodeType===3?p.textContent:(p.nodeType===1?p.innerText:''));
+        if(s)t=s;
+        p=p.previousSibling;
+      }
+    }
+    if(!t&&f.parentElement){
+      const own=[...f.parentElement.childNodes].filter(n=>n.nodeType===3)
+        .map(n=>cut(n.textContent)).filter(Boolean)[0];
+      t=own||'';
+    }
+    if(t)f.setAttribute('aria-label',t);
+  });
+  sec.querySelectorAll('button').forEach(b=>{
+    if(b.getAttribute('aria-label')||b.textContent.trim())return;
+    if(b.title)b.setAttribute('aria-label',b.title);
+  });
+}
+
+/* Разделы догружаются асинхронно и перерисовываются по кнопкам, поэтому чинить доступность
+   по таймеру бесполезно: к моменту срабатывания таблицы ещё нет. Следим за изменениями. */
+let A11Y_BUSY=false, A11Y_T=null;
+function a11yWatch(){
+  const root=document.querySelector('.content')||document.body;
+  if(!root||root.dataset.a11y)return;
+  root.dataset.a11y='1';
+  new MutationObserver(()=>{
+    if(A11Y_BUSY)return;                       // собственные правки не должны себя же будить
+    clearTimeout(A11Y_T);
+    A11Y_T=setTimeout(()=>{
+      A11Y_BUSY=true;
+      try{a11yFix(document.querySelector('section[data-view].on'));}
+      finally{setTimeout(()=>{A11Y_BUSY=false;},50);}
+    },250);
+  }).observe(root,{childList:true,subtree:true});
+}
+
+/* Где был на странице — туда и возвращаемся при переходе между разделами и назад-вперёд. */
+const SCROLLS={};
+function scrollRemember(){
+  const c=document.querySelector('.content');
+  if(c&&typeof CURRENT!=='undefined')SCROLLS[CURRENT]=c.scrollTop;
+}
+function scrollRestore(v){
+  const c=document.querySelector('.content'); if(!c)return;
+  const y=SCROLLS[v]||0;
+  if(!y){c.scrollTop=0;return;}
+  // содержимое приезжает асинхронно — возвращаем позицию, когда есть куда
+  let n=0;
+  const t=setInterval(()=>{ if(c.scrollHeight>y+c.clientHeight){c.scrollTop=y;clearInterval(t);}
+    if(++n>12)clearInterval(t); },80);
+}
+
+/* «/» — курсор в поиск текущего раздела: руки не отрываются от клавиатуры. */
+document.addEventListener('keydown',e=>{
+  if(e.key!=='/'||e.ctrlKey||e.metaKey||e.altKey)return;
+  const t=e.target;
+  if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable))return;
+  if(document.querySelector('.cmdk.on,.drawer.on,.modal.on,.sheet.on'))return;
+  const sec=document.querySelector('section[data-view].on');
+  const f=sec&&sec.querySelector('input[type="search"],.cli-search,input[placeholder*="оиск"]');
+  if(f){e.preventDefault();f.focus();try{f.select();}catch(_){}}
+});
+
+/* Уход со страницы во время долгой операции: браузер переспросит. Раньше вкладку можно
+   было закрыть посреди рассылки и не узнать, чем она кончилась. */
+window.addEventListener('beforeunload',e=>{
+  if(window.BUSY_NOW){e.preventDefault();e.returnValue='';}
+});
 
 /* ---------- ШАБЛОНЫ КАМПАНИЙ ---------- */
 /* Стандарт агентства, описанный один раз: стратегия, минус-фразы, параметры URL, атрибуция,
@@ -4103,6 +4275,7 @@ async function jobRun(key, startMethod, args, startText, doneText){
 /* Полоска фоновой задачи живёт в шапке: раньше она рисовалась внутри раздела
    и пропадала при переходе, хотя задача продолжала идти. */
 function setBusy(text){
+  window.BUSY_NOW=!!text;          // по нему предупреждаем при попытке закрыть вкладку
   let b=el('busyBar');
   if(!text){ if(b)b.remove(); return; }
   if(!b){
@@ -4833,6 +5006,21 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-09',tag:'fix',title:'Даты в одном формате, страницы в длинных списках, фильтры и печать',
+ sum:'09.08.2026 везде, журнал с поиском и группировкой, выгрузка долгов',items:[
+  '<b>Дата теперь везде выглядит одинаково: 09.08.2026.</b> Раньше в разных местах было три вида — «9 августа», «07.08.26» и сырое «2026-08-07»; в истории отправок время писалось машинным «2026-08-08 02:19».',
+  '<b>Длинные списки разбиты на страницы.</b> Журнал и история вываливали всё разом — на пару тысяч записей это тормозило даже прокрутку. Сорок строк на странице, на телефоне пятнадцать.',
+  '<b>В журнале появились поиск, фильтр по месту и схлопывание повторов.</b> Когда сеть моргнула, одна и та же ошибка писалась сотню раз подряд — теперь это одна строка со счётчиком.',
+  '<b>В истории отправок — поиск по клиенту и фильтр по статусу.</b> Найти, кому ушло с ошибкой, стало делом одного нажатия.',
+  '<b>Контроль: кнопка «Выгрузить долги».</b> Список «кто кому не сдал» уходит в файл — с ним идут на планёрку, а не переписывают с экрана.',
+  '<b>В «Пользователях» видно, когда человек заходил в последний раз.</b> Сразу понятно, кто уже не работает.',
+  '<b>Фильтры и поиск переживают перезагрузку.</b> Раньше после F5 отбор приходилось выставлять заново.',
+  '<b>Кабинет возвращает на то же место в разделе</b>, где ты читал, а не в начало списка.',
+  '<b>Клавиша «/» ставит курсор в поиск</b> текущего раздела.',
+  '<b>Кабинет можно печатать.</b> На бумагу уходит только содержимое раздела — без меню, шапки и кнопок.',
+  '<b>Вкладку не закрыть молча посреди долгой операции</b> — браузер переспросит.',
+  '<b>Работа с клавиатуры и читалкой экрана.</b> У всех таблиц появились заголовки столбцов и подписи, у полей — имена; там, где поле стоит в строке таблицы, имя собирается из заголовка столбца и клиента в строке.',
+ ]},
 {date:'2026-08-08',tag:'fix',title:'Перезагрузка больше не выкидывает в Обзор, а раздел «Шаблоны» — на компонентах кабинета',
  sum:'Раздел стал частью адреса; работают «назад» и «вперёд»',items:[
   '<b>Обновил страницу — остался там, где был.</b> Раньше любая перезагрузка возвращала в Обзор: сидишь в «Клиентах», нажал F5 — начинай заново. Теперь раздел записан в адресе, и кабинет открывает именно его.',
@@ -5310,57 +5498,35 @@ async function loadSheetLinks(){
 }
 function setRtab(t){RTAB=t;renderReports();}
 function histTable(h){
-  const head='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">'+
+  const f=recall('hist',{status:'',q:''});
+  const q=(f.q||'').toLowerCase();
+  const list=(h||[]).filter(r=>(!f.status||r.status===f.status)&&
+    (!q||((r.client_name||'')+' '+(r.login||'')+' '+(r.chat_title||'')).toLowerCase().includes(q)));
+  const st=pagerSlice('hist',list);
+  const head='<div class="cli-tools">'+
+    '<input class="cli-search" type="search" placeholder="Поиск по клиенту или чату…" value="'+esc(f.q||'')+'" oninput="histSet(\'q\',this.value)">'+
+    '<select style="max-width:190px" onchange="histSet(\'status\',this.value)">'+
+      '<option value="">Все статусы</option>'+
+      '<option value="sent"'+(f.status==='sent'?' selected':'')+'>Отправлено</option>'+
+      '<option value="error"'+(f.status==='error'?' selected':'')+'>Ошибка</option>'+
+      '<option value="skipped"'+(f.status==='skipped'?' selected':'')+'>Пропущено</option>'+
+    '</select>'+
     '<a class="btn sm" href="/download/export/history.csv" title="Выгрузить историю в CSV (Excel)"><svg class="ic"><use href="#i-download-2"/></svg> Экспорт CSV</a>'+
     '<span class="muted" style="font-size:12.5px">«Отправить снова» — повторно шлёт недельный отчёт клиенту в чат.</span></div>';
-  if(!h.length)return head+'<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th><th></th></tr></thead><tbody><tr><td colspan="6">'+emptyState('<svg class="ic"><use href="#i-inbox-2"/></svg>','Отчёты ещё не отправлялись','Здесь появится история: кому, когда и с каким результатом ушёл отчёт. Отсюда же можно переотправить или выгрузить в CSV.',{label:'Собрать пробный отчёт',onclick:()=>setRtab('prev')})+'</td></tr></tbody></table></div>';
+  if(!(h||[]).length)return head+'<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th><th></th></tr></thead><tbody><tr><td colspan="6">'+emptyState('<svg class="ic"><use href="#i-inbox-2"/></svg>','Отчёты ещё не отправлялись','Здесь появится история: кому, когда и с каким результатом ушёл отчёт. Отсюда же можно переотправить или выгрузить в CSV.',{label:'Собрать пробный отчёт',onclick:()=>setRtab('prev')})+'</td></tr></tbody></table></div>';
+  if(!list.length)return head+emptyState('<svg class="ic"><use href="#i-search-2"/></svg>','Под фильтр ничего не попало','Сбрось поиск или выбери другой статус.',{label:'Сбросить фильтры',onclick:()=>{remember('hist',{status:'',q:''});refresh();}});
   const badge=s=>s==='sent'?'<span class="badge b-green">отправлено</span>':(s==='error'?'<span class="badge b-red">ошибка</span>':'<span class="badge b-grey">'+esc(s)+'</span>');
   const canSend=!(ME&&ME.role==='observer');
   return head+'<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th><th></th></tr></thead><tbody>'+
-    h.map(r=>`<tr><td class="nowrap">${esc((r.sent_at||'').replace('T',' ').slice(0,16))}</td><td>${esc(r.client_name)}</td><td>${r.chat_title?esc(r.chat_title):'<span class="muted">—</span>'}</td><td class="muted nowrap">${esc(r.period_from)}…${esc(r.period_to)}</td><td>${badge(r.status)}${r.error?(' <span class="muted">'+esc(r.error)+'</span>'):''}</td>`+
-      `<td class="right">${canSend?('<button class="btn sm" onclick="doResend(\''+esc(r.login)+'\',\''+esc(r.client_name||r.login)+'\')" title="Отправить недельный отчёт заново"><svg class="ic"><use href="#i-refresh"/></svg></button>'):''}</td></tr>`).join('')+
-    '</tbody></table></div>';
+    st.rows.map(r=>`<tr><td class="nowrap">${esc(fmtDT(r.sent_at))}</td><td>${esc(r.client_name)}</td><td>${r.chat_title?esc(r.chat_title):'<span class="muted">—</span>'}</td><td class="muted nowrap">${esc(fmtD(r.period_from))} — ${esc(fmtD(r.period_to))}</td><td>${badge(r.status)}${r.error?(' <span class="muted">'+esc(r.error)+'</span>'):''}</td>`+
+      `<td class="right">${canSend?('<button class="btn sm" onclick="doResend(\''+esc(r.login)+'\',\''+esc(r.client_name||r.login)+'\')" title="Отправить недельный отчёт заново"><svg class="ic"><use href="#i-refresh"/></svg> Отправить снова</button>'):''}</td></tr>`).join('')+
+    '</tbody></table></div>'+pagerHtml('hist',st,'отправок');
 }
-async function doResend(login,name){
-  if(!(await askConfirm('Отправить недельный отчёт по «'+name+'» заново?\nУйдёт в привязанный чат клиента — реальным людям.',{ok:'Отправить клиенту',title:'Повторная отправка',danger:true})))return;
-  toast('Собираю и отправляю…');
-  try{const r=await api('resend_report',login);
-    toast(r.status==='sent'?('Отправлено в чатов: '+r.chats):('Статус: '+(r.reason||r.status)),r.status==='sent'?'ok':'err');
-    if(RTAB==='hist')renderReports();
-  }catch(e){}
+function histSet(k,v){
+  const f=recall('hist',{status:'',q:''});
+  f[k]=v; remember('hist',f); PAGES['hist']=1; refresh();
 }
-async function doPreview(){
-  const login=el('rpClient').value;if(!login)return;
-  el('rpBubble').innerHTML='<span class="spin"></span> запрашиваю данные из Директа…';el('rpMeta').textContent='';
-  try{const r=await api('preview',login);
-    if(r.text===null){el('rpBubble').innerHTML='<span class="muted">'+esc(r.reason)+'</span>';}
-    else{el('rpBubble').textContent=r.text;el('rpMeta').textContent='кампаний: '+r.campaigns+' · предпросмотр, не отправлено';}
-  }catch(e){el('rpBubble').innerHTML='<span class="muted">'+esc(humanError(e).msg)+'</span>';}
-}
-async function doSendTest(){
-  const login=el('rpClient').value;if(!login)return;
-  if(!(await askConfirm('Отправить тестовый отчёт в привязанный чат клиента?',{ok:'Отправить',title:'Тестовый отчёт',danger:true})))return;
-  try{const r=await api('send_test',login);
-    if(r.status==='sent')toast('Отправлено в чатов: '+r.chats,'ok');
-    else if(r.status==='no_chat')toast('У клиента нет привязанного чата','err');
-    else toast('Пропущено: '+(r.reason||r.status),'err');
-    if(RTAB==='hist')renderReports();
-  }catch(e){}
-}
-async function runWeekly(){
-  if(!(await askConfirm('Запустить рассылку по вашим клиентам за прошлую неделю? Отчёты уйдут в чаты клиентов.',{ok:'Запустить рассылку',title:'Рассылка клиентам',danger:true})))return;
-  try{await api('run_weekly_start');}catch(e){toast('Ошибка старта: '+esc(e.message),'err');return;}
-  openRunModal();
-}
-async function runDry(){
-  // проба: строит отчёты с прогрессом, но клиентам НЕ отправляет
-  try{await api('run_weekly_start',false,true);}catch(e){toast(esc(e.message),'err');return;}
-  openRunModal();
-}
-async function runFailedAgain(){
-  try{await api('run_weekly_start',true);}catch(e){toast(esc(e.message),'err');return;}
-  openRunModal();
-}
+
 function openRunModal(){
   let m=document.getElementById('runModal');
   if(!m){m=document.createElement('div');m.id='runModal';
@@ -5820,25 +5986,61 @@ async function renderErrlog(){
   if(!ME||ME.role!=='admin'){host.innerHTML=emptyState('<svg class="ic"><use href="#i-lock-2"/></svg>','Раздел только для администратора','Если доступ нужен по работе — попроси администратора выдать роль.',null);return;}
   host.innerHTML=skeleton('rows',6);
   let d;try{d=await api('error_log',300);}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
-  const entries=d.entries||[];
-  const rows=entries.map(r=>`<tr>
-    <td class="nowrap muted" style="font-size:12.5px">${esc(r.ts)}</td>
+  const all=d.entries||[];
+  const f=recall('errlog',{where:'',q:'',group:true});
+
+  // Одно и то же сообщение повторяется десятками строк подряд (сеть моргнула — сто записей).
+  // Схлопываем одинаковые «где + что» в одну строку со счётчиком и разбросом времени.
+  const grouped=[];
+  if(f.group){
+    const seen={};
+    all.forEach(r=>{
+      const k=r.where+'|'+r.msg;
+      if(seen[k]){seen[k].n++;seen[k].first=r.ts;}
+      else{seen[k]={...r,n:1,first:r.ts};grouped.push(seen[k]);}
+    });
+  }
+  const base=f.group?grouped:all.map(r=>({...r,n:1}));
+  const places=[...new Set(all.map(r=>r.where).filter(Boolean))].sort();
+  const q=(f.q||'').toLowerCase();
+  const list=base.filter(r=>(!f.where||r.where===f.where)&&
+    (!q||(r.msg+' '+r.where).toLowerCase().includes(q)));
+  const st=pagerSlice('errlog',list);
+
+  const rows=st.rows.map(r=>`<tr>
+    <td class="nowrap muted" style="font-size:12.5px">${esc(fmtDT(String(r.ts||'').replace(' ','T')))}${r.n>1?`<div class="mini-2">с ${esc((r.first||'').slice(11,16))}</div>`:''}</td>
     <td class="nowrap" style="font-size:12.5px"><code>${esc(r.where)}</code></td>
-    <td style="font-size:13px">${esc(r.msg)}</td></tr>`).join('');
+    <td style="font-size:13px">${esc(r.msg)}${r.n>1?` <span class="badge b-grey">×${r.n}</span>`:''}</td></tr>`).join('');
+
   host.innerHTML=`
     <h2 class="title">Журнал</h2>
     <p class="sub">Технические события сервера — свежие сверху: ошибки (API, рассылка, сбор отчётов)
       и итоги фоновых задач (автосинк клиентов/целей, сбор бюджетов).</p>
-    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+    <div class="cli-tools">
+      <input class="cli-search" type="search" placeholder="Поиск по журналу…" value="${esc(f.q||'')}"
+        oninput="errlogSet('q',this.value)">
+      <select style="max-width:220px" onchange="errlogSet('where',this.value)">
+        <option value="">Все места</option>
+        ${places.map(p=>`<option value="${esc(p)}"${f.where===p?' selected':''}>${esc(p)}</option>`).join('')}
+      </select>
+      <label class="pr-flag" style="font-size:13px"><input type="checkbox"${f.group?' checked':''}
+        onchange="errlogSet('group',this.checked)"><span>Схлопывать повторы</span></label>
       <button class="btn sm" onclick="renderErrlog()"><svg class="ic"><use href="#i-refresh"/></svg> Обновить</button>
-      ${entries.length?'<button class="btn sm" onclick="doClearErrlog()"><svg class="ic"><use href="#i-delete-bin"/></svg> Очистить журнал</button>':''}
-      <span class="muted" style="font-size:12px">записей: ${entries.length}${entries.length>=300?' (показаны последние 300)':''}</span>
+      ${all.length?'<button class="btn sm" onclick="doClearErrlog()"><svg class="ic"><use href="#i-delete-bin"/></svg> Очистить журнал</button>':''}
     </div>
-    ${entries.length?`<div class="panel"><div class="scrollx"><table>
+    ${list.length?`<div class="panel"><div class="scrollx"><table>
       <thead><tr><th style="width:150px">Когда</th><th style="width:200px">Где</th><th>Что случилось</th></tr></thead>
-      <tbody>${rows}</tbody></table></div></div>`
-    :emptyState('<svg class="ic"><use href="#i-sparkling-2"/></svg>','Ошибок нет','Сервер работает без сбоев. Сюда попадают отказы Директа, Telegram и фоновых задач.',null)}`;
+      <tbody>${rows}</tbody></table></div>${pagerHtml('errlog',st,'записей')}</div>`
+    :emptyState('<svg class="ic"><use href="#i-sparkling-2"/></svg>',
+        all.length?'Под фильтр ничего не попало':'Ошибок нет',
+        all.length?'Сбрось поиск или выбери другое место.':'Сервер работает без сбоев. Сюда попадают отказы Директа, Telegram и фоновых задач.',
+        all.length?{label:'Сбросить фильтры',onclick:()=>{remember('errlog',{where:'',q:'',group:true});renderErrlog();}}:null)}`;
 }
+function errlogSet(k,v){
+  const f=recall('errlog',{where:'',q:'',group:true});
+  f[k]=v; remember('errlog',f); PAGES['errlog']=1; renderErrlog();
+}
+
 async function doClearErrlog(){
   if(!(await askConfirm('Очистить журнал ошибок? Записи удалятся безвозвратно.',{ok:'Очистить',title:'Очистка журнала',danger:true})))return;
   try{await api('error_log_clear');toast('Журнал очищен','ok');renderErrlog();}catch(e){}
@@ -6175,17 +6377,65 @@ function applyUser(){
 const SUP_ST={ok:{t:'<svg class="ic"><use href="#i-checkbox-circle"/></svg> всё сдал',c:'var(--green)',bg:'var(--green-bg)'},partial:{t:'<svg class="ic"><use href="#i-error-warning"/></svg> частично',c:'var(--amber)',bg:'var(--amber-bg)'},miss:{t:'<svg class="ic"><use href="#i-close-circle"/></svg> не сдал',c:'var(--red)',c2:1,bg:'var(--red-bg)'},none:{t:'— нет клиентов',c:'var(--muted)',bg:'var(--surface-3)'}};
 function covBar(p){if(p==null)return '<span class="muted">—</span>';const col=p>=100?'var(--green)':p>=50?'var(--amber)':'var(--red)';return '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:8px;border-radius:99px;background:var(--surface-3);overflow:hidden;min-width:70px"><div style="height:100%;width:'+p+'%;background:'+col+'"></div></div><b style="font-size:12.5px">'+p+'%</b></div>';}
 /* «27 июля» — короткая дата для подписей графика */
-function fmtDay(iso){try{return new Date(iso+'T00:00:00')
-  .toLocaleDateString('ru-RU',{day:'numeric',month:'long'});}catch(e){return iso||'';}}
+/* Единый формат даты по всему кабинету: 09.08.2026 — так пишут в документах и так же
+   выглядит дата в Директе. Раньше в разных местах было три разных вида: «9 августа»,
+   «07.08.26» и сырое «2026-08-07». */
+function fmtD(v){
+  if(!v)return '';
+  try{
+    const d=(v instanceof Date)?v:new Date(String(v).length<=10?(v+'T00:00:00'):v);
+    if(isNaN(d))return String(v);
+    const p=n=>String(n).padStart(2,'0');
+    return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear();
+  }catch(e){return String(v);}
+}
+function fmtDT(v){
+  if(!v)return '';
+  try{
+    const d=(v instanceof Date)?v:new Date(v);
+    if(isNaN(d))return String(v);
+    const p=n=>String(n).padStart(2,'0');
+    return fmtD(d)+' '+p(d.getHours())+':'+p(d.getMinutes());
+  }catch(e){return String(v);}
+}
+function fmtDay(iso){return fmtD(iso);}
 function fmtWhen(iso){
   // «2 часа назад» читается мгновенно; точная дата — в подсказке при наведении
   if(!iso)return 'нет отправок';
   try{
     const d=new Date(iso);
-    const exact=d.toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const exact=fmtDT(d);
     return '<span title="'+exact+'">'+esc(fmtAgo(iso))+'</span>';
   }catch(e){return iso;}
 }
+ 
+/* Выгрузка долгов: список «кто кому не сдал» из Контроля в файл — с ним идут на планёрку,
+   а не переписывают глазами с экрана. Собираем на стороне кабинета: данные уже здесь. */
+function supExportDebts(){
+  const sup=SUP_LAST;
+  if(!sup||!sup.rows){toast('Данные ещё не загрузились','err');return;}
+  const rows=[];
+  sup.rows.forEach(r=>{
+    (r.missing||[]).forEach(m=>rows.push([r.name||'—', r.role||'', m.name||m.login, m.login,
+      'не сдан', '']));
+    (r.excused||[]).forEach(m=>rows.push([r.name||'—', r.role||'', m.name||m.login, m.login,
+      'закрыт уважительно', m.reason||'']));
+  });
+  if(!rows.length){toast('Долгов нет — выгружать нечего','ok');return;}
+  const head=['Специалист','Роль','Клиент','Логин','Состояние','Причина'];
+  const csv='\ufeff'+[head].concat(rows).map(r=>r.map(v=>{
+    const s=String(v==null?'':v).replace(/"/g,'""');
+    return /[";\n]/.test(s)?'"'+s+'"':s;
+  }).join(';')).join('\r\n');
+  const d=new Date(), p=n=>String(n).padStart(2,'0');
+  const name='Долги '+p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear()+'.csv';
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);
+  toast('Выгружено строк: '+rows.length,'ok');
+}
+
 async function renderSupervision(){
   const box=el('v_supervision');
   if(!ME||(ME.role!=='admin'&&ME.role!=='observer')){box.innerHTML=emptyState('<svg class="ic"><use href="#i-lock-2"/></svg>','Раздел для руководителя','Контроль сдачи виден администратору и работодателю.',null);return;}
@@ -6227,7 +6477,11 @@ async function renderSupervision(){
       .debtchip button{background:var(--red);color:#fff;border:none;border-radius:6px;padding:2px 8px;font:inherit;font-size:11px;font-weight:700;cursor:pointer}
       .debtchip button:hover{filter:brightness(1.08)}
     </style>
-    <h2 class="title"><svg class="ic"><use href="#i-eye"/></svg> Контроль</h2><p class="sub">Обязательства сотрудников (недельная рассылка с понедельника) и сообщения. Неделя ${esc(a.week_from)} — ${esc(a.week_to)}.</p>
+    <h2 class="title"><svg class="ic"><use href="#i-eye"/></svg> Контроль</h2><p class="sub">Обязательства сотрудников (недельная рассылка с понедельника) и сообщения. Неделя ${esc(fmtD(a.week_from))} — ${esc(fmtD(a.week_to))}.</p>
+    <div class="cli-tools">
+      <button class="btn sm" onclick="supExportDebts()" title="Список долгов в файл — для планёрки">
+        <svg class="ic"><use href="#i-download-2"/></svg> Выгрузить долги</button>
+    </div>
     <div class="cards" style="margin-bottom:16px">
       <div class="card"><div class="card-k">Покрытие агентства</div><div class="card-v" style="color:${a.coverage>=100?'var(--green)':a.coverage>=50?'var(--amber)':'var(--red)'}">${a.coverage==null?'—':a.coverage+'%'}</div><div class="card-s">${a.sent_total} сдано · ${a.excused_total} уважит. из ${a.bound_total}</div></div>
       <div class="card"><div class="card-k">Открытые долги</div><div class="card-v" style="color:${a.debt_total?'var(--red)':'var(--green)'}">${a.debt_total}</div><div class="card-s">не сдано без причины</div></div>
@@ -6591,6 +6845,7 @@ async function renderUsers(){
         <option value="observer"${u.role==='observer'?' selected':''}><svg class="ic"><use href="#i-eye"/></svg> Наблюдатель</option>
         <option value="admin"${u.role==='admin'?' selected':''}>Администратор</option></select></td>
       <td>${u.active?'<span class="badge b-green">активен</span>':'<span class="badge b-grey">заблокирован</span>'}</td>
+      <td class="nowrap">${u.last_login?fmtWhen(u.last_login):'<span class="muted">ни разу</span>'}</td>
       <td class="right">${u.clients}</td>
       <td class="right nowrap">
         <button class="btn sm" onclick="userPass(${u.id})">Пароль</button>
@@ -6610,7 +6865,7 @@ async function renderUsers(){
     </div>
     <div class="panel" style="margin-bottom:16px">
       <h3>Пользователи (${users.length})</h3>
-      <table><thead><tr><th>Пользователь</th><th>Роль</th><th>Статус</th><th class="right">Клиентов</th><th></th></tr></thead>
+      <table><thead><tr><th>Пользователь</th><th>Роль</th><th>Статус</th><th>Последний вход</th><th class="right">Клиентов</th><th></th></tr></thead>
       <tbody>${rows||'<tr><td colspan="5" class="muted">Пусто</td></tr>'}</tbody></table>
     </div>
     <div class="panel">

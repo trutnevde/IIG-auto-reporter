@@ -1461,7 +1461,9 @@ class Api:
         for u in self.db.list_users():
             out.append({"id": u["id"], "email": u["email"], "name": u["name"] or "",
                         "role": u["role"], "active": bool(u["active"]),
-                        "clients": len(self.db.owned_logins(u["id"]))})
+                        "clients": len(self.db.owned_logins(u["id"])),
+                        # когда человек заходил в последний раз: видно, кто уже не работает
+                        "last_login": self.db.last_login(u["id"])})
         return out
 
     @safe

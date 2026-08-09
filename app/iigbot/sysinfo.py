@@ -136,7 +136,14 @@ def version():
             newest = max(newest, _mtime(os.path.join(PKG_DIR, f)) or 0)
     commit = (info.get("commit") or "")[:7]
     at = info.get("at") or _iso(newest)
-    short = "{}{}".format(commit + " · " if commit else "", (at or "")[:16].replace("T", " "))
+    # дату показываем в привычном виде 09.08.2026 17:47, а не машинным ISO
+    stamp = ""
+    if at:
+        try:
+            stamp = dt.datetime.fromisoformat(at[:19]).strftime("%d.%m.%Y %H:%M")
+        except ValueError:
+            stamp = at[:16].replace("T", " ")
+    short = "{}{}".format(commit + " · " if commit else "", stamp)
     return {"commit": commit, "at": at, "note": info.get("note") or "",
             "files_at": _iso(newest), "short": short or "не определена",
             "exact": bool(info)}
