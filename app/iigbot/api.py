@@ -22,6 +22,17 @@ from .import_config import normalize_goals
 
 
 
+def _sa_email():
+    """Кому давать доступ к таблице. Достаём из ключа, а не держим строкой в коде."""
+    try:
+        import json as _j
+        from . import gsheets as _g
+        with open(_g.key_path(), encoding="utf-8") as f:
+            return _j.load(f).get("client_email") or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _unwrap(bound):
     """Функция из-под декоратора @safe: в фоне нам нужен результат, а не {ok,data}."""
     fn = getattr(bound, "__func__", bound)
@@ -1313,23 +1324,73 @@ class Api:
 
     @safe
     def gsheets_clients(self):
-        """Клиенты (в моём скоупе), у которых есть обнаруженная Google-таблица по домену —
-        чтобы в выпадашке не мелькали все подряд, а только реально выгружаемые."""
+        """Клиенты (в моём скоупе) с Google-таблицей: сперва привязанные ссылкой из кабинета,
+        затем найденные в Drive по названию «Auto-Reporter ОТЧЕТ <домен>».
+
+        Раньше был только второй путь, и клиент с иначе названной таблицей в выгрузку не
+        попадал — а переименовывать чужую таблицу ради нашего поиска неправильно.
+        """
         from . import gsheets as G
         if not G.available():
             return []
         sheets = G.discover()
+        linked = self.db.client_sheets()
         out = []
         for c in self.db.list_clients(self._owner()):
-            for d in self._client_domains(c["name"]):
-                key = str(d).strip().lower().replace("www.", "")
-                if key in sheets:
-                    sid = sheets[key]["id"]
-                    out.append({"login": c["login"], "name": c["name"] or c["login"],
-                                "sheet": sheets[key]["title"], "sheet_id": sid,
-                                "url": "https://docs.google.com/spreadsheets/d/{}".format(sid)})
-                    break
+            sid, title, how = None, None, None
+            if linked.get(c["login"]):
+                sid, how = linked[c["login"]], "ссылка"
+            else:
+                for d in self._client_domains(c["name"]):
+                    key = str(d).strip().lower().replace("www.", "")
+                    if key in sheets:
+                        sid, title, how = sheets[key]["id"], sheets[key]["title"], "по названию"
+                        break
+            if not sid:
+                continue
+            out.append({"login": c["login"], "name": c["name"] or c["login"],
+                        "sheet": title or "привязана ссылкой", "sheet_id": sid, "how": how,
+                        "url": "https://docs.google.com/spreadsheets/d/{}".format(sid)})
         return out
+
+    @safe
+    def client_sheet_set(self, login, url):
+        """Привязать Google-таблицу к клиенту ссылкой. Пустая строка — отвязать.
+
+        Проверяем доступ сразу: если таблица не расшарена на служебный аккаунт, человек
+        узнает об этом здесь, а не через неделю при первой автовыгрузке.
+        """
+        self._require_write()
+        self._require_owned(login)
+        from . import gsheets as G
+        raw = (url or "").strip()
+        if not raw:
+            self.db.set_client_sheet(login, None)
+            self._audit("sheet_unlink", login, "таблица отвязана")
+            return {"ok": True, "linked": False}
+        sid = G.sheet_id_from(raw)
+        if not sid:
+            raise RuntimeError("Это не похоже на ссылку на Google-таблицу")
+        if not G.available():
+            raise RuntimeError("Нет ключа сервисного аккаунта Google")
+        try:
+            title = G.sheet_title(G.client(readonly=True), sid)
+        except Exception as e:  # noqa: BLE001 — самая частая причина понятна человеку
+            raise RuntimeError("Таблица не открывается служебным аккаунтом. Дай ему доступ "
+                               "на редактирование: {} ({})".format(_sa_email(), str(e)[:120]))
+        self.db.set_client_sheet(login, sid)
+        self._audit("sheet_link", login, "привязана таблица «{}»".format(title))
+        return {"ok": True, "linked": True, "sheet_id": sid, "title": title,
+                "url": "https://docs.google.com/spreadsheets/d/{}".format(sid)}
+
+    @safe
+    def client_sheet_get(self, login):
+        """Что сейчас привязано к клиенту — для формы."""
+        self._require_owned(login)
+        sid = self.db.client_sheets().get(login)
+        return {"sheet_id": sid,
+                "url": "https://docs.google.com/spreadsheets/d/{}".format(sid) if sid else "",
+                "sa_email": _sa_email()}
 
     @staticmethod
     def _last_full_month():

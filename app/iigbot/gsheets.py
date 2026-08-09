@@ -33,6 +33,10 @@ SCOPES_RO = ["https://www.googleapis.com/auth/spreadsheets.readonly",
              "https://www.googleapis.com/auth/drive.readonly"]
 SCOPES_RW = ["https://www.googleapis.com/auth/spreadsheets",
              "https://www.googleapis.com/auth/drive.readonly"]
+# Копирование файла — это создание нового файла на Диске, а drive.readonly такого не даёт.
+# Отдельный набор прав только для этой операции: обычная выгрузка по-прежнему идёт с чтением.
+SCOPES_COPY = ["https://www.googleapis.com/auth/spreadsheets",
+               "https://www.googleapis.com/auth/drive"]
 
 TITLE_RE = re.compile(r"Auto-?Reporter\s+ОТЧЕ?Т\s+(.+)$", re.IGNORECASE)
 GOALS_PER_REQUEST = 10
@@ -105,6 +109,42 @@ def access_check(gc=None):
 
 _DISCOVER_CACHE = {"at": 0.0, "data": None}
 DISCOVER_TTL = 900   # 15 минут: список таблиц меняется редко, а запрос в Google медленный
+
+
+SHEET_ID_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]{20,})")
+
+
+def sheet_id_from(value):
+    """Из ссылки на таблицу достаём её идентификатор. Принимаем и голый id."""
+    v = str(value or "").strip()
+    if not v:
+        return ""
+    m = SHEET_ID_RE.search(v)
+    if m:
+        return m.group(1)
+    return v if re.fullmatch(r"[a-zA-Z0-9_-]{20,}", v) else ""
+
+
+def sheet_title(gc, sid):
+    """Название таблицы — чтобы человек видел, что привязал именно то."""
+    return gc.open_by_key(sid).title
+
+
+def copy_as_autoreporter(source_id, domain, gc=None, title=None):
+    """Сделать копию таблицы клиента под именем, по которому её находит выгрузка.
+
+    Исходную таблицу не трогаем: клиент в ней работает, и переименовывать её ради нашего
+    поиска нельзя. Копия получает название «Auto-Reporter ОТЧЕТ <домен>» и те же права,
+    что у оригинала, — чтобы у людей не пропал доступ и не открылось лишнего.
+    """
+    import gspread
+    from google.oauth2.service_account import Credentials
+    creds = Credentials.from_service_account_file(key_path(), scopes=SCOPES_COPY)
+    gc = gc or gspread.authorize(creds)
+    name = title or "Auto-Reporter ОТЧЕТ {}".format(str(domain).strip().lower())
+    sh = gc.copy(source_id, title=name, copy_permissions=True)
+    return {"id": sh.id, "title": name,
+            "url": "https://docs.google.com/spreadsheets/d/{}".format(sh.id)}
 
 
 def discover(gc=None, force=False):
@@ -858,9 +898,11 @@ def goals_for_login(token, login):
     return goals
 
 
-def sync_all(token, log=None, do_breakdowns=False):
-    """Headless-выгрузка по ВСЕМ клиентам с таблицами (для cron/планировщика). Без локальной базы:
-    таблицы берём из Drive (расшарены на сервисный аккаунт), логин — по домену из agencyclients."""
+def sync_all(token, log=None, do_breakdowns=False, links=None):
+    """Headless-выгрузка по ВСЕМ клиентам с таблицами (для cron/планировщика).
+
+    Таблица берётся двумя путями: сначала явная привязка из кабинета (links: {логин: id}),
+    затем поиск в Drive по названию «Auto-Reporter ОТЧЕТ <домен>» — как было раньше."""
     from datetime import date
     from . import yandex
     log = log or (lambda *a: None)
@@ -871,9 +913,20 @@ def sync_all(token, log=None, do_breakdowns=False):
         info = str(c.get("ClientInfo") or "").strip().lower().replace("www.", "")
         if info:
             dom2login[info] = c.get("Login")
-    out = []
+    # Явные привязки из кабинета идут первыми: у клиента таблица может называться как угодно,
+    # переименовывать чужой файл ради нашего поиска по названию неправильно.
+    targets = []                                            # [(подпись, логин, id таблицы)]
+    linked = dict(links or {})
+    for login, sid in sorted(linked.items()):
+        targets.append((login, login, sid))
     for domain, sh in sorted(sheets.items()):
         login = dom2login.get(domain) or dom2login.get(domain.replace("www.", ""))
+        if login and login in linked:
+            continue                                        # уже взяли по явной привязке
+        targets.append((domain, login, sh["id"]))
+    out = []
+    for domain, login, sid in targets:
+        sh = {"id": sid}
         if not login:
             log("· {}: логин не найден в agencyclients — пропуск".format(domain))
             out.append({"domain": domain, "ok": False, "error": "логин не найден"})

@@ -6147,6 +6147,31 @@ async function doClearErrlog(){
 }
 
 /* ---------- GOOGLE-ТАБЛИЦЫ ---------- */
+
+/* Привязка таблицы ссылкой. Поиск по названию «Auto-Reporter ОТЧЕТ <домен>» остаётся,
+   но у клиентов таблицы называются как попало, а переименовывать чужой файл — не дело. */
+let GS_ALL=[];
+async function gsLinkLoad(){
+  const login=el('gsLinkClient')&&el('gsLinkClient').value;
+  if(!login)return;
+  try{
+    const r=await api('client_sheet_get',login);
+    if(el('gsLinkUrl'))el('gsLinkUrl').value=r.url||'';
+    if(el('gsSaEmail'))el('gsSaEmail').textContent=r.sa_email||'—';
+    if(el('gsLinkNow'))el('gsLinkNow').textContent=r.sheet_id?'сейчас привязана':'привязки нет — ищем по названию';
+  }catch(e){}
+}
+async function gsLinkSave(unlink){
+  const login=el('gsLinkClient')&&el('gsLinkClient').value;
+  if(!login){toast('Выбери проект','err');return;}
+  const url=unlink?'':(el('gsLinkUrl')?el('gsLinkUrl').value.trim():'');
+  if(!unlink&&!url){toast('Вставь ссылку на таблицу','err');return;}
+  try{
+    const r=await api('client_sheet_set',login,url);
+    toast(r.linked?('Привязана таблица «'+(r.title||'')+'»'):'Таблица отвязана','ok');
+    renderGSheets();
+  }catch(e){}
+}
 async function renderGSheets(){
   const host=el('v_gsheets');host.innerHTML=skeleton('rows',5);
   let st,clients;
@@ -6157,14 +6182,36 @@ async function renderGSheets(){
   }
   try{clients=await api('gsheets_clients');}catch(e){clients=[];}   // только те, у кого реально есть таблица
   GS_CLIENTS=clients;
+  // для привязки нужен полный список проектов, а не только тех, у кого таблица уже нашлась
+  try{GS_ALL=await api('clients');}catch(e){GS_ALL=[];}
+  GS_ALL=(GS_ALL||[]).slice().sort((a,b)=>String(a.name||a.login).localeCompare(String(b.name||b.login),'ru'));
   const opts=clients.map(c=>'<option value="'+esc(c.login)+'">'+esc(c.name||c.login)+'</option>').join('')||'<option value="">— нет клиентов с таблицами —</option>';
   const sheetList=(st.sheets||[]).map(s=>'<li>'+esc(s.title)+'</li>').join('')||'<li class="muted">нет расшаренных таблиц</li>';
   const links=clients.length?('<div class="panel" style="margin-top:14px"><h3><span class="h3-ic"><svg class="ic"><use href="#i-links"/></svg></span> Таблицы моих клиентов ('+clients.length+')</h3><div class="body"><div class="gs-links">'+
-    clients.map(c=>'<a class="gs-link" href="'+esc(c.url)+'" target="_blank" rel="noopener" title="Открыть таблицу «'+esc(c.sheet)+'»"><svg class="ic"><use href="#i-table"/></svg> '+esc(c.name||c.login)+' <span class="muted">↗</span></a>').join('')+
+    clients.map(c=>'<a class="gs-link" href="'+esc(c.url)+'" target="_blank" rel="noopener" title="'+esc(c.sheet)+' · найдена '+esc(c.how||'')+'"><svg class="ic"><use href="#i-table"/></svg> '+esc(c.name||c.login)+(c.how==='ссылка'?' <span class="chip" style="margin:0 0 0 6px;padding:1px 6px;font-size:10.5px">по ссылке</span>':'')+' <span class="muted">↗</span></a>').join('')+
     '</div></div></div>'):'';
   host.innerHTML=`
     <h2 class="title">Google-таблицы</h2>
     <p class="sub">Выгрузка данных Директа в таблицы клиентов (live — включая сегодняшний день). Доступ — сервисный аккаунт, по домену клиента находится его таблица «Auto-Reporter ОТЧЕТ …».</p>
+    <div class="panel" style="margin-bottom:14px"><h3><span class="h3-ic"><svg class="ic"><use href="#i-links"/></svg></span> Привязать таблицу к проекту</h3><div class="body">
+      <p class="sy-note">Кабинет сам находит таблицы, названные «Auto-Reporter ОТЧЕТ &lt;домен&gt;».
+        Если у клиента таблица называется иначе — не переименовывай её, просто вставь сюда ссылку.
+        Привязка сильнее поиска по названию.</p>
+      <div class="grid2">
+        <div class="field"><label>Проект</label>
+          <input type="search" class="pick-s" placeholder="Поиск по названию или логину…" oninput="pickFilter(this,'gsLinkClient')">
+          <select id="gsLinkClient" onchange="gsLinkLoad()">${GS_ALL.map(c=>'<option value="'+esc(c.login)+'">'+esc(c.name||c.login)+' · '+esc(c.login)+'</option>').join('')}</select></div>
+        <div class="field"><label>Ссылка на таблицу</label>
+          <input id="gsLinkUrl" placeholder="https://docs.google.com/spreadsheets/d/…">
+          <div class="hint" id="gsLinkNow"></div></div>
+      </div>
+      <div class="cli-tools">
+        <button class="btn primary" onclick="gsLinkSave()"><svg class="ic"><use href="#i-links"/></svg> Привязать</button>
+        <button class="btn" onclick="gsLinkSave(true)">Отвязать</button>
+        <span class="muted" style="font-size:12.5px">Таблица должна быть расшарена на служебный аккаунт
+          <b id="gsSaEmail"></b> с правом редактирования</span>
+      </div>
+    </div></div>
     <div class="panel"><h3><span class="h3-ic"><svg class="ic"><use href="#i-upload-2"/></svg></span> Выгрузка по клиенту</h3><div class="body">
       <div class="field"><label>Клиент</label>
           <input type="search" class="pick-s" placeholder="Поиск по названию или логину…" oninput="pickFilter(this,'gsClient')">

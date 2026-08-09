@@ -410,6 +410,12 @@ class Storage:
         if "alert_scope" not in ucols:   # 'mine' (по умолчанию) | 'all' — получать алерты по всему агентству
             self.conn.execute("ALTER TABLE users ADD COLUMN alert_scope TEXT")
             self.conn.commit()
+        if "sheet_id" not in cols:
+            # Ссылка на Google-таблицу клиента. Раньше таблицу искали только по названию
+            # «Auto-Reporter ОТЧЕТ <домен>», и клиент с иначе названной таблицей в выгрузку
+            # не попадал — заставлять переименовывать чужие таблицы неправильно.
+            self.conn.execute("ALTER TABLE clients ADD COLUMN sheet_id TEXT")
+            self.conn.commit()
         if "note" not in cols:   # заметка по проекту («на паузе до августа») — видна всем причастным
             self.conn.execute("ALTER TABLE clients ADD COLUMN note TEXT")
             self.conn.commit()
@@ -628,6 +634,17 @@ class Storage:
         """Логины клиентов пользователя (для скоупа привязок/рассылки)."""
         return [r["login"] for r in
                 self.conn.execute("SELECT login FROM clients WHERE owner=?", (owner,))]
+
+    def set_client_sheet(self, login, sheet_id):
+        """Привязать таблицу к клиенту (или отвязать, если пусто)."""
+        self.conn.execute("UPDATE clients SET sheet_id=? WHERE login=?", (sheet_id or None, login))
+        self.conn.commit()
+
+    def client_sheets(self):
+        """{логин: id таблицы} — все явные привязки разом."""
+        rows = self.conn.execute(
+            "SELECT login, sheet_id FROM clients WHERE sheet_id IS NOT NULL AND sheet_id<>''").fetchall()
+        return {r["login"]: r["sheet_id"] for r in rows}
 
     def set_client_delivery(self, login, mode):
         """Способ доставки клиента: 'external' (копипаст, сторонний мессенджер) или
