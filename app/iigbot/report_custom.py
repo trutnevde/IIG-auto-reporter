@@ -156,10 +156,21 @@ def build(token, login, level, date_from, date_to, attribution=None, goal_defs=N
         if use_goals and len(goal_ids) > 10:
             batches = [goal_ids[i:i + 10] for i in range(0, len(goal_ids), 10)]
             merged, order = {}, []
-            for batch in batches:
-                rows = R.fetch_report(token, login, date_from, date_to, fields,
+
+            def _one(batch):
+                return R.fetch_report(token, login, date_from, date_to, fields,
                                       goal_ids=batch, attribution=attribution, report_type=rtype,
                                       filters=fltrs, _post=_post, _sleep=_sleep)
+
+            # Батчи независимы — спрашиваем их одновременно. Последовательно это множило
+            # время ответа Директа на число батчей, и разрезы отваливались по таймауту.
+            if _post is not None:
+                per_batch = [_one(b) for b in batches]          # тесты: без потоков
+            else:
+                from concurrent import futures as _f
+                with _f.ThreadPoolExecutor(max_workers=min(4, len(batches))) as ex:
+                    per_batch = list(ex.map(_one, batches))
+            for rows in per_batch:
                 for row in rows:
                     k = _dimkey(row)
                     base = merged.get(k)

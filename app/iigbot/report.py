@@ -256,13 +256,33 @@ def build_campaign_data(token, login, goal_defs, attribution, per, _post=None, _
     batches = [goal_ids[i:i + 10] for i in range(0, len(goal_ids), 10)] or [None]
 
     month_fields = ["CampaignId", "CampaignName", "Impressions", "Cost"]
-    month_rows = fetch_report(token, login, per["month_from"], per["month_to"], month_fields,
-                              None, attribution, _post=_post, _sleep=_sleep)
+
+    # Месячный отчёт и батчи целей друг от друга не зависят, поэтому спрашиваем их
+    # ОДНОВРЕМЕННО. Последовательно это было 1 + ceil(целей/10) запросов подряд: когда Директ
+    # отвечает по 20 секунд, клиент с 22 целями складывался в 80 секунд, и предпросмотр
+    # отваливался по таймауту раньше, чем успевал собраться.
+    def _month():
+        return fetch_report(token, login, per["month_from"], per["month_to"], month_fields,
+                            None, attribution, _post=_post, _sleep=_sleep)
+
+    def _batch(b):
+        return fetch_report(token, login, per["date_from"], per["date_to"], week_fields,
+                            b, attribution, _post=_post, _sleep=_sleep)
+
+    if _post is not None or len(batches) <= 1:
+        # с подменённым транспортом (тесты) и на одном батче параллелить нечего
+        month_rows = _month()
+        pairs = [(b, _batch(b)) for b in batches]
+    else:
+        from concurrent import futures as _f
+        with _f.ThreadPoolExecutor(max_workers=min(5, 1 + len(batches))) as ex:
+            fm = ex.submit(_month)
+            fb = [(b, ex.submit(_batch, b)) for b in batches]
+            month_rows = fm.result()
+            pairs = [(b, f.result()) for b, f in fb]
 
     week = {}
-    for batch in batches:
-        week_rows = fetch_report(token, login, per["date_from"], per["date_to"], week_fields,
-                                 batch, attribution, _post=_post, _sleep=_sleep)
+    for batch, week_rows in pairs:
         for r in week_rows:
             cid = str(r.get("CampaignId"))
             obj = week.get(cid)

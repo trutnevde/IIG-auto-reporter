@@ -125,8 +125,17 @@ def build_cut(token, login, ck, a_from, a_to, b_from, b_to,
     level, seg, label, cut_conv = CUTS[ck]
     segs = [seg] if seg else None
     kw = dict(attribution=attribution, goal_defs=goal_defs, _post=_post, _sleep=_sleep)
-    ca = RC.build(token, login, level, a_from, a_to, segments=segs, limit=200, **kw)
-    cb = RC.build(token, login, level, b_from, b_to, segments=segs, limit=200, **kw)
+    if _post is not None:
+        ca = RC.build(token, login, level, a_from, a_to, segments=segs, limit=200, **kw)
+        cb = RC.build(token, login, level, b_from, b_to, segments=segs, limit=200, **kw)
+    else:   # два периода одного разреза независимы — считаем одновременно
+        from concurrent import futures as _f
+        with _f.ThreadPoolExecutor(max_workers=2) as ex:
+            fa = ex.submit(RC.build, token, login, level, a_from, a_to,
+                           segments=segs, limit=200, **kw)
+            fb = ex.submit(RC.build, token, login, level, b_from, b_to,
+                           segments=segs, limit=200, **kw)
+            ca, cb = fa.result(), fb.result()
     has_conv = cut_conv and ((ca["totals"]["conv"] > 0) or (cb["totals"]["conv"] > 0))
     ckey = "conv" if has_conv else "clicks"
     rows = _pair(_rows_by_name(ca), _rows_by_name(cb), ckey)
@@ -143,10 +152,25 @@ def build(token, login, client_name, a_from, a_to, b_from, b_to,
     grain = pick_grain(a_from, a_to)
     kw = dict(attribution=attribution, goal_defs=goal_defs, _post=_post, _sleep=_sleep)
 
-    cur = RC.build(token, login, "campaign", a_from, a_to, limit=500, **kw)
-    prev = RC.build(token, login, "campaign", b_from, b_to, limit=500, **kw)
-    dyn = RC.build(token, login, "account", a_from, a_to,
-                   segments=["date"], date_grain=grain, limit=500, **kw)
+    # Три независимых отчёта: текущий период, прошлый и динамика. Раньше шли подряд, и
+    # при медленном Директе досье не успевало собраться до таймаута — теперь одновременно.
+    def _cur():
+        return RC.build(token, login, "campaign", a_from, a_to, limit=500, **kw)
+
+    def _prev():
+        return RC.build(token, login, "campaign", b_from, b_to, limit=500, **kw)
+
+    def _dyn():
+        return RC.build(token, login, "account", a_from, a_to,
+                        segments=["date"], date_grain=grain, limit=500, **kw)
+
+    if _post is not None:
+        cur, prev, dyn = _cur(), _prev(), _dyn()
+    else:
+        from concurrent import futures as _f
+        with _f.ThreadPoolExecutor(max_workers=3) as ex:
+            f1, f2, f3 = ex.submit(_cur), ex.submit(_prev), ex.submit(_dyn)
+            cur, prev, dyn = f1.result(), f2.result(), f3.result()
 
     t_now, t_was = cur["totals"], prev["totals"]
     totals = {k: _delta(t_now[k], t_was[k])
