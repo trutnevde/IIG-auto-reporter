@@ -4113,7 +4113,7 @@ async function renderClients(){
         <p class="sub">Управление подключениями, чатами и целями по проектам.</p></div>
       <div class="row-actions">
         <button class="btn" onclick="doSync()"><svg class="ic"><use href="#i-refresh"/></svg> Подтянуть из Директа</button>
-        ${isObs?'':'<button class="btn primary" onclick="openOnboard()"><svg class="ic"><use href="#i-add-circle"/></svg> Добавить клиента</button>'}
+        ${'<button class="btn primary" onclick="openOnboard()"><svg class="ic"><use href="#i-add-circle"/></svg> Добавить клиента</button>'}
       </div>
     </div>
     <div class="cards">
@@ -4615,6 +4615,19 @@ async function doBindBulk(){
   try{const r=await api('bind_bulk',75,owner||null);
     toast('Привязано разом: '+r.bound+(owner&&who?(' → '+who.name):''),'ok');refresh();}catch(e){}
 }
+/* ВОЗВРАЩЕНО: функция потерялась при переносе, а вызовы в doBind2/doBindManual остались —
+   каждая привязка падала с «bindSmart is not defined». Восстановлена из коммита 77340bf. */
+async function bindSmart(chatId,login){
+  // супервайзер с выбранным специалистом → привязка + назначение владельца одним действием
+  const owner=bindOwnerSel();
+  if(ME&&(ME.role==='admin'||ME.role==='observer')){
+    const r=await api('bind_for',chatId,login,owner||null);
+    const who=(SUP_USERS||[]).find(u=>String(u.id)===String(owner));
+    toast(owner?('Привязано и назначено: '+(who?who.name:'специалисту')):'Привязано','ok');
+    return r;
+  }
+  const r=await api('bind',chatId,login);toast('Привязано','ok');return r;
+}
 async function doBind2(chatId,login){try{await bindSmart(chatId,login);refresh();}catch(e){errToast(e);}}
 async function doBindManual(chatId){const s=el('mansel_'+chatId);if(!s.value){toast('Выбери клиента','err');return;}try{await bindSmart(chatId,s.value);refresh();}catch(e){errToast(e);}}
 
@@ -5082,6 +5095,14 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-15',tag:'fix',title:'Привязка чатов не работала совсем, и три правки по правам',
+ sum:'«bindSmart is not defined» на каждой привязке; наблюдателю вернули кнопки',items:[
+  '<b>Привязка чата к клиенту падала у всех и всегда.</b> Кнопка звала функцию <code>bindSmart</code>, а её в коде страницы не было — она потерялась при переносе. Каждое нажатие давало «bindSmart is not defined» и не делало ничего. Функция восстановлена из истории без изменений.',
+  '<b>Наблюдателю вернули «Обновить сейчас» в бюджетах.</b> Кнопку прятали от этой роли, хотя именно она за бюджетами и следит. Сбор ничего не меняет в данных — только перечитывает остатки из Директа.',
+  '<b>Наблюдатель снова может завести проект.</b> Кнопка «Добавить клиента» была скрыта, а сохранение отбивалось как «режим просмотра». Для работодателя это его прямая работа — раздавать проекты, а не смотреть на них.',
+  '<b>«Подтянуть из Директа» больше не требует администратора.</b> Кнопка отбивала наблюдателя, хотя тот же метод напрямую ему был разрешён — права разъехались между кнопкой и действием.',
+  '<b>Починена ошибка «cannot commit - no transaction is active».</b> Соединение с базой одно на всё приложение, а пишут в него и запрос, и фоновые задачи: сбор бюджетов, автосинк, бэкап. Они шли вперемешку, и коммит одного потока закрывал транзакцию другого. Из-за этого падал sync_clients и весь ночной автосинк следом.',
+ ]},
 {date:'2026-08-09',tag:'new',title:'Google-таблицы: разметка столбцов и цели с приставками',
  sum:'Видно, что кабинет пишет в каждый столбец, и это можно переназначить',items:[
   '<b>Столбцы с приставками наконец находятся.</b> У части клиентов цели названы «е_Переход в мессенджер», а столбец в таблице — просто «Переход в мессенджер». Кабинет сравнивал названия целиком и такую пару не видел, поэтому столбец оставался пустым. Теперь служебная приставка через «_», «.» или «:» при сравнении отбрасывается — но привязка засчитывается, только если подошла ровно одна цель, иначе можно молча писать не туда.',
@@ -5927,7 +5948,7 @@ async function renderBudgets(){
       <div class="grow"></div>
       <a class="btn sm" href="/download/export/budgets.csv" title="Выгрузить бюджеты в CSV (Excel)"><svg class="ic"><use href="#i-download-2"/></svg> CSV</a>
       ${run.running?`<span class="badge b-amber" id="budProg"><span class="spin"></span> собираю: ${run.done}/${run.total||'…'}</span>`
-        :(ME&&ME.role==='observer'?'':'<button class="btn sm primary" onclick="doBudgetsRefresh()"><svg class="ic"><use href="#i-refresh"/></svg> Обновить сейчас</button>')}
+        :'<button class="btn sm primary" onclick="doBudgetsRefresh()"><svg class="ic"><use href="#i-refresh"/></svg> Обновить сейчас</button>'}
     </div>
     <div class="tabs">${tab('all','Активные')}${tab('crit','<svg class="ic"><use href="#i-error-warning"/></svg> Критичные')}${tab('warn','<svg class="ic"><use href="#i-error-warning"/></svg>+<svg class="ic"><use href="#i-error-warning"/></svg> Внимание')}${tab('inactive','<svg class="ic"><use href="#i-moon-clear"/></svg> Неактивные ('+inact+')')}</div>
     ${shown.length?`<div class="panel"><div class="scrollx"><table>
@@ -6328,6 +6349,57 @@ async function gsColSave(i,clear){
     gsCols(GS_COLS.tab);
   }catch(e){}
 }
+
+/* ---------- ВОЗВРАЩЕНО: обработчики отчётов и рассылки ----------
+   Эти функции пропали при переносе блока 4 (коммит 2486e5d): кнопки в разметке
+   остались, а код — нет, и клик молча ничего не делал (ReferenceError в консоли).
+   Восстановлены из родителя того коммита без изменений. */
+async function doPreview(){
+  const login=el('rpClient').value;if(!login)return;
+  el('rpBubble').innerHTML='<span class="spin"></span> запрашиваю данные из Директа…';el('rpMeta').textContent='';
+  try{const r=await api('preview',login);
+    if(r.text===null){el('rpBubble').innerHTML='<span class="muted">'+esc(r.reason)+'</span>';}
+    else{el('rpBubble').textContent=r.text;el('rpMeta').textContent='кампаний: '+r.campaigns+' · предпросмотр, не отправлено';}
+  }catch(e){el('rpBubble').innerHTML='<span class="muted">'+esc(humanError(e).msg)+'</span>';}
+}
+
+async function doSendTest(){
+  const login=el('rpClient').value;if(!login)return;
+  if(!(await askConfirm('Отправить тестовый отчёт в привязанный чат клиента?',{ok:'Отправить',title:'Тестовый отчёт',danger:true})))return;
+  try{const r=await api('send_test',login);
+    if(r.status==='sent')toast('Отправлено в чатов: '+r.chats,'ok');
+    else if(r.status==='no_chat')toast('У клиента нет привязанного чата','err');
+    else toast('Пропущено: '+(r.reason||r.status),'err');
+    if(RTAB==='hist')renderReports();
+  }catch(e){}
+}
+
+async function doResend(login,name){
+  if(!(await askConfirm('Отправить недельный отчёт по «'+name+'» заново?\nУйдёт в привязанный чат клиента — реальным людям.',{ok:'Отправить клиенту',title:'Повторная отправка',danger:true})))return;
+  toast('Собираю и отправляю…');
+  try{const r=await api('resend_report',login);
+    toast(r.status==='sent'?('Отправлено в чатов: '+r.chats):('Статус: '+(r.reason||r.status)),r.status==='sent'?'ok':'err');
+    if(RTAB==='hist')renderReports();
+  }catch(e){}
+}
+
+async function runFailedAgain(){
+  try{await api('run_weekly_start',true);}catch(e){toast(esc(e.message),'err');return;}
+  openRunModal();
+}
+
+async function runDry(){
+  // проба: строит отчёты с прогрессом, но клиентам НЕ отправляет
+  try{await api('run_weekly_start',false,true);}catch(e){toast(esc(e.message),'err');return;}
+  openRunModal();
+}
+
+async function runWeekly(){
+  if(!(await askConfirm('Запустить рассылку по вашим клиентам за прошлую неделю? Отчёты уйдут в чаты клиентов.',{ok:'Запустить рассылку',title:'Рассылка клиентам',danger:true})))return;
+  try{await api('run_weekly_start');}catch(e){toast('Ошибка старта: '+esc(e.message),'err');return;}
+  openRunModal();
+}
+
 function gsShow(t){const r=el('gsResult');r.style.display='block';r.textContent=t;}
 async function gsPush(login){
   await jobRun('gsheets','gsheets_push_start',[login],'Выгружаю в таблицу…',

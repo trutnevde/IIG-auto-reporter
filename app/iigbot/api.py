@@ -434,7 +434,11 @@ class Api:
 
     @safe
     def save_client(self, login, name=None, goals=None, attribution=None, delivery=None):
-        self._require_write()
+        # Наблюдатель здесь не «просмотрщик», а работодатель: он заводит и раздаёт проекты.
+        # Раньше стоял общий _require_write, и Ксения не могла добавить клиента вообще —
+        # в журнале это «api.save_client Наблюдатель — режим просмотра».
+        if not self._is_observer():
+            self._require_write()
         self._require_owned(login)
         self.db.upsert_client(
             login=login, name=name,
@@ -988,8 +992,13 @@ class Api:
 
     @safe
     def sync_clients_start(self):
-        """«Подтянуть из Директа» в фоне: 393 клиента — это десятки секунд."""
-        self._require_admin()
+        """«Подтянуть из Директа» в фоне: 393 клиента — это десятки секунд.
+
+        Права те же, что у самого sync_clients — наблюдатель или админ. Раньше здесь стояло
+        «только администратор», и работодатель упирался в отказ на кнопке, хотя тот же самый
+        метод напрямую ему разрешён.
+        """
+        self._require_supervisor()
         return self._job_start("sync", "Подтягиваю клиентов из Директа",
                                lambda say: _unwrap(self.sync_clients)(self))
 
@@ -2455,7 +2464,11 @@ class Api:
     @safe
     def preset_runs(self, limit=50):
         """Что создавали по шаблонам: свои проекты — специалисту, всё — админу."""
-        logins = None if (self._is_admin() or self.user is None) else sorted(self._owned_set())
+        # _owned_set() отдаёт None не только админу, но и всем, кто видит всё (наблюдатель,
+        # десктоп). Раньше проверялся только _is_admin(), и у наблюдателя sorted(None) валил
+        # раздел «Шаблоны»: в журнале это «'NoneType' object is not iterable».
+        owned = self._owned_set()
+        logins = None if owned is None else sorted(owned)
         rows = self.db.preset_runs(int(limit or 50), logins=logins)
         names = {u["id"]: (u["name"] or u["email"]) for u in self.db.list_users()}
         clients = {c["login"]: c["name"] for c in self.db.list_clients("all")}
@@ -2875,8 +2888,12 @@ class Api:
     @safe
     def budgets_refresh(self):
         """Принудительный сбор бюджетов в фоне по МОИМ клиентам (специалист/админ — свои,
-        наблюдатель — все). Полный агентский сбор делает 12-часовой авто-планировщик."""
-        self._require_write()
+        наблюдатель — все). Полный агентский сбор делает 12-часовой авто-планировщик.
+
+        Наблюдателю разрешено: сбор ничего не меняет в данных агентства, он только
+        перечитывает остатки из Директа. Запрет на него означал, что человек, который
+        и следит за бюджетами, единственный не мог их обновить.
+        """
         if _BUDGET_RUN["running"]:
             return {"already_running": True}
         # скоуп ручного сбора: видимые мне клиенты (не всё агентство)

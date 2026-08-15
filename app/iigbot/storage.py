@@ -6,11 +6,52 @@
 import os
 import json
 import sqlite3
+import threading
 from datetime import datetime, timezone
 
 
 def _now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+class _SharedConn(sqlite3.Connection):
+    """Соединение, переживающее работу из нескольких потоков.
+
+    Соединение одно на всё приложение (check_same_thread=False), а пишут в него и обработчик
+    запроса, и фоновые задачи: сбор бюджетов, автосинк, бэкап. Они шли вперемешку, и коммит
+    одного потока закрывал транзакцию другого — второй падал с «cannot commit - no transaction
+    is active». В журнале это роняло sync_clients и весь автосинк следом.
+
+    Одного замка на коммит мало: одновременный execute на общем соединении даёт
+    «bad parameter or other API misuse». Поэтому под замок берём и запросы, и коммит —
+    доступ к базе становится последовательным. Нагрузка тут крошечная (десятки запросов
+    в минуту), так что очередь ничего не замедляет, а гонки исчезают.
+
+    Плюс терпимость к уже закрытой транзакции: если её успел закрыть чужой коммит,
+    данные уже на диске и терять нечего.
+    """
+
+    _lock = threading.RLock()
+
+    def execute(self, *a, **kw):
+        with self._lock:
+            return super().execute(*a, **kw)
+
+    def executemany(self, *a, **kw):
+        with self._lock:
+            return super().executemany(*a, **kw)
+
+    def executescript(self, *a, **kw):
+        with self._lock:
+            return super().executescript(*a, **kw)
+
+    def commit(self):
+        with self._lock:
+            try:
+                super().commit()
+            except sqlite3.OperationalError as e:
+                if "no transaction is active" not in str(e).lower():
+                    raise
 
 
 class Storage:
@@ -20,7 +61,7 @@ class Storage:
         if d and not os.path.isdir(d):
             os.makedirs(d, exist_ok=True)
         # check_same_thread=False — чтобы Flask мог читать из разных потоков.
-        self.conn = sqlite3.connect(path, check_same_thread=False)
+        self.conn = sqlite3.connect(path, check_same_thread=False, factory=_SharedConn)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self._init()
