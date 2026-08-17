@@ -1426,6 +1426,122 @@ class Api:
                 out.append(cid)
         return out
 
+    # ─────────── Экспериментальное: копилка идей ───────────
+    # Идеи, которые уже обсуждены и одобрены. Заносим один раз, чтобы раздел не открывался
+    # пустым: половина ценности такого места в том, что там сразу есть о чём спорить.
+    _SEED_IDEAS = [
+        ("Бенчмарк по нише внутри агентства",
+         "Показывать клиента на фоне похожих: у нас 399 аккаунтов — это база, которой нет ни у кого",
+         "Считать средние CPC, CTR, CR по тематикам и сравнивать с ними конкретный проект. "
+         "Сейчас фразы вроде «142 ₽ за клик это выше рынка» говорятся на глазок. "
+         "Данные для расчёта уже собираются каждую ночь.", "Отчёты"),
+        ("Проверка достоверности конверсий",
+         "Ловить отчёты, где конверсии — автоцели, а не заявки",
+         "У artdigo 802 «конверсии» из 873 — клики по кнопкам и таймер. У simplefoods 166 против "
+         "трёх реальных обращений. У gabitex CR 24,6%. Правило машинное: сравнить «отправку формы» "
+         "с «отправкой контактов»; расхождение в десятки раз — красный флаг до того, как его "
+         "увидит клиент.", "Отчёты"),
+        ("Детектор простоя",
+         "Кампания была активна и вдруг ноль показов — алерт на третий день",
+         "У artdigo кампании стояли 11 дней, мимо прошло около 26 000 ₽, заметили случайно через "
+         "две недели. Считается на данных, которые и так тянем.", "Бюджеты"),
+        ("Контроль перерасхода",
+         "Сравнивать факт с недельным лимитом и предупреждать при превышении",
+         "simplefoods два месяца жил с превышением лимита до +71% (27 300 ₽ при лимите 16 000 ₽), "
+         "и узнали мы об этом от клиента.", "Бюджеты"),
+        ("Чистка мусорных площадок кнопкой",
+         "Собрать кандидатов в бан по правилам и применить с предпросмотром",
+         "Руками это не делается: у одного клиента 1 632 площадки. Скриптом за день забанено "
+         "36 у Рулонкина, 21 у simplefoods, 31 у mosecoprogress — 46 000 ₽ за два месяца "
+         "на площадки без единой конверсии.", "Клиенты"),
+        ("Оповещение про модерацию и остановленные объявления",
+         "Отклонённые объявления и остановленные группы — это деньги, которые не работают",
+         "У simplefoods три поисковых объявления стояли на паузе: 456 показов за месяц на весь "
+         "Петербург, никто не замечал. Статусы отдаёт API.", "Клиенты"),
+        ("История изменений в аккаунте",
+         "Кто, когда и что поменял в кампаниях",
+         "Директ отдаёт журнал изменений. Нужен, когда «вчера работало, сегодня нет»: у Рулонкина "
+         "до сих пор неизвестно, кампании выключили руками или кончились деньги. "
+         "Второе применение — видеть правки, сделанные не нами (со стороны клиента или eLama).",
+         "Клиенты"),
+    ]
+
+    def _seed_ideas(self):
+        if self.db.ideas():
+            return
+        for t, s, d, a in self._SEED_IDEAS:
+            self.db.idea_add(t, s, d, a, by_user=None)
+
+    @safe
+    def ideas(self):
+        """Раздел «Экспериментальное»: идеи, средние оценки и мой собственный голос."""
+        self._seed_ideas()
+        rows = self.db.ideas()
+        names = {u["id"]: (u["name"] or u["email"]) for u in self.db.list_users()}
+        mine = self.db.idea_votes_of(self.user["id"]) if self.user else {}
+        out = []
+        for r in rows:
+            r.pop("_mine", None)
+            r["author"] = names.get(r.get("created_by")) or "—"
+            r["my"] = mine.get(str(r["id"]), {})
+            out.append(r)
+        return {"ideas": out, "params": [
+            {"key": "use", "label": "Польза", "hint": "сколько времени и денег сэкономит"},
+            {"key": "urgency", "label": "Срочность", "hint": "насколько горит прямо сейчас"},
+            {"key": "effort", "label": "Сложность", "hint": "во что обойдётся сделать; чем выше, тем дороже"},
+        ]}
+
+    @safe
+    def idea_add(self, title, summary=None, detail=None, area=None):
+        self._require_write()
+        t = (title or "").strip()
+        if not t:
+            raise RuntimeError("Без названия идею не сохранить")
+        i = self.db.idea_add(t, (summary or "").strip() or None, (detail or "").strip() or None,
+                             (area or "").strip() or None,
+                             by_user=self.user["id"] if self.user else None)
+        self._audit("idea_add", str(i), t[:60])
+        return {"id": i}
+
+    @safe
+    def idea_vote(self, idea_id, param, score):
+        """Оценка идеи. Наблюдателю тоже можно: голос — это мнение, а не правка данных."""
+        if not self.user:
+            raise RuntimeError("Нужно войти, чтобы голосовать")
+        self.db.idea_vote(idea_id, self.user["id"], param, score)
+        return {"ok": True}
+
+    @safe
+    def idea_status(self, idea_id, status):
+        self._require_write()
+        if status not in ("idea", "next", "done", "hold"):
+            raise RuntimeError("Неизвестный статус")
+        self.db.idea_update(idea_id, status=status)
+        self._audit("idea_status", str(idea_id), status)
+        return {"ok": True}
+
+    @safe
+    def idea_note(self, idea_id, text):
+        if not self.user:
+            raise RuntimeError("Нужно войти")
+        t = (text or "").strip()
+        if not t:
+            raise RuntimeError("Пустой комментарий")
+        self.db.idea_note_add(idea_id, self.user["id"], t)
+        return {"ok": True}
+
+    @safe
+    def idea_notes(self, idea_id):
+        names = {u["id"]: (u["name"] or u["email"]) for u in self.db.list_users()}
+        return [dict(n, who=names.get(n.get("user_id")) or "—") for n in self.db.idea_notes(idea_id)]
+
+    @safe
+    def idea_delete(self, idea_id):
+        self._require_admin()
+        self.db.idea_delete(idea_id)
+        self._audit("idea_delete", str(idea_id), "идея удалена")
+        return {"ok": True}
+
     @safe
     def sheet_columns(self, login, tab=None):
         """Разметка столбцов ленты: что программа заполнит, а что не тронет.

@@ -558,6 +558,36 @@ class Storage:
                 ok          INTEGER,
                 error       TEXT
             )""")
+        # ─── Экспериментальное: копилка идей и оценки по ним ───
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS ideas (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                title      TEXT NOT NULL,
+                summary    TEXT,               -- одна строка: что это даёт
+                detail     TEXT,               -- откуда идея, на каких цифрах основана
+                area       TEXT,               -- к какому разделу относится
+                status     TEXT DEFAULT 'idea',-- idea | next | done | hold
+                created_by INTEGER,
+                created_at TEXT,
+                updated_at TEXT
+            )""")
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS idea_votes (
+                idea_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                param   TEXT NOT NULL,          -- use | urgency | effort
+                score   INTEGER NOT NULL,       -- 1..5
+                at      TEXT,
+                PRIMARY KEY (idea_id, user_id, param)
+            )""")
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS idea_notes (
+                id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                idea_id INTEGER NOT NULL,
+                user_id INTEGER,
+                text    TEXT NOT NULL,
+                at      TEXT
+            )""")
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS sheet_cols (
                 login    TEXT NOT NULL,       -- клиент
@@ -694,6 +724,85 @@ class Storage:
         rows = self.conn.execute(
             "SELECT login, sheet_id FROM clients WHERE sheet_id IS NOT NULL AND sheet_id<>''").fetchall()
         return {r["login"]: r["sheet_id"] for r in rows}
+
+    # ─────────── Экспериментальное ───────────
+    IDEA_PARAMS = ("use", "urgency", "effort")
+
+    def ideas(self):
+        """Идеи со средними оценками. Приоритет = (польза + срочность) / сложность:
+        полезное и срочное поднимается, дорогое в реализации опускается."""
+        rows = [dict(r) for r in self.conn.execute("SELECT * FROM ideas ORDER BY id").fetchall()]
+        votes = self.conn.execute("SELECT idea_id, user_id, param, score FROM idea_votes").fetchall()
+        notes = self.conn.execute(
+            "SELECT idea_id, COUNT(*) n FROM idea_notes GROUP BY idea_id").fetchall()
+        n_by = {r["idea_id"]: r["n"] for r in notes}
+        agg = {}
+        for v in votes:
+            agg.setdefault(v["idea_id"], {}).setdefault(v["param"], []).append(v["score"])
+        mine = {}
+        for v in votes:
+            mine.setdefault((v["idea_id"], v["user_id"]), {})[v["param"]] = v["score"]
+        for r in rows:
+            a = agg.get(r["id"], {})
+            avg = {p: (round(sum(a[p]) / len(a[p]), 1) if a.get(p) else None) for p in self.IDEA_PARAMS}
+            r["avg"] = avg
+            r["voters"] = len({v["user_id"] for v in votes if v["idea_id"] == r["id"]})
+            r["notes"] = n_by.get(r["id"], 0)
+            u, g, e = avg["use"], avg["urgency"], avg["effort"]
+            r["priority"] = round((u + g) / e, 2) if (u and g and e) else None
+            r["_mine"] = mine
+        return rows
+
+    def idea_add(self, title, summary=None, detail=None, area=None, by_user=None):
+        cur = self.conn.execute(
+            "INSERT INTO ideas(title,summary,detail,area,status,created_by,created_at,updated_at)"
+            " VALUES(?,?,?,?,'idea',?,?,?)",
+            (title, summary, detail, area, by_user, _now(), _now()))
+        self.conn.commit()
+        return cur.lastrowid
+
+    def idea_update(self, idea_id, **kw):
+        allowed = {k: v for k, v in kw.items()
+                   if k in ("title", "summary", "detail", "area", "status") and v is not None}
+        if not allowed:
+            return
+        sets = ", ".join("%s=?" % k for k in allowed)
+        self.conn.execute("UPDATE ideas SET %s, updated_at=? WHERE id=?" % sets,
+                          tuple(allowed.values()) + (_now(), int(idea_id)))
+        self.conn.commit()
+
+    def idea_delete(self, idea_id):
+        for t in ("idea_votes", "idea_notes"):
+            self.conn.execute("DELETE FROM %s WHERE idea_id=?" % t, (int(idea_id),))
+        self.conn.execute("DELETE FROM ideas WHERE id=?", (int(idea_id),))
+        self.conn.commit()
+
+    def idea_vote(self, idea_id, user_id, param, score):
+        """Одна оценка на человека по каждому параметру: повторный голос заменяет прежний."""
+        if param not in self.IDEA_PARAMS:
+            raise ValueError("неизвестный параметр оценки: %s" % param)
+        s = max(1, min(5, int(score)))
+        self.conn.execute(
+            "INSERT OR REPLACE INTO idea_votes(idea_id,user_id,param,score,at) VALUES(?,?,?,?,?)",
+            (int(idea_id), int(user_id), param, s, _now()))
+        self.conn.commit()
+
+    def idea_votes_of(self, user_id):
+        rows = self.conn.execute(
+            "SELECT idea_id, param, score FROM idea_votes WHERE user_id=?", (int(user_id),)).fetchall()
+        out = {}
+        for r in rows:
+            out.setdefault(str(r["idea_id"]), {})[r["param"]] = r["score"]
+        return out
+
+    def idea_note_add(self, idea_id, user_id, text):
+        self.conn.execute("INSERT INTO idea_notes(idea_id,user_id,text,at) VALUES(?,?,?,?)",
+                          (int(idea_id), user_id, text, _now()))
+        self.conn.commit()
+
+    def idea_notes(self, idea_id):
+        return [dict(r) for r in self.conn.execute(
+            "SELECT * FROM idea_notes WHERE idea_id=? ORDER BY id", (int(idea_id),)).fetchall()]
 
     def set_sheet_col(self, login, title, goal_ids):
         """Ручная разметка столбца таблицы: какие цели в него складывать.
