@@ -1476,9 +1476,10 @@ class Api:
          "summary": "Клиент на фоне остальных проектов: цена клика и кликабельность",
          "why": "Фразы вроде «142 ₽ за клик это выше рынка» говорились на глазок. "
                 "У нас 395 аккаунтов — есть с чем сравнивать по-настоящему.",
-         "run": "Медиана цены клика и кликабельности считается по всем проектам агентства "
-                "с трафиком, а показать можно свои, весь IIG или проекты выбранного "
-                "специалиста. База общая всегда — иначе с одним проектом сравнивать не с чем."},
+         "run": "В таблице всегда твои проекты. Переключается эталон — набор, по которому "
+                "берётся медиана цены клика и кликабельности: всё агентство или проекты "
+                "выбранного специалиста. Показывает, во сколько раз каждый твой проект "
+                "отличается от выбранной линейки."},
     ]
 
     def _exp_scope(self):
@@ -1871,33 +1872,36 @@ class Api:
 
     # ── бенчмарк по агентству ──
     @safe
-    def exp_bench(self, who="mine", days=30):
-        """Клиент на фоне остальных.
+    def exp_bench(self, base="all", days=30):
+        """Свои проекты, померенные выбранной линейкой.
 
-        База для медианы — ВСЕГДА все проекты агентства с трафиком, независимо от выбора.
-        Раньше считалось только по своим, и у специалиста с одним проектом сравнивать было
-        не с чем: фича молча отвечала «нужно хотя бы пять проектов». Выбор влияет только
-        на то, чьи строки показать: 'mine' — свои, 'all' — весь IIG, <id> — специалиста.
+        В таблице ВСЕГДА свои проекты — в чужой список бенчмарк залезать не даёт.
+        Переключается эталон, то есть набор, по которому берётся медиана:
+        'all' — всё агентство, <id> — проекты этого специалиста.
+
+        Раньше и строки, и медиана брались из одного набора «свои клиенты»: у специалиста
+        с одним проектом база не набиралась, и фича молча отвечала «нужно хотя бы пять
+        проектов». Теперь эталон от состава строк не зависит.
         """
         import time as _t
         import datetime as _d
         import statistics as _s
         import concurrent.futures as _f
+        from . import dossier as _DS
         t0 = _t.time()
         token = load_secrets()["yandex_oauth_token"]
         end = _d.date.today() - _d.timedelta(days=1)
         beg = end - _d.timedelta(days=int(days) - 1)
 
-        # внутри агентства бенчмарк открыт всем: сравнивать себя с коллегами —
-        # это и есть смысл фичи, скрывать друг от друга нечего
-        who = "mine" if who in (None, "", "mine") else str(who)
-        if who == "mine":
-            show = set(self._exp_scope())
-        elif who == "all":
-            show = None
+        base = "all" if base in (None, "", "all") else str(base)
+        # свои проекты; у наблюдателя и десктопа скоуп «все» — это и есть их «свои»
+        mine = set(self._exp_scope())
+        if base == "all":
+            ref, ref_name = None, "всё агентство"
         else:
-            show = {c["login"] for c in self.db.list_clients("all")
-                    if str(c["owner"]) == who}
+            ref = {c["login"] for c in self.db.list_clients("all") if str(c["owner"]) == base}
+            u = self.db.get_user(int(base)) if str(base).isdigit() else None
+            ref_name = (u["name"] or u["email"]) if u else str(base)
 
         pool = [b for b in self.db.list_budgets() if (b["cost21"] or 0)]
 
@@ -1918,7 +1922,8 @@ class Api:
                     "cpc": cost / clk, "ctr": (clk / imp * 100) if imp else 0,
                     "cost": cost, "clicks": int(clk)}
 
-        # база выросла со «своих» до всего агентства — без параллели это минуты ожидания
+        # меряем весь агентский пул: эталон может быть любым, а повторный
+        # прогон всё равно уходит в кэш выгрузок
         data, skipped = [], 0
         if pool:
             with _f.ThreadPoolExecutor(max_workers=min(5, len(pool))) as ex:
@@ -1928,32 +1933,42 @@ class Api:
                     elif r:
                         data.append(r)
 
-        if len(data) < 5:
+        refset = data if ref is None else [d for d in data if d["login"] in ref]
+        # своих нет — так и говорим; показывать вместо этого всё агентство нечестно
+        rows = [d for d in data if d["login"] in mine]
+        if not refset:
             self._exp_finish("bench", t0, 0)
-            return {"rows": [], "base": len(data), "shown": 0, "skipped": skipped, "who": who,
-                    "hint": "Для сравнения нужно хотя бы пять проектов с открученным трафиком."}
-        med_cpc = _s.median([d["cpc"] for d in data])
-        med_ctr = _s.median([d["ctr"] for d in data])
+            return {"rows": [], "base": 0, "shown": 0, "skipped": skipped,
+                    "who": base, "ref_name": ref_name, "base_label": "0 проектов",
+                    "hint": "В выбранном эталоне нет ни одного проекта с трафиком за период. "
+                            "Возьми эталоном всё агентство."}
+        med_cpc = _s.median([d["cpc"] for d in refset])
+        med_ctr = _s.median([d["ctr"] for d in refset])
         for d in data:
             d["cpc"] = round(d["cpc"], 1)
             d["ctr"] = round(d["ctr"], 2)
             d["cost"] = round(d["cost"])
             d["cpc_x"] = round(d["cpc"] / med_cpc, 1) if med_cpc else None
             d["ctr_x"] = round(d["ctr"] / med_ctr, 1) if med_ctr else None
-        rows = data if show is None else [d for d in data if d["login"] in show]
         rows.sort(key=lambda d: -(d["cpc_x"] or 0))
         self._exp_finish("bench", t0, len(rows))
-        return {"rows": rows, "base": len(data), "shown": len(rows), "skipped": skipped,
-                "who": who, "med_cpc": round(med_cpc, 1), "med_ctr": round(med_ctr, 2),
+        thin = len(refset) < 5
+        return {"rows": rows, "base": len(refset), "shown": len(rows), "skipped": skipped,
+                "who": base, "ref_name": ref_name, "thin": thin, "pool": len(data),
+                "base_label": "{} {}".format(
+                    len(refset), _DS._plural(len(refset), "проект", "проекта", "проектов")),
+                "med_cpc": round(med_cpc, 1), "med_ctr": round(med_ctr, 2),
                 "period": [beg.isoformat(), end.isoformat()],
-                "hint": "В этом наборе нет проектов, где за период набралось хотя бы "
-                        "десять кликов. База по агентству собрана, сравнивать не с чем."
+                "hint": "У тебя нет проектов, где за период набралось хотя бы десять кликов."
                         if not rows else
-                        "Медиана считается по всем проектам агентства, а не по выбранному "
-                        "набору: иначе специалисту с парой проектов сравнивать не с чем. "
-                        "Медиана, а не среднее — один дорогой аккаунт не перекашивает базу. "
-                        "Столбец «во сколько раз» — отношение клика к медиане; "
-                        "всё что выше двух стоит смотреть отдельно."}
+                        ("В эталоне всего {} {} с трафиком — медиана по такой горстке "
+                         "случайна. Для устойчивого сравнения бери всё агентство."
+                         .format(len(refset), _DS._plural(len(refset), "проект", "проекта",
+                                                          "проектов")) if thin else
+                         "В таблице всегда твои проекты, переключается только эталон — набор, "
+                         "по которому берётся медиана. Медиана, а не среднее: один дорогой "
+                         "аккаунт не перекашивает линейку. Столбец «к эталону» — во сколько "
+                         "раз клик отличается от неё; выше двух стоит смотреть отдельно.")}
 
     @safe
     def exp_vote(self, key, param, score):
