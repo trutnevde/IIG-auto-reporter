@@ -5122,6 +5122,14 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-17',tag:'new',title:'Экспериментальное: ещё пять рабочих фич',
+ sum:'Достоверность конверсий, автотаргетинг, стандарт агентства, скачки расхода и бенчмарк',items:[
+  '<b>Достоверность конверсий.</b> По выбранному клиенту считает конверсии по каждой цели отдельно и делит их на контактные и мягкие. Контактная — та, после которой с человеком можно связаться: форма, телефон, почта, мессенджер. Мягкая — поведение на сайте: клики по кнопкам, время, страницы, автоцели. Если мягких больше в пять раз и выше, в отчёте клиенту показаны не заявки.',
+  '<b>Доля автотаргетинга.</b> Показывает, у кого автотаргетинг съедает больше половины бюджета при том, что фразы в кампаниях есть. У simplefoods это было 82% при 54 живых корпоративных фразах — управлять нечем, а клиенту про семантику рассказываем.',
+  '<b>Отклонения от стандарта агентства.</b> Сверяет активные кампании по чек-листу: максимум кликов с ручными ставками, потолок ставки, приоритизация по ближайшей фразе, мониторинг сайта, выключенный расширенный гео, свой список минус-фраз. Выдаёт по каждому проекту список того, что не так.',
+  '<b>Скачок расхода за сутки.</b> Берёт дневной расход за три недели и сравнивает худший день с медианой по остальным. Медиана, а не среднее, чтобы выброс не оправдывал сам себя. Ловит то, что недельный контроль перерасхода пропускает.',
+  '<b>Бенчмарк по агентству.</b> Считает медианные цену клика и кликабельность по всем проектам с трафиком и показывает, во сколько раз каждый отличается от медианы. Фразы вроде «клик дороже рынка» перестают быть ощущением.',
+ ]},
 {date:'2026-08-17',tag:'new',title:'Новый раздел «Экспериментальное»: фичи на испытании',
  sum:'Готовый функционал работает вживую, оценивают те, кто им пользовался',items:[
   '<b>Это не список идей, а инкубатор.</b> В разделе с колбой лежат работающие фичи: жмёшь «Запустить», получаешь результат по своим клиентам прямо в карточке. По оценкам решаем, что переезжает в основной кабинет, а что закрываем.',
@@ -6351,7 +6359,7 @@ function labCard(e){
     return `<div class="lab-param"><div class="lab-plab" title="${esc(p.hint)}">${esc(p.label)} <b>${avg!=null?avg:'—'}</b></div><div class="lab-dots">${dots}</div></div>`;
   }).join('');
   const res=LAB_RES[e.key];
-  const cliSel=e.key==='trash'
+  const cliSel=(e.key==='trash'||e.key==='conv_trust')
     ? `<div class="field" style="margin:0 0 10px"><input type="search" class="pick-s" placeholder="Поиск клиента…" oninput="pickFilter(this,'labCli')"><select id="labCli" onchange="LAB_CLI=this.value">${((GS_ALL||[]).map(c=>'<option value="'+esc(c.login)+'"'+(LAB_CLI===c.login?' selected':'')+'>'+esc(c.name||c.login)+'</option>').join(''))||'<option value="">— клиентов нет —</option>'}</select></div>`
     : '';
   return `<div class="lab-card">
@@ -6388,7 +6396,7 @@ async function labRun(key){
   // и выбранный клиент к моменту запроса уже сбрасывался на первый вариант.
   const sel=el('labCli');
   if(sel&&sel.value)LAB_CLI=sel.value;
-  if(key==='trash'&&!LAB_CLI){toast('Выбери клиента','err');return;}
+  if((key==='trash'||key==='conv_trust')&&!LAB_CLI){toast('Выбери клиента','err');return;}
   LAB_BUSY[key]=true;renderLab();
   try{
     if(key==='idle'){
@@ -6420,6 +6428,57 @@ async function labRun(key){
             '<td>'+x.clicks+'</td><td class="nowrap">'+fmtInt(x.cost)+' ₽</td><td>'+x.ctr+'%</td>'+
             '<td class="muted">'+esc(x.why)+'</td></tr>'))
           :'<div class="muted" style="font-size:14px">Мусора не нашлось.</div>'};
+    }else if(key==='conv_trust'){
+      const r=await api('exp_conv_trust',LAB_CLI,30);
+      const bad=r.ratio!=null&&r.ratio>=5;
+      LAB_RES[key]={note:'целей '+r.goals+' · период '+((r.period&&r.period[0])||'')+'—'+((r.period&&r.period[1])||''),
+        html:(r.rows||[]).length?
+          '<div class="note"'+(bad?' style="border-left-color:var(--red)"':'')+'>'+
+            'Контактных обращений <b>'+(r.contact||0)+'</b>, мягких действий <b>'+(r.soft||0)+'</b>'+
+            (r.other?', прочих '+r.other:'')+'. '+
+            (r.ratio==null?'Контактных целей не сработало ни разу — цифры в отчёте не про заявки.'
+              :(bad?'Мягких больше в '+r.ratio+' раз: в отчёте клиенту показаны не заявки.'
+                   :'Соотношение '+r.ratio+' к одному, картина похожа на правду.'))+
+          '</div>'+
+          labTbl(['Цель','Конверсий','Тип'],(r.rows||[]).map(x=>'<tr><td>'+esc(x.name)+'</td>'+
+            '<td>'+x.conv+'</td><td><span class="chip" style="padding:1px 8px;font-size:11px">'+
+            (x.kind==='contact'?'контактная':x.kind==='soft'?'мягкая':'прочая')+'</span></td></tr>'))
+          :'<div class="muted" style="font-size:14px">'+esc(r.hint||'Целей нет')+'</div>'};
+    }else if(key==='autotarget'){
+      const r=await api('exp_autotarget',30,50);
+      LAB_RES[key]={note:'проверено '+r.checked+', нашлось '+r.rows.length+(r.skipped?', пропущено '+r.skipped:''),
+        html:r.rows.length?labTbl(['Клиент','Автотаргетинг','По фразам','Доля автотаргетинга'],
+          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+'</div></td>'+
+            '<td class="nowrap">'+fmtInt(x.auto)+' ₽</td><td class="nowrap">'+fmtInt(x.phrase)+' ₽</td>'+
+            '<td><b style="color:'+(x.pct>=75?'var(--red)':'var(--amber)')+'">'+x.pct+'%</b></td></tr>'))
+          :'<div class="muted" style="font-size:14px">Ни у кого автотаргетинг не забирает больше половины.</div>'};
+    }else if(key==='standard'){
+      const r=await api('exp_standard');
+      LAB_RES[key]={note:'проверено '+r.checked+', с отклонениями '+r.rows.length+(r.skipped?', пропущено '+r.skipped:''),
+        html:r.rows.length?r.rows.map(x=>'<div class="bnote"><div class="bnote-h"><b>'+esc(x.name)+'</b>'+
+            '<span class="muted">'+esc(x.login)+' · кампаний '+x.camps+'</span><div class="grow"></div>'+
+            '<span class="chip" style="padding:1px 8px;font-size:11px">отклонений '+x.n+'</span></div>'+
+            '<div class="bnote-t"><ul style="margin:0;padding-left:18px">'+
+            x.issues.map(i=>'<li>'+esc(i)+'</li>').join('')+'</ul></div></div>').join('')
+          :'<div class="muted" style="font-size:14px">Все активные кампании соответствуют стандарту.</div>'};
+    }else if(key==='spike'){
+      const r=await api('exp_spike',21,2);
+      LAB_RES[key]={note:'проверено '+r.checked+', со скачками '+r.rows.length+' · период '+((r.period&&r.period[0])||'')+'—'+((r.period&&r.period[1])||''),
+        html:r.rows.length?labTbl(['Клиент','День','Потрачено','Обычный день','Во сколько раз'],
+          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+'</div></td>'+
+            '<td class="nowrap">'+esc(fmtD(x.day)||x.day)+'</td><td class="nowrap">'+fmtInt(x.cost)+' ₽</td>'+
+            '<td class="nowrap">'+fmtInt(x.median)+' ₽</td>'+
+            '<td><b style="color:'+(x.times>=3?'var(--red)':'var(--amber)')+'">×'+x.times+'</b></td></tr>'))
+          :'<div class="muted" style="font-size:14px">Резких дней не было.</div>'};
+    }else if(key==='bench'){
+      const r=await api('exp_bench',null,30);
+      LAB_RES[key]={note:r.base?('база: '+r.base+' проектов · медиана клика '+r.med_cpc+' ₽, кликабельности '+r.med_ctr+'%'):'',
+        html:r.rows.length?labTbl(['Клиент','Цена клика','К медиане','CTR','Кликов','Расход'],
+          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+'</div></td>'+
+            '<td class="nowrap">'+x.cpc+' ₽</td>'+
+            '<td><b style="color:'+(x.cpc_x>=2?'var(--red)':(x.cpc_x>=1.3?'var(--amber)':'var(--green)'))+'">×'+x.cpc_x+'</b></td>'+
+            '<td>'+x.ctr+'%</td><td>'+fmtInt(x.clicks)+'</td><td class="nowrap">'+fmtInt(x.cost)+' ₽</td></tr>'))
+          :'<div class="muted" style="font-size:14px">'+esc(r.hint||'Мало данных')+'</div>'};
     }
   }catch(e){LAB_RES[key]={note:'',html:'<div class="note">'+esc(humanError(e).msg)+'</div>'};}
   LAB_BUSY[key]=false;

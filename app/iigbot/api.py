@@ -1448,6 +1448,36 @@ class Api:
                 "За август так вычищено 88 площадок у трёх проектов.",
          "run": "Отчёт по площадкам за 60 дней: мобильные приложения от 5 кликов и сайты "
                 "с кликабельностью выше 10% при заметном расходе. Ничего не меняет, только показывает."},
+        {"key": "conv_trust", "title": "Достоверность конверсий",
+         "summary": "Сколько из конверсий — настоящие обращения, а сколько поведение на сайте",
+         "why": "У artdigo 802 «конверсии» из 873 — клики по кнопкам и таймер. "
+                "У simplefoods 163 отправки формы против 3 отправок контактов.",
+         "run": "Считает конверсии по каждой цели отдельно и делит их на контактные "
+                "и мягкие. Показывает, во сколько раз одни больше других."},
+        {"key": "autotarget", "title": "Доля автотаргетинга",
+         "summary": "У кого автотаргетинг съедает большую часть бюджета",
+         "why": "У simplefoods 82% денег ушло на строки ---autotargeting, при том что "
+                "в кампании лежат 54 корпоративные фразы.",
+         "run": "Отчёт по критериям за 30 дней: расход автотаргетинга против расхода фраз. "
+                "Показывает всех, у кого автотаргетинг взял больше половины."},
+        {"key": "standard", "title": "Отклонения от стандарта агентства",
+         "summary": "Сверяет активные кампании с нашим чек-листом настроек",
+         "why": "Ручная сверка пяти клиентов дала одно и то же: максимум позиции вместо "
+                "ручных ставок, пустой потолок, выключенная приоритизация, ноль минус-фраз.",
+         "run": "Проверяет стратегию, потолок ставки, приоритизацию по ближайшей фразе, "
+                "мониторинг сайта, расширенный гео и наличие минус-фраз."},
+        {"key": "spike", "title": "Скачок расхода за сутки",
+         "summary": "День, когда потратили кратно больше обычного",
+         "why": "У simplefoods 20 июля ушло 8 459 ₽ при обычных двух-трёх тысячах, "
+                "и недельный контроль такое не ловит.",
+         "run": "Берёт дневной расход за три недели и сравнивает худший день с медианой "
+                "по остальным. Медиана, чтобы выброс не оправдывал сам себя."},
+        {"key": "bench", "title": "Бенчмарк по агентству",
+         "summary": "Клиент на фоне остальных проектов: цена клика и кликабельность",
+         "why": "Фразы вроде «142 ₽ за клик это выше рынка» говорились на глазок. "
+                "У нас 395 аккаунтов — есть с чем сравнивать по-настоящему.",
+         "run": "Считает медианные цену клика и кликабельность по проектам с трафиком "
+                "и показывает, во сколько раз каждый отличается от медианы."},
     ]
 
     def _exp_scope(self):
@@ -1615,6 +1645,276 @@ class Api:
                 "waste": round(sum(r["cost"] for r in out)),
                 "hint": "Сервисы Яндекса не показываю: их не принимают в запрет. "
                         "Применение пока руками — фича на испытании."}
+
+    # ── достоверность конверсий ──
+    # Контактное действие человек совершает, когда реально хочет связаться. Всё остальное —
+    # поведение на сайте. Если «мягких» в разы больше контактных, отчёт клиенту завышен.
+    _CONTACT_WORDS = ("телефон", "звон", "позвон", "email", "e-mail", "почт", "мессенджер",
+                      "whatsapp", "telegram", "вайбер", "viber", "контакт", "заявк", "форм",
+                      "обратн", "заказ", "оформ", "купить", "корзин", "оплат", "покупк")
+    _SOFT_WORDS = ("клик по кнопке", "кнопк", "скролл", "просмотр", "посет", "визит",
+                   "страниц", "время", "минут", "сессия", "вовлеч", "открыл", "квиз",
+                   "скачив", "автоцель", "auto-goal", "соц", "поделил")
+
+    @classmethod
+    def _goal_kind(cls, name):
+        n = (name or "").lower()
+        if any(w in n for w in cls._SOFT_WORDS):
+            return "soft"
+        if any(w in n for w in cls._CONTACT_WORDS):
+            return "contact"
+        return "other"
+
+    @safe
+    def exp_conv_trust(self, login, days=30):
+        """Сколько из конверсий — настоящие обращения, а сколько поведение на сайте."""
+        import time as _t
+        import datetime as _d
+        t0 = _t.time()
+        self._require_owned(login)
+        token = load_secrets()["yandex_oauth_token"]
+        end = _d.date.today() - _d.timedelta(days=1)
+        beg = end - _d.timedelta(days=int(days) - 1)
+        goals = self._metrika_goals_for(login).get("goals", [])
+        if not goals:
+            self._exp_finish("conv_trust", t0, 0)
+            return {"rows": [], "goals": 0, "period": [beg.isoformat(), end.isoformat()],
+                    "hint": "У клиента нет целей Метрики — отчитываться нечем."}
+        rows = []
+        ids = [str(g["id"]) for g in goals]
+        for s in range(0, len(ids), 10):
+            batch = ids[s:s + 10]
+            rep = report.fetch_report(token, login, beg.isoformat(), end.isoformat(),
+                                      ["Clicks", "Cost"], goal_ids=batch, attribution="LSCCD",
+                                      report_type="ACCOUNT_PERFORMANCE_REPORT")
+            for gid in batch:
+                col = None
+                for r in rep:
+                    col = report._find_goal_col(r, gid)
+                    if col:
+                        break
+                val = sum(report.parse_num(r.get(col)) for r in rep) if col else 0
+                name = next((g.get("name") for g in goals if str(g["id"]) == gid), gid)
+                rows.append({"id": gid, "name": name, "conv": int(val),
+                             "kind": self._goal_kind(name)})
+        rows.sort(key=lambda r: -r["conv"])
+        soft = sum(r["conv"] for r in rows if r["kind"] == "soft")
+        contact = sum(r["conv"] for r in rows if r["kind"] == "contact")
+        other = sum(r["conv"] for r in rows if r["kind"] == "other")
+        total = soft + contact + other
+        ratio = round(soft / contact, 1) if contact else None
+        self._exp_finish("conv_trust", t0, len(rows))
+        return {"rows": rows, "goals": len(goals), "soft": soft, "contact": contact,
+                "other": other, "total": total, "ratio": ratio,
+                "period": [beg.isoformat(), end.isoformat()],
+                "hint": "«Мягкие» — поведение на сайте: клики по кнопкам, время, страницы. "
+                        "«Контактные» — то, после чего с человеком можно связаться. "
+                        "Расхождение больше чем в 5 раз означает, что в отчёте клиенту "
+                        "показаны не заявки."}
+
+    # ── доля автотаргетинга ──
+    @safe
+    def exp_autotarget(self, days=30, threshold=50):
+        """У кого автотаргетинг съедает большую часть денег, притом что фразы в кампаниях есть."""
+        import time as _t
+        import datetime as _d
+        t0 = _t.time()
+        token = load_secrets()["yandex_oauth_token"]
+        scope = set(self._exp_scope())
+        end = _d.date.today() - _d.timedelta(days=1)
+        beg = end - _d.timedelta(days=int(days) - 1)
+        rows, checked, skipped = [], 0, 0
+        for b in self.db.list_budgets():
+            if scope and b["login"] not in scope:
+                continue
+            if not (b["cost21"] or 0):
+                continue
+            checked += 1
+            try:
+                rep = report.fetch_report(token, b["login"], beg.isoformat(), end.isoformat(),
+                                          ["Criterion", "Cost", "Clicks"],
+                                          report_type="CRITERIA_PERFORMANCE_REPORT")
+            except Exception:  # noqa: BLE001
+                skipped += 1
+                continue
+            auto = phrase = 0.0
+            for r in rep:
+                c = report.parse_num(r.get("Cost"))
+                if "autotargeting" in str(r.get("Criterion") or "").lower():
+                    auto += c
+                else:
+                    phrase += c
+            tot = auto + phrase
+            if tot <= 0:
+                continue
+            pct = auto / tot * 100
+            if pct >= threshold:
+                rows.append({"login": b["login"], "name": b["name"] or b["login"],
+                             "auto": round(auto), "phrase": round(phrase),
+                             "pct": round(pct)})
+        rows.sort(key=lambda r: -r["pct"])
+        self._exp_finish("autotarget", t0, len(rows))
+        return {"rows": rows, "checked": checked, "skipped": skipped, "threshold": threshold,
+                "period": [beg.isoformat(), end.isoformat()],
+                "hint": "Автотаргетинг сам по себе не зло, но если он ест больше половины "
+                        "бюджета, семантика в кампании декоративная: управлять нечем, "
+                        "запросов не видно, а клиенту мы про неё рассказываем."}
+
+    # ── отклонения от стандарта агентства ──
+    @safe
+    def exp_standard(self):
+        """Сверка активных кампаний со стандартом агентства."""
+        import time as _t
+        t0 = _t.time()
+        token = load_secrets()["yandex_oauth_token"]
+        scope = set(self._exp_scope())
+        rows, checked, skipped = [], 0, 0
+        for b in self.db.list_budgets():
+            if scope and b["login"] not in scope:
+                continue
+            if not (b["cost21"] or 0):
+                continue
+            checked += 1
+            try:
+                cs = yandex.call(token, "campaigns", "get", {
+                    "SelectionCriteria": {"States": ["ON"]},
+                    "FieldNames": ["Id", "Name", "NegativeKeywords"],
+                    "UnifiedCampaignFieldNames": ["BiddingStrategy", "Settings"]},
+                    login=b["login"]).get("Campaigns") or []
+            except Exception:  # noqa: BLE001
+                skipped += 1
+                continue
+            bad = []
+            for c in cs:
+                u = c.get("UnifiedCampaign") or {}
+                bs = u.get("BiddingStrategy") or {}
+                st = {x["Option"]: x["Value"] for x in (u.get("Settings") or [])}
+                nm = str(c.get("Name") or "")[:26]
+                s = (bs.get("Search") or {}).get("BiddingStrategyType")
+                if s == "HIGHEST_POSITION":
+                    bad.append("%s: максимум позиции вместо ручных ставок" % nm)
+                for side in ("Search", "Network"):
+                    for v in (bs.get(side) or {}).values():
+                        if isinstance(v, dict) and v.get("WeeklySpendLimit") and not v.get("BidCeiling"):
+                            bad.append("%s: нет потолка ставки" % nm)
+                            break
+                if st.get("CAMPAIGN_EXACT_PHRASE_MATCHING_ENABLED") == "NO":
+                    bad.append("%s: приоритизация по ближайшей фразе выключена" % nm)
+                if st.get("ENABLE_SITE_MONITORING") != "YES":
+                    bad.append("%s: мониторинг сайта выключен" % nm)
+                if st.get("ENABLE_AREA_OF_INTEREST_TARGETING") == "YES":
+                    bad.append("%s: расширенный географический таргетинг включён" % nm)
+                if not ((c.get("NegativeKeywords") or {}).get("Items") or []):
+                    bad.append("%s: нет минус-фраз" % nm)
+            if bad:
+                rows.append({"login": b["login"], "name": b["name"] or b["login"],
+                             "camps": len(cs), "issues": bad[:10], "n": len(bad)})
+        rows.sort(key=lambda r: -r["n"])
+        self._exp_finish("standard", t0, sum(r["n"] for r in rows))
+        return {"rows": rows, "checked": checked, "skipped": skipped,
+                "hint": "Сверяется со стандартом агентства: максимум кликов с ручными ставками, "
+                        "потолок ставки, приоритизация по ближайшей фразе, мониторинг сайта, "
+                        "выключенный расширенный гео, свой список минус-фраз."}
+
+    # ── скачок расхода за сутки ──
+    @safe
+    def exp_spike(self, days=21, times=2.0):
+        """День, когда потратили кратно больше обычного."""
+        import time as _t
+        import datetime as _d
+        import statistics as _s
+        t0 = _t.time()
+        token = load_secrets()["yandex_oauth_token"]
+        scope = set(self._exp_scope())
+        end = _d.date.today() - _d.timedelta(days=1)
+        beg = end - _d.timedelta(days=int(days) - 1)
+        rows, checked, skipped = [], 0, 0
+        for b in self.db.list_budgets():
+            if scope and b["login"] not in scope:
+                continue
+            if not (b["cost7"] or 0):
+                continue
+            checked += 1
+            try:
+                rep = report.fetch_report(token, b["login"], beg.isoformat(), end.isoformat(),
+                                          ["Date", "Cost"],
+                                          report_type="ACCOUNT_PERFORMANCE_REPORT")
+            except Exception:  # noqa: BLE001
+                skipped += 1
+                continue
+            by = {}
+            for r in rep:
+                by[str(r.get("Date"))] = by.get(str(r.get("Date")), 0) + report.parse_num(r.get("Cost"))
+            vals = [v for v in by.values() if v > 0]
+            if len(vals) < 7:
+                continue
+            med = _s.median(vals)
+            if med <= 0:
+                continue
+            worst = max(by.items(), key=lambda kv: kv[1])
+            if worst[1] >= med * float(times):
+                rows.append({"login": b["login"], "name": b["name"] or b["login"],
+                             "day": worst[0], "cost": round(worst[1]),
+                             "median": round(med), "times": round(worst[1] / med, 1)})
+        rows.sort(key=lambda r: -r["times"])
+        self._exp_finish("spike", t0, len(rows))
+        return {"rows": rows, "checked": checked, "skipped": skipped,
+                "period": [beg.isoformat(), end.isoformat()], "times": times,
+                "hint": "Сравнивается худший день с медианой по остальным дням периода. "
+                        "Медиана, а не среднее: один выброс не должен сам себя оправдывать."}
+
+    # ── бенчмарк по агентству ──
+    @safe
+    def exp_bench(self, login=None, days=30):
+        """Клиент на фоне остальных: медианы по агентству против его собственных чисел."""
+        import time as _t
+        import datetime as _d
+        import statistics as _s
+        t0 = _t.time()
+        token = load_secrets()["yandex_oauth_token"]
+        scope = set(self._exp_scope())
+        end = _d.date.today() - _d.timedelta(days=1)
+        beg = end - _d.timedelta(days=int(days) - 1)
+        data, skipped = [], 0
+        for b in self.db.list_budgets():
+            if scope and b["login"] not in scope:
+                continue
+            if not (b["cost21"] or 0):
+                continue
+            try:
+                rep = report.fetch_report(token, b["login"], beg.isoformat(), end.isoformat(),
+                                          ["Impressions", "Clicks", "Cost"],
+                                          report_type="ACCOUNT_PERFORMANCE_REPORT")
+            except Exception:  # noqa: BLE001
+                skipped += 1
+                continue
+            imp = sum(report.parse_num(r.get("Impressions")) for r in rep)
+            clk = sum(report.parse_num(r.get("Clicks")) for r in rep)
+            cost = sum(report.parse_num(r.get("Cost")) for r in rep)
+            if clk < 10:
+                continue
+            data.append({"login": b["login"], "name": b["name"] or b["login"],
+                         "cpc": cost / clk, "ctr": (clk / imp * 100) if imp else 0,
+                         "cost": cost, "clicks": int(clk)})
+        if len(data) < 5:
+            self._exp_finish("bench", t0, 0)
+            return {"rows": [], "base": len(data), "skipped": skipped,
+                    "hint": "Для сравнения нужно хотя бы пять проектов с открученным трафиком."}
+        med_cpc = _s.median([d["cpc"] for d in data])
+        med_ctr = _s.median([d["ctr"] for d in data])
+        for d in data:
+            d["cpc"] = round(d["cpc"], 1)
+            d["ctr"] = round(d["ctr"], 2)
+            d["cost"] = round(d["cost"])
+            d["cpc_x"] = round(d["cpc"] / med_cpc, 1) if med_cpc else None
+        data.sort(key=lambda d: -(d["cpc_x"] or 0))
+        self._exp_finish("bench", t0, len(data))
+        return {"rows": data, "base": len(data), "skipped": skipped,
+                "med_cpc": round(med_cpc, 1), "med_ctr": round(med_ctr, 2),
+                "period": [beg.isoformat(), end.isoformat()],
+                "hint": "Медиана по вашим проектам, а не среднее: один дорогой аккаунт не "
+                        "перекашивает базу. Столбец «во сколько раз» — отношение клика "
+                        "к медиане; всё что выше двух стоит смотреть отдельно."}
 
     @safe
     def exp_vote(self, key, param, score):
