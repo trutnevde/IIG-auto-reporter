@@ -1020,6 +1020,12 @@
   .modal.on{opacity:1;transform:translate(-50%,-50%) scale(1);pointer-events:auto}
   .modal .body{padding:20px}
   .link-box{display:flex;gap:8px;margin-top:9px}.link-box input{flex:1;font-family:ui-monospace,"Cascadia Code",monospace;font-size:12.5px}
+  /* готовые отписки клиентам по бюджету */
+  .bnote{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:var(--surface-2)}
+  .bnote-h{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:8px;font-size:13px}
+  .bnote-h .muted{font-size:11.5px}
+  .bnote-t{font-size:14px;line-height:1.5;user-select:all;-webkit-user-select:all}
+  @media (max-width:640px){.bnote-h{gap:6px}.bnote-h .btn{width:100%}}
   .goalrow{display:grid;grid-template-columns:46px 120px 1fr 34px;gap:8px;margin-bottom:7px;align-items:center}
   .ga-wrap{display:flex;align-items:center;justify-content:center;cursor:pointer}
   .goalrow.head{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
@@ -5095,6 +5101,13 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-16',tag:'new',title:'Бюджеты: готовые отписки клиентам в одном месте',
+ sum:'Текст с остатком и запасом дней по каждому клиенту, копируется одной кнопкой',items:[
+  '<b>Собирать цифры по таблице руками больше не нужно.</b> Внизу раздела «Бюджеты» появилась панель с готовым текстом на каждого клиента: «Добрый день! Сообщаем, что на бюджете остаток составляет 892 ₽, при нынешнем темпе расхода этого хватит на ~1,6 дней». Числа берутся из последнего сбора.',
+  '<b>Три группы на выбор.</b> Критичные, критичные вместе с «вниманием», и все активные. Клиенты без собранного остатка и неактивные в список не попадают — писать им нечего.',
+  '<b>Копируется по одному или все разом.</b> У каждого блока своя кнопка, сверху кнопка на весь список: тексты уйдут в буфер с именами клиентов, чтобы не перепутать при рассылке.',
+  '<b>Когда осталось меньше трёх дней, текст сам добавляет просьбу пополнить счёт.</b> А при остатке меньше суток вместо дробного числа пишет «менее суток» — так понятнее и не выглядит machine-generated.',
+ ]},
 {date:'2026-08-15',tag:'fix',title:'Привязка чатов не работала совсем, и три правки по правам',
  sum:'«bindSmart is not defined» на каждой привязке; наблюдателю вернули кнопки',items:[
   '<b>Привязка чата к клиенту падала у всех и всегда.</b> Кнопка звала функцию <code>bindSmart</code>, а её в коде страницы не было — она потерялась при переносе. Каждое нажатие давало «bindSmart is not defined» и не делало ничего. Функция восстановлена из истории без изменений.',
@@ -5896,6 +5909,63 @@ async function doReportSend(){
 /* ---------- БЮДЖЕТЫ ---------- */
 let BUD_FILTER='all', BUD_POLL=null;
 function budMoney(v,cur){return v==null?'<span class="muted">—</span>':(Math.round(v).toLocaleString('ru-RU')+' '+(cur==='RUB'?'₽':esc(cur||'')));}
+
+/* ---------- ОТПИСКИ КЛИЕНТАМ ПО БЮДЖЕТУ ----------
+   Текст один и тот же для всех, но цифры у каждого свои, и собирать их руками
+   по таблице — самая частая ручная работа в этом разделе. Собираем разом. */
+let BUD_NOTE_GRP='crit';
+function budNoteDays(d){
+  // Своё склонение, а не общий plural(): тот объявлен внутри другой функции и снаружи
+  // недоступен, да ещё и возвращает число вместе со словом.
+  if(d==null)return '';
+  if(d<1)return 'менее суток';
+  const round=Math.abs(d-Math.round(d))<0.05?Math.round(d):null;
+  if(round===null)return '~'+d.toFixed(1).replace('.',',')+' дней';
+  const m=round%10,h=round%100;
+  const w=(m===1&&h!==11)?'день':((m>=2&&m<=4&&(h<10||h>=20))?'дня':'дней');
+  return '~'+round+' '+w;
+}
+function budNoteText(r){
+  const money=Math.round(r.balance).toLocaleString('ru-RU')+' '+(r.currency==='RUB'?'₽':(r.currency||''));
+  const d=budNoteDays(r.days_left);
+  let t='Добрый день! Сообщаем, что на бюджете остаток составляет '+money;
+  if(d)t+=', при нынешнем темпе расхода этого хватит на '+d;
+  t+='.';
+  if(r.days_left!=null&&r.days_left<3)t+=' Рекомендуем пополнить счёт, чтобы показы не остановились.';
+  return t;
+}
+function budNotesFor(rows){
+  const g=BUD_NOTE_GRP;
+  return rows.filter(r=>r.balance!=null&&(
+    g==='crit'?r.status==='critical':
+    g==='warn'?(r.status==='critical'||r.status==='warning'):
+    r.status!=='inactive'));
+}
+function budNotesPanel(rows){
+  const list=budNotesFor(rows);
+  const grp=(k,label,n)=>`<span class="t ${BUD_NOTE_GRP===k?'on':''}" onclick="BUD_NOTE_GRP='${k}';renderBudgets()">${label} (${n})</span>`;
+  const nCrit=rows.filter(r=>r.balance!=null&&r.status==='critical').length;
+  const nWarn=rows.filter(r=>r.balance!=null&&(r.status==='critical'||r.status==='warning')).length;
+  const nAll=rows.filter(r=>r.balance!=null&&r.status!=='inactive').length;
+  const blocks=list.map(r=>{
+    const t=budNoteText(r);
+    return `<div class="bnote">
+      <div class="bnote-h"><b>${esc(r.name||r.login)}</b>
+        <span class="muted">${esc(r.login)}</span>
+        <div class="grow"></div>
+        <button class="btn sm" onclick="copyToClip(${JSON.stringify(t).replace(/"/g,'&quot;')},'Текст скопирован',this)"><svg class="ic"><use href="#i-file-copy-2"/></svg> Копировать</button></div>
+      <div class="bnote-t">${esc(t)}</div></div>`;
+  }).join('');
+  const all=list.map(r=>(r.name||r.login)+'\n'+budNoteText(r)).join('\n\n');
+  return `<div class="panel" style="margin-top:16px"><h3><span class="h3-ic"><svg class="ic"><use href="#i-chat-3"/></svg></span> Отписки клиентам по бюджету</h3><div class="body">
+    <p class="sy-note">Готовый текст с остатком и запасом дней по каждому клиенту. Скопируй и отправь в чат — цифры подставлены из последнего сбора.</p>
+    <div class="tabs" style="margin:10px 0 12px">${grp('crit','Критичные',nCrit)}${grp('warn','Критичные и внимание',nWarn)}${grp('all','Все активные',nAll)}</div>
+    ${list.length?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <button class="btn sm primary" onclick="copyToClip(${JSON.stringify(all).replace(/"/g,'&quot;')},'Скопировано всё',this)"><svg class="ic"><use href="#i-file-copy-2"/></svg> Скопировать все ${list.length}</button>
+      </div>${blocks}`
+     :'<div class="muted" style="font-size:14px">В этой группе никого нет. Либо бюджеты в порядке, либо остатки ещё не собраны.</div>'}
+  </div></div>`;
+}
 function budDays(d){
   if(d==null)return '<span class="muted">—</span>';
   const col=d<3?'var(--red)':(d<7?'var(--amber)':'var(--green)');
@@ -5956,7 +6026,8 @@ async function renderBudgets(){
       <tbody>${trs}</tbody></table></div></div>`
     :(rows.length
       ? emptyState('<svg class="ic"><use href="#i-search-2"/></svg>','В этом фильтре пусто','Смени фильтр сверху — например, на «Активные».',null)
-      : emptyState('<svg class="ic"><use href="#i-wallet-3"/></svg>','Бюджеты ещё не собирали','Нажми «Обновить сейчас» — соберу остатки по твоим клиентам. Полный сбор по агентству идёт сам раз в 12 часов. Если пусто и после сбора — значит на тебе пока нет проектов.',{label:'Обновить сейчас',onclick:()=>doBudgetsRefresh()}))}`;
+      : emptyState('<svg class="ic"><use href="#i-wallet-3"/></svg>','Бюджеты ещё не собирали','Нажми «Обновить сейчас» — соберу остатки по твоим клиентам. Полный сбор по агентству идёт сам раз в 12 часов. Если пусто и после сбора — значит на тебе пока нет проектов.',{label:'Обновить сейчас',onclick:()=>doBudgetsRefresh()}))}
+    ${rows.length?budNotesPanel(rows):''}`;
   if(run.running)budPoll();
 }
 function budPoll(){
