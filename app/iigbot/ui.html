@@ -6326,7 +6326,7 @@ async function doClearErrlog(){
    Здесь работает настоящий функционал, а не описания. Человек жмёт «Запустить»,
    получает результат по своим клиентам и только после этого может оценить —
    оценка без использования тут не принимается, иначе это опять доска мнений. */
-let LAB=null, LAB_RES={}, LAB_BUSY={};
+let LAB=null, LAB_RES={}, LAB_BUSY={}, LAB_CLI='';
 const LAB_ST={testing:['На испытании','b-amber'],released:['Выпущено','b-green'],rejected:['Закрыто','b-gray']};
 
 async function renderLab(){
@@ -6352,7 +6352,7 @@ function labCard(e){
   }).join('');
   const res=LAB_RES[e.key];
   const cliSel=e.key==='trash'
-    ? `<div class="field" style="margin:0 0 10px"><input type="search" class="pick-s" placeholder="Поиск клиента…" oninput="pickFilter(this,'labCli')"><select id="labCli">${((GS_ALL||[]).map(c=>'<option value="'+esc(c.login)+'">'+esc(c.name||c.login)+'</option>').join(''))||'<option value="">— клиентов нет —</option>'}</select></div>`
+    ? `<div class="field" style="margin:0 0 10px"><input type="search" class="pick-s" placeholder="Поиск клиента…" oninput="pickFilter(this,'labCli')"><select id="labCli" onchange="LAB_CLI=this.value">${((GS_ALL||[]).map(c=>'<option value="'+esc(c.login)+'"'+(LAB_CLI===c.login?' selected':'')+'>'+esc(c.name||c.login)+'</option>').join(''))||'<option value="">— клиентов нет —</option>'}</select></div>`
     : '';
   return `<div class="lab-card">
     <div class="lab-head">
@@ -6384,6 +6384,11 @@ function labTbl(head,rows){
 
 async function labRun(key){
   if(LAB_BUSY[key])return;
+  // Значение селекта читаем ДО перерисовки: renderLab пересобирает разметку,
+  // и выбранный клиент к моменту запроса уже сбрасывался на первый вариант.
+  const sel=el('labCli');
+  if(sel&&sel.value)LAB_CLI=sel.value;
+  if(key==='trash'&&!LAB_CLI){toast('Выбери клиента','err');return;}
   LAB_BUSY[key]=true;renderLab();
   try{
     if(key==='idle'){
@@ -6398,16 +6403,17 @@ async function labRun(key){
           :'<div class="muted" style="font-size:14px">Никто не встал. Это хорошая новость.</div>'};
     }else if(key==='overspend'){
       const r=await api('exp_overspend',15);
-      LAB_RES[key]={note:'проверено проектов: '+r.checked+', с превышением: '+r.rows.length,
-        html:r.rows.length?labTbl(['Клиент','Лимит в неделю','Факт за 7 дней','Превышение'],
+      LAB_RES[key]={note:'проверено '+r.checked+', с превышением '+r.rows.length+(r.skipped?', пропущено '+r.skipped:'')+' · период '+r.period[0]+'—'+r.period[1],
+        html:r.rows.length?labTbl(['Клиент','Кампаний с лимитом','Лимит + допуск','Факт по ним','Мимо лимита','Превышение'],
           r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+'</div></td>'+
-            '<td class="nowrap">'+fmtInt(x.limit)+' ₽</td><td class="nowrap">'+fmtInt(x.fact)+' ₽</td>'+
+            '<td>'+x.camps+'</td>'+
+            '<td class="nowrap">'+fmtInt(x.limit)+(x.grace?' +'+x.grace+'%':'')+' ₽</td>'+
+            '<td class="nowrap">'+fmtInt(x.fact)+' ₽</td>'+
+            '<td class="nowrap">'+(x.other?fmtInt(x.other)+' ₽':'—')+'</td>'+
             '<td><b style="color:'+(x.over_pct>50?'var(--red)':'var(--amber)')+'">+'+x.over_pct+'%</b></td></tr>'))
           :'<div class="muted" style="font-size:14px">Все в рамках лимитов.</div>'};
     }else if(key==='trash'){
-      const sel=el('labCli'), login=sel&&sel.value;
-      if(!login){toast('Выбери клиента','err');LAB_BUSY[key]=false;renderLab();return;}
-      const r=await api('exp_trash',login,60,5,100);
+      const r=await api('exp_trash',LAB_CLI,60,5,100);
       LAB_RES[key]={note:'площадок всего '+r.total_placements+', кандидатов '+r.rows.length+', слито '+fmtInt(r.waste)+' ₽ за '+r.days+' дней',
         html:r.rows.length?labTbl(['Площадка','Клики','Расход','CTR','Почему'],
           r.rows.slice(0,25).map(x=>'<tr><td style="word-break:break-all">'+esc(x.placement)+'</td>'+

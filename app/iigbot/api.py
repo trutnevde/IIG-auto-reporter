@@ -1496,12 +1496,22 @@ class Api:
 
     @safe
     def exp_overspend(self, threshold=15):
-        """Факт недели против суммы недельных лимитов активных кампаний."""
+        """Перерасход честно: факт сравнивается только с теми кампаниями, у которых лимит есть.
+
+        Первая версия складывала лимиты включённых кампаний и сравнивала их с расходом ВСЕГО
+        аккаунта за неделю. Если часть денег потратили кампании без недельного лимита или уже
+        выключенные, вывод получался неверным. Теперь берём расход в разрезе кампаний и
+        считаем только по тем, чьи лимиты сложили. Плюс учитываем BudgetIncreasePercent —
+        Директ официально разрешает превышать лимит на этот процент.
+        """
         import time as _t
+        import datetime as _d
         t0 = _t.time()
         token = load_secrets()["yandex_oauth_token"]
         scope = set(self._exp_scope())
-        rows, checked = [], 0
+        end = _d.date.today() - _d.timedelta(days=1)     # вчера: сегодня ещё набирается
+        beg = end - _d.timedelta(days=6)
+        rows, checked, skipped = [], 0, 0
         for b in self.db.list_budgets():
             if scope and b["login"] not in scope:
                 continue
@@ -1514,26 +1524,50 @@ class Api:
                     "FieldNames": ["Id", "Name"],
                     "UnifiedCampaignFieldNames": ["BiddingStrategy"]}, login=b["login"])
             except Exception:  # noqa: BLE001 — один клиент не должен ронять прогон
+                skipped += 1
                 continue
-            limit = 0
+            limit, grace, with_limit = 0.0, 0, set()
             for c in (cs.get("Campaigns") or []):
                 bs = ((c.get("UnifiedCampaign") or {}).get("BiddingStrategy") or {})
+                w = 0.0
                 for side in ("Search", "Network"):
-                    box = next((v for v in (bs.get(side) or {}).values() if isinstance(v, dict)), None)
-                    if box and box.get("WeeklySpendLimit"):
-                        limit += box["WeeklySpendLimit"] / 1000000.0
-            if limit <= 0:
+                    for v in (bs.get(side) or {}).values():
+                        if isinstance(v, dict) and v.get("WeeklySpendLimit"):
+                            w += v["WeeklySpendLimit"] / 1000000.0
+                            grace = max(grace, int(v.get("BudgetIncreasePercent") or 0))
+                if w > 0:
+                    limit += w
+                    with_limit.add(str(c["Id"]))
+            if limit <= 0 or not with_limit:
                 continue
-            over = (b["cost7"] - limit) / limit * 100
+            try:
+                rep = report.fetch_report(token, b["login"], beg.isoformat(), end.isoformat(),
+                                          ["CampaignId", "Cost"],
+                                          report_type="CAMPAIGN_PERFORMANCE_REPORT")
+            except Exception:  # noqa: BLE001
+                skipped += 1
+                continue
+            fact = sum(report.parse_num(r.get("Cost")) for r in rep
+                       if str(r.get("CampaignId")) in with_limit)
+            other = sum(report.parse_num(r.get("Cost")) for r in rep
+                        if str(r.get("CampaignId")) not in with_limit)
+            allowed = limit * (1 + grace / 100.0)         # то, что Директ разрешает сам
+            if allowed <= 0:
+                continue
+            over = (fact - allowed) / allowed * 100
             if over >= threshold:
                 rows.append({"login": b["login"], "name": b["name"] or b["login"],
-                             "limit": round(limit), "fact": round(b["cost7"]),
-                             "over_pct": round(over)})
+                             "limit": round(limit), "grace": grace, "allowed": round(allowed),
+                             "fact": round(fact), "other": round(other),
+                             "camps": len(with_limit), "over_pct": round(over)})
         rows.sort(key=lambda r: -r["over_pct"])
         self._exp_finish("overspend", t0, len(rows))
-        return {"rows": rows, "checked": checked, "threshold": threshold,
-                "hint": "Недельный лимит в Директе не жёсткий, превышение до 15% нормально. "
-                        "Всё, что выше, обычно значит отсутствие потолка ставки."}
+        return {"rows": rows, "checked": checked, "skipped": skipped, "threshold": threshold,
+                "period": [beg.isoformat(), end.isoformat()],
+                "hint": "Сравнивается только расход тех кампаний, у которых задан недельный "
+                        "лимит. Столбец «мимо лимита» — деньги кампаний без него, их Директ "
+                        "ничем не ограничивает. Порог отсчитывается от лимита плюс разрешённое "
+                        "Директом превышение."}
 
     @safe
     def exp_trash(self, login, days=60, min_clicks=5, min_cost=100):
