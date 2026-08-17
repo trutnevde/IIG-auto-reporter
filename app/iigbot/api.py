@@ -1426,120 +1426,194 @@ class Api:
                 out.append(cid)
         return out
 
-    # ─────────── Экспериментальное: копилка идей ───────────
-    # Идеи, которые уже обсуждены и одобрены. Заносим один раз, чтобы раздел не открывался
-    # пустым: половина ценности такого места в том, что там сразу есть о чём спорить.
-    _SEED_IDEAS = [
-        ("Бенчмарк по нише внутри агентства",
-         "Показывать клиента на фоне похожих: у нас 399 аккаунтов — это база, которой нет ни у кого",
-         "Считать средние CPC, CTR, CR по тематикам и сравнивать с ними конкретный проект. "
-         "Сейчас фразы вроде «142 ₽ за клик это выше рынка» говорятся на глазок. "
-         "Данные для расчёта уже собираются каждую ночь.", "Отчёты"),
-        ("Проверка достоверности конверсий",
-         "Ловить отчёты, где конверсии — автоцели, а не заявки",
-         "У artdigo 802 «конверсии» из 873 — клики по кнопкам и таймер. У simplefoods 166 против "
-         "трёх реальных обращений. У gabitex CR 24,6%. Правило машинное: сравнить «отправку формы» "
-         "с «отправкой контактов»; расхождение в десятки раз — красный флаг до того, как его "
-         "увидит клиент.", "Отчёты"),
-        ("Детектор простоя",
-         "Кампания была активна и вдруг ноль показов — алерт на третий день",
-         "У artdigo кампании стояли 11 дней, мимо прошло около 26 000 ₽, заметили случайно через "
-         "две недели. Считается на данных, которые и так тянем.", "Бюджеты"),
-        ("Контроль перерасхода",
-         "Сравнивать факт с недельным лимитом и предупреждать при превышении",
-         "simplefoods два месяца жил с превышением лимита до +71% (27 300 ₽ при лимите 16 000 ₽), "
-         "и узнали мы об этом от клиента.", "Бюджеты"),
-        ("Чистка мусорных площадок кнопкой",
-         "Собрать кандидатов в бан по правилам и применить с предпросмотром",
-         "Руками это не делается: у одного клиента 1 632 площадки. Скриптом за день забанено "
-         "36 у Рулонкина, 21 у simplefoods, 31 у mosecoprogress — 46 000 ₽ за два месяца "
-         "на площадки без единой конверсии.", "Клиенты"),
-        ("Оповещение про модерацию и остановленные объявления",
-         "Отклонённые объявления и остановленные группы — это деньги, которые не работают",
-         "У simplefoods три поисковых объявления стояли на паузе: 456 показов за месяц на весь "
-         "Петербург, никто не замечал. Статусы отдаёт API.", "Клиенты"),
-        ("История изменений в аккаунте",
-         "Кто, когда и что поменял в кампаниях",
-         "Директ отдаёт журнал изменений. Нужен, когда «вчера работало, сегодня нет»: у Рулонкина "
-         "до сих пор неизвестно, кампании выключили руками или кончились деньги. "
-         "Второе применение — видеть правки, сделанные не нами (со стороны клиента или eLama).",
-         "Клиенты"),
+    # ─────────── Экспериментальное: живые фичи на испытании ───────────
+    # Здесь лежит РАБОЧИЙ функционал, а не описания. Человек нажимает «Запустить»,
+    # получает настоящий результат по своим клиентам и только после этого оценивает.
+    EXPERIMENTS = [
+        {"key": "idle", "title": "Детектор простоя",
+         "summary": "Кампании крутились и вдруг встали — находит такие проекты",
+         "why": "У artdigo кампании стояли 11 дней, мимо прошло около 26 000 ₽, "
+                "и заметили это случайно через две недели.",
+         "run": "Ищет клиентов, у которых за прошлую неделю ноль расхода, а за три недели до "
+                "этого деньги шли. Считается по собранным бюджетам, к Директу не ходит."},
+        {"key": "overspend", "title": "Контроль перерасхода",
+         "summary": "Сравнивает фактический недельный расход с лимитом кампаний",
+         "why": "simplefoods два месяца жил с превышением до +71% (27 300 ₽ при лимите 16 000 ₽), "
+                "и узнали мы об этом от клиента.",
+         "run": "Берёт недельные лимиты активных кампаний из Директа и сравнивает с расходом "
+                "за последние 7 дней. Показывает всех, кто вышел за рамку больше чем на 15%."},
+        {"key": "trash", "title": "Мусорные площадки",
+         "summary": "Собирает кандидатов в запрет по сетевым кампаниям одного клиента",
+         "why": "У одного клиента 1 632 площадки, руками это не разбирается. "
+                "За август так вычищено 88 площадок у трёх проектов.",
+         "run": "Отчёт по площадкам за 60 дней: мобильные приложения от 5 кликов и сайты "
+                "с кликабельностью выше 10% при заметном расходе. Ничего не меняет, только показывает."},
     ]
 
-    def _seed_ideas(self):
-        if self.db.ideas():
-            return
-        for t, s, d, a in self._SEED_IDEAS:
-            self.db.idea_add(t, s, d, a, by_user=None)
+    def _exp_scope(self):
+        return [c["login"] for c in self.db.list_clients(self._owner())]
 
     @safe
-    def ideas(self):
-        """Раздел «Экспериментальное»: идеи, средние оценки и мой собственный голос."""
-        self._seed_ideas()
-        rows = self.db.ideas()
-        names = {u["id"]: (u["name"] or u["email"]) for u in self.db.list_users()}
-        mine = self.db.idea_votes_of(self.user["id"]) if self.user else {}
-        out = []
+    def experiments(self):
+        """Список фич на испытании со статистикой использования и моими оценками."""
+        keys = [e["key"] for e in self.EXPERIMENTS]
+        stats = self.db.exp_stats(keys)
+        mine = self.db.exp_votes_of(self.user["id"]) if self.user else {}
+        ran = {k: (self.db.exp_ran(k, self.user["id"]) if self.user else False) for k in keys}
+        return {"items": [dict(e, stat=stats.get(e["key"], {}), my=mine.get(e["key"], {}),
+                               ran=ran.get(e["key"], False)) for e in self.EXPERIMENTS],
+                "params": [
+                    {"key": "useful", "label": "Пригодилось", "hint": "нашла ли что-то полезное"},
+                    {"key": "clear", "label": "Понятно", "hint": "ясно ли, что делать с результатом"},
+                    {"key": "keep", "label": "Оставить", "hint": "нужна ли эта фича в продукте"}]}
+
+    def _exp_finish(self, key, t0, found, err=None):
+        import time as _t
+        self.db.exp_run_log(key, self.user["id"] if self.user else None,
+                            int((_t.time() - t0) * 1000), found, ok=(err is None), error=err)
+
+    @safe
+    def exp_idle(self):
+        """Кто встал: за 7 дней ноль, а за 21 день деньги были."""
+        import time as _t
+        t0 = _t.time()
+        scope = set(self._exp_scope())
+        rows = []
+        for b in self.db.list_budgets():
+            if scope and b["login"] not in scope:
+                continue
+            c7, c21 = (b["cost7"] or 0), (b["cost21"] or 0)
+            if c7 <= 0 < c21:
+                rows.append({"login": b["login"], "name": b["name"] or b["login"],
+                             "cost21": round(c21), "camps_on": b["camps_on"],
+                             "camps_pay_stopped": b["camps_pay_stopped"],
+                             "balance": b["balance"], "updated": b["updated_at"]})
+        rows.sort(key=lambda r: -r["cost21"])
+        self._exp_finish("idle", t0, len(rows))
+        return {"rows": rows, "checked": len(scope) or len(self.db.list_budgets()),
+                "hint": "Ноль расхода за неделю при живых тратах трёх недель до этого. "
+                        "Смотри баланс и остановленные по оплате кампании."}
+
+    @safe
+    def exp_overspend(self, threshold=15):
+        """Факт недели против суммы недельных лимитов активных кампаний."""
+        import time as _t
+        t0 = _t.time()
+        token = load_secrets()["yandex_oauth_token"]
+        scope = set(self._exp_scope())
+        rows, checked = [], 0
+        for b in self.db.list_budgets():
+            if scope and b["login"] not in scope:
+                continue
+            if not (b["cost7"] or 0):
+                continue
+            checked += 1
+            try:
+                cs = yandex.call(token, "campaigns", "get", {
+                    "SelectionCriteria": {"States": ["ON"]},
+                    "FieldNames": ["Id", "Name"],
+                    "UnifiedCampaignFieldNames": ["BiddingStrategy"]}, login=b["login"])
+            except Exception:  # noqa: BLE001 — один клиент не должен ронять прогон
+                continue
+            limit = 0
+            for c in (cs.get("Campaigns") or []):
+                bs = ((c.get("UnifiedCampaign") or {}).get("BiddingStrategy") or {})
+                for side in ("Search", "Network"):
+                    box = next((v for v in (bs.get(side) or {}).values() if isinstance(v, dict)), None)
+                    if box and box.get("WeeklySpendLimit"):
+                        limit += box["WeeklySpendLimit"] / 1000000.0
+            if limit <= 0:
+                continue
+            over = (b["cost7"] - limit) / limit * 100
+            if over >= threshold:
+                rows.append({"login": b["login"], "name": b["name"] or b["login"],
+                             "limit": round(limit), "fact": round(b["cost7"]),
+                             "over_pct": round(over)})
+        rows.sort(key=lambda r: -r["over_pct"])
+        self._exp_finish("overspend", t0, len(rows))
+        return {"rows": rows, "checked": checked, "threshold": threshold,
+                "hint": "Недельный лимит в Директе не жёсткий, превышение до 15% нормально. "
+                        "Всё, что выше, обычно значит отсутствие потолка ставки."}
+
+    @safe
+    def exp_trash(self, login, days=60, min_clicks=5, min_cost=100):
+        """Кандидаты в запрет площадок по одному клиенту."""
+        import time as _t
+        import collections
+        import datetime as _d
+        t0 = _t.time()
+        self._require_owned(login)
+        token = load_secrets()["yandex_oauth_token"]
+        end = _d.date.today()
+        beg = end - _d.timedelta(days=int(days) - 1)
+        rows = report.fetch_report(token, login, beg.isoformat(), end.isoformat(),
+                                   ["Placement", "Impressions", "Clicks", "Cost", "Conversions"],
+                                   report_type="CUSTOM_REPORT")
+        agg = collections.defaultdict(lambda: [0.0, 0.0, 0.0, 0.0])
         for r in rows:
-            r.pop("_mine", None)
-            r["author"] = names.get(r.get("created_by")) or "—"
-            r["my"] = mine.get(str(r["id"]), {})
-            out.append(r)
-        return {"ideas": out, "params": [
-            {"key": "use", "label": "Польза", "hint": "сколько времени и денег сэкономит"},
-            {"key": "urgency", "label": "Срочность", "hint": "насколько горит прямо сейчас"},
-            {"key": "effort", "label": "Сложность", "hint": "во что обойдётся сделать; чем выше, тем дороже"},
-        ]}
+            a = agg[str(r.get("Placement") or "")]
+            a[0] += report.parse_num(r.get("Impressions"))
+            a[1] += report.parse_num(r.get("Clicks"))
+            a[2] += report.parse_num(r.get("Cost"))
+            a[3] += report.parse_num(r.get("Conversions"))
+        import re as _re
+        APP = _re.compile(r"^(com|ru|org|net|io|app|game|tv)\.[a-z0-9]", _re.I)
+        YA = _re.compile(r"(^|\.)yandex\.(ru|com)$|^ya\.ru$|^Яндекс$", _re.I)
+        out = []
+        for p, v in agg.items():
+            imp, clk, cost, conv = v
+            if not p or YA.search(p) or conv > 0:
+                continue
+            ctr = (clk / imp * 100) if imp else 0
+            why = None
+            if APP.match(p) and clk >= min_clicks:
+                why = "мобильное приложение"
+            elif clk >= 20 and ctr >= 5:
+                why = "кликбейт, CTR %.0f%%" % ctr
+            elif cost >= 150 and ctr >= 10:
+                why = "дорого и кликбейт, CTR %.0f%%" % ctr
+            if why and cost >= min_cost:
+                out.append({"placement": p, "clicks": int(clk), "cost": round(cost),
+                            "ctr": round(ctr, 1), "why": why})
+        out.sort(key=lambda r: -r["cost"])
+        self._exp_finish("trash", t0, len(out))
+        return {"rows": out, "total_placements": len(agg), "days": int(days),
+                "waste": round(sum(r["cost"] for r in out)),
+                "hint": "Сервисы Яндекса не показываю: их не принимают в запрет. "
+                        "Применение пока руками — фича на испытании."}
 
     @safe
-    def idea_add(self, title, summary=None, detail=None, area=None):
-        self._require_write()
-        t = (title or "").strip()
-        if not t:
-            raise RuntimeError("Без названия идею не сохранить")
-        i = self.db.idea_add(t, (summary or "").strip() or None, (detail or "").strip() or None,
-                             (area or "").strip() or None,
-                             by_user=self.user["id"] if self.user else None)
-        self._audit("idea_add", str(i), t[:60])
-        return {"id": i}
-
-    @safe
-    def idea_vote(self, idea_id, param, score):
-        """Оценка идеи. Наблюдателю тоже можно: голос — это мнение, а не правка данных."""
+    def exp_vote(self, key, param, score):
+        """Оценить можно только то, что сам запускал."""
         if not self.user:
-            raise RuntimeError("Нужно войти, чтобы голосовать")
-        self.db.idea_vote(idea_id, self.user["id"], param, score)
+            raise RuntimeError("Нужно войти")
+        if not self.db.exp_ran(key, self.user["id"]):
+            raise RuntimeError("Сначала запусти фичу — оценки без использования тут не считаются")
+        self.db.exp_vote(key, self.user["id"], param, score)
         return {"ok": True}
 
     @safe
-    def idea_status(self, idea_id, status):
-        self._require_write()
-        if status not in ("idea", "next", "done", "hold"):
-            raise RuntimeError("Неизвестный статус")
-        self.db.idea_update(idea_id, status=status)
-        self._audit("idea_status", str(idea_id), status)
-        return {"ok": True}
-
-    @safe
-    def idea_note(self, idea_id, text):
+    def exp_note(self, key, text):
         if not self.user:
             raise RuntimeError("Нужно войти")
         t = (text or "").strip()
         if not t:
-            raise RuntimeError("Пустой комментарий")
-        self.db.idea_note_add(idea_id, self.user["id"], t)
+            raise RuntimeError("Пустой отзыв")
+        self.db.exp_note_add(key, self.user["id"], t)
         return {"ok": True}
 
     @safe
-    def idea_notes(self, idea_id):
+    def exp_notes(self, key):
         names = {u["id"]: (u["name"] or u["email"]) for u in self.db.list_users()}
-        return [dict(n, who=names.get(n.get("user_id")) or "—") for n in self.db.idea_notes(idea_id)]
+        return [dict(n, who=names.get(n.get("user_id")) or "—") for n in self.db.exp_notes(key)]
 
     @safe
-    def idea_delete(self, idea_id):
+    def exp_status(self, key, status):
         self._require_admin()
-        self.db.idea_delete(idea_id)
-        self._audit("idea_delete", str(idea_id), "идея удалена")
+        if status not in ("testing", "released", "rejected"):
+            raise RuntimeError("Неизвестный статус")
+        self.db.exp_set_status(key, status)
+        self._audit("exp_status", key, status)
         return {"ok": True}
 
     @safe

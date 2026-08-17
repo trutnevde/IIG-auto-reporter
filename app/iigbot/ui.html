@@ -5122,13 +5122,14 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
-{date:'2026-08-17',tag:'new',title:'Новый раздел «Экспериментальное»: копилка идей с оценками',
- sum:'Место, куда складываются идеи до того, как стать задачами; приоритет считается сам',items:[
-  '<b>Идеи больше не теряются в переписке.</b> В меню появился раздел с колбой: туда складывается всё, что придумали, с описанием и указанием, из какой боли идея выросла. Добавить может любой, форма прямо наверху раздела.',
-  '<b>Оценивает каждый за себя, по трём параметрам.</b> Польза, срочность и сложность, по пятибалльной шкале. Свой голос подсвечен, рядом среднее по всем. Переголосовать можно в любой момент — новая оценка заменяет прежнюю, а не добавляется к ней.',
-  '<b>Приоритет не назначается, а считается:</b> (польза + срочность) делить на сложность. Полезное и срочное поднимается наверх, дорогое в реализации опускается. Карточки сразу отсортированы по этому числу, так что спорить приходится о цифрах, а не о том, чья идея важнее.',
-  '<b>Четыре состояния:</b> идея, в работе, готово, отложено. Переключаются прямо в карточке, вкладки сверху показывают, сколько чего.',
-  '<b>Раздел не пустой с первого дня.</b> Туда уже занесены семь идей, выросших из разбора клиентов за август: бенчмарк по нише на 399 аккаунтах, проверка достоверности конверсий, детектор простоя, контроль перерасхода, чистка мусорных площадок, оповещения про модерацию и история изменений в аккаунте. У каждой в описании числа, на которых она построена.',
+{date:'2026-08-17',tag:'new',title:'Новый раздел «Экспериментальное»: фичи на испытании',
+ sum:'Готовый функционал работает вживую, оценивают те, кто им пользовался',items:[
+  '<b>Это не список идей, а инкубатор.</b> В разделе с колбой лежат работающие фичи: жмёшь «Запустить», получаешь результат по своим клиентам прямо в карточке. По оценкам решаем, что переезжает в основной кабинет, а что закрываем.',
+  '<b>Оценить можно только то, что сам запускал.</b> До первого прогона шкалы заблокированы. Оценка идёт по трём вещам: пригодилось, понятно ли что делать с результатом, оставить ли фичу. Плюс поле для отзыва.',
+  '<b>Видно, живёт фича или нет.</b> На карточке счётчик запусков и сколько разных людей ей пользовались. Фича, которую запустили дважды и забыли, закрывается без споров.',
+  '<b>Детектор простоя.</b> Находит проекты, где за неделю ноль расхода, а за три недели до этого деньги шли. Считается по собранным бюджетам, к Директу не ходит, работает мгновенно.',
+  '<b>Контроль перерасхода.</b> Берёт недельные лимиты активных кампаний из Директа и сравнивает с фактом за 7 дней. Показывает всех, кто вышел за рамку больше чем на 15%.',
+  '<b>Мусорные площадки.</b> По выбранному клиенту собирает кандидатов в запрет за 60 дней: мобильные приложения и кликбейт-сайты без конверсий, с суммой слитого. Пока только показывает, ничего не меняет.',
  ]},
 {date:'2026-08-16',tag:'new',title:'Бюджеты: готовые отписки клиентам в одном месте',
  sum:'Текст с остатком и запасом дней по каждому клиенту, копируется одной кнопкой',items:[
@@ -6321,81 +6322,124 @@ async function doClearErrlog(){
   try{await api('error_log_clear');toast('Журнал очищен','ok');renderErrlog();}catch(e){}
 }
 
-/* ---------- ЭКСПЕРИМЕНТАЛЬНОЕ: копилка идей и оценки ----------
-   Место, куда складываются идеи до того, как они станут задачами. Оценивает каждый
-   сам за себя: польза, срочность, сложность. Приоритет считается, а не назначается. */
-let LAB=null, LAB_FILTER='all';
-const LAB_ST={idea:['Идея','b-gray'],next:['В работе','b-blue'],done:['Готово','b-green'],hold:['Отложено','b-amber']};
+/* ---------- ЭКСПЕРИМЕНТАЛЬНОЕ: живые фичи на испытании ----------
+   Здесь работает настоящий функционал, а не описания. Человек жмёт «Запустить»,
+   получает результат по своим клиентам и только после этого может оценить —
+   оценка без использования тут не принимается, иначе это опять доска мнений. */
+let LAB=null, LAB_RES={}, LAB_BUSY={};
+const LAB_ST={testing:['На испытании','b-amber'],released:['Выпущено','b-green'],rejected:['Закрыто','b-gray']};
+
 async function renderLab(){
-  const host=el('v_lab');host.innerHTML=skeleton('cards',4);
-  let d;try{d=await api('ideas');}catch(e){host.innerHTML=errBlock(e,()=>renderLab());return;}
+  const host=el('v_lab');host.innerHTML=skeleton('cards',3);
+  let d;try{d=await api('experiments');}catch(e){host.innerHTML=errBlock(e,()=>renderLab());return;}
   LAB=d;
-  const all=d.ideas||[], P=d.params||[];
-  const cnt=s=>all.filter(i=>i.status===s).length;
-  const list=(LAB_FILTER==='all'?all:all.filter(i=>i.status===LAB_FILTER))
-    .slice().sort((a,b)=>(b.priority||0)-(a.priority||0));
-  const tab=(k,l,n)=>`<span class="t ${LAB_FILTER===k?'on':''}" onclick="LAB_FILTER='${k}';renderLab()">${l}${n!==undefined?' ('+n+')':''}</span>`;
-
-  const card=i=>{
-    const st=LAB_ST[i.status]||LAB_ST.idea;
-    const scale=p=>{
-      const my=(i.my||{})[p.key], avg=(i.avg||{})[p.key];
-      const dots=[1,2,3,4,5].map(n=>`<button class="lab-dot${my===n?' on':''}" title="${p.label}: ${n} из 5"
-        onclick="labVote(${i.id},'${p.key}',${n})">${n}</button>`).join('');
-      return `<div class="lab-param"><div class="lab-plab" title="${esc(p.hint)}">${p.label}
-        <b>${avg!=null?avg:'—'}</b></div><div class="lab-dots">${dots}</div></div>`;
-    };
-    return `<div class="lab-card">
-      <div class="lab-head">
-        <span class="badge ${st[1]}">${st[0]}</span>
-        ${i.area?`<span class="chip" style="padding:1px 8px;font-size:11px">${esc(i.area)}</span>`:''}
-        <div class="grow"></div>
-        ${i.priority!=null?`<span class="lab-prio" title="Считается как (польза + срочность) / сложность">приоритет ${i.priority}</span>`:'<span class="muted" style="font-size:12px">никто не оценил</span>'}
-      </div>
-      <h3 style="margin:6px 0 4px">${esc(i.title)}</h3>
-      ${i.summary?`<div class="lab-sum">${esc(i.summary)}</div>`:''}
-      ${i.detail?`<div class="lab-det">${esc(i.detail)}</div>`:''}
-      <div class="lab-params">${P.map(scale).join('')}</div>
-      <div class="lab-foot">
-        <span class="muted">оценили: ${i.voters||0}</span>
-        <div class="grow"></div>
-        <select onchange="labStatus(${i.id},this.value)" style="width:auto" title="Что с идеей">
-          ${Object.keys(LAB_ST).map(k=>`<option value="${k}"${i.status===k?' selected':''}>${LAB_ST[k][0]}</option>`).join('')}
-        </select>
-      </div></div>`;
-  };
-
+  if(!GS_ALL||!GS_ALL.length){try{GS_ALL=await api('clients');}catch(e){GS_ALL=[];}}
   host.innerHTML=`
     <h2 class="title"><svg class="ic"><use href="#i-flask"/></svg> Экспериментальное</h2>
-    <p class="sub">Идеи до того, как они стали задачами. Оценивает каждый за себя, приоритет
-      считается сам: (польза + срочность) / сложность. Что набрало вес — берём в работу.</p>
-    <div class="panel" style="margin-bottom:14px"><div class="body">
-      <div class="grid2">
-        <div class="field"><label>Идея</label><input id="labTitle" placeholder="Коротко: что предлагаем"></div>
-        <div class="field"><label>Раздел</label><input id="labArea" placeholder="Бюджеты, Отчёты, Клиенты…"></div>
-      </div>
-      <div class="field"><label>Что это даёт</label><input id="labSum" placeholder="Одной строкой: какую боль снимает"></div>
-      <div class="field"><label>Подробности</label><textarea id="labDet" rows="2" placeholder="Откуда идея, на каких цифрах основана"></textarea></div>
-      <div class="cli-tools"><button class="btn primary" onclick="labAdd()"><svg class="ic"><use href="#i-add-circle"/></svg> Добавить идею</button></div>
-    </div></div>
-    <div class="tabs" style="margin-bottom:12px">${tab('all','Все',all.length)}${tab('idea','Идеи',cnt('idea'))}${tab('next','В работе',cnt('next'))}${tab('done','Готово',cnt('done'))}${tab('hold','Отложено',cnt('hold'))}</div>
-    ${list.length?`<div class="lab-grid">${list.map(card).join('')}</div>`
-      :emptyState('<svg class="ic"><use href="#i-flask"/></svg>','Здесь пока пусто','Добавь первую идею формой выше.',null)}`;
+    <p class="sub">Готовые фичи на испытании. Работают по-настоящему и по твоим клиентам.
+      Запусти, посмотри на результат и оцени — по этим оценкам решаем, что переезжает
+      в основной кабинет, а что закрываем.</p>
+    <div class="lab-grid">${(d.items||[]).map(labCard).join('')}</div>`;
 }
-async function labVote(id,param,score){
-  try{await api('idea_vote',id,param,score);renderLab();}catch(e){}
+
+function labCard(e){
+  const s=e.stat||{}, st=LAB_ST[s.status]||LAB_ST.testing;
+  const P=(LAB&&LAB.params)||[];
+  const rate=P.map(p=>{
+    const my=(e.my||{})[p.key], avg=(s.avg||{})[p.key];
+    const dots=[1,2,3,4,5].map(n=>`<button class="lab-dot${my===n?' on':''}"${e.ran?'':' disabled'} title="${esc(p.label)}: ${n} из 5" onclick="labVote('${e.key}','${p.key}',${n})">${n}</button>`).join('');
+    return `<div class="lab-param"><div class="lab-plab" title="${esc(p.hint)}">${esc(p.label)} <b>${avg!=null?avg:'—'}</b></div><div class="lab-dots">${dots}</div></div>`;
+  }).join('');
+  const res=LAB_RES[e.key];
+  const cliSel=e.key==='trash'
+    ? `<div class="field" style="margin:0 0 10px"><input type="search" class="pick-s" placeholder="Поиск клиента…" oninput="pickFilter(this,'labCli')"><select id="labCli">${((GS_ALL||[]).map(c=>'<option value="'+esc(c.login)+'">'+esc(c.name||c.login)+'</option>').join(''))||'<option value="">— клиентов нет —</option>'}</select></div>`
+    : '';
+  return `<div class="lab-card">
+    <div class="lab-head">
+      <span class="badge ${st[1]}">${st[0]}</span>
+      <div class="grow"></div>
+      <span class="muted" style="font-size:12px">запусков ${s.runs||0}${s.users?' · людей '+s.users:''}</span>
+    </div>
+    <h3 style="margin:6px 0 4px">${esc(e.title)}</h3>
+    <div class="lab-sum">${esc(e.summary)}</div>
+    <div class="lab-det"><b>Зачем:</b> ${esc(e.why)}<br><b>Как считает:</b> ${esc(e.run)}</div>
+    ${cliSel}
+    <div class="cli-tools" style="margin:0 0 10px">
+      <button class="btn primary" onclick="labRun('${e.key}')">${LAB_BUSY[e.key]?'<span class="spin"></span> Считаю…':'Запустить'}</button>
+      ${res&&res.note?`<span class="muted" style="font-size:12.5px;align-self:center">${esc(res.note)}</span>`:''}
+    </div>
+    ${res?`<div class="lab-res">${res.html}</div>`:''}
+    <div class="lab-params">${rate}</div>
+    ${e.ran?`<div class="field" style="margin:0"><input id="labNote_${e.key}" placeholder="Что не так или чего не хватает, Enter чтобы отправить" onkeydown="if(event.key==='Enter')labNote('${e.key}')"></div>`:'<div class="muted" style="font-size:12px">Оценки открываются после первого запуска</div>'}
+    <div class="lab-foot"><span class="muted">отзывов ${s.notes||0}</span><div class="grow"></div>
+      ${s.notes?`<button class="btn sm" onclick="labShowNotes('${e.key}')">Читать отзывы</button>`:''}
+      ${(ME&&ME.role==='admin')?`<select onchange="labStatus('${e.key}',this.value)" style="width:auto">${Object.keys(LAB_ST).map(k=>'<option value="'+k+'"'+(s.status===k?' selected':'')+'>'+LAB_ST[k][0]+'</option>').join('')}</select>`:''}
+    </div></div>`;
 }
-async function labStatus(id,status){
-  try{await api('idea_status',id,status);toast('Статус обновлён','ok');renderLab();}catch(e){renderLab();}
+
+function labTbl(head,rows){
+  return '<div class="scrollx"><table><thead><tr>'+head.map(h=>'<th>'+h+'</th>').join('')+
+    '</tr></thead><tbody>'+rows.join('')+'</tbody></table></div>';
 }
-async function labAdd(){
-  const t=el('labTitle').value.trim();
-  if(!t){toast('Напиши хотя бы название','err');return;}
+
+async function labRun(key){
+  if(LAB_BUSY[key])return;
+  LAB_BUSY[key]=true;renderLab();
   try{
-    await api('idea_add',t,el('labSum').value,el('labDet').value,el('labArea').value);
-    ['labTitle','labSum','labDet','labArea'].forEach(k=>el(k).value='');
-    toast('Идея добавлена','ok');renderLab();
+    if(key==='idle'){
+      const r=await api('exp_idle');
+      LAB_RES[key]={note:'проверено проектов: '+r.checked+', встало: '+r.rows.length,
+        html:r.rows.length?labTbl(['Клиент','Расход за 3 недели','Остаток','Кампаний вкл.','Стоп по оплате'],
+          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+'</div></td>'+
+            '<td class="nowrap">'+fmtInt(x.cost21)+' ₽</td>'+
+            '<td class="nowrap">'+(x.balance==null?'—':fmtInt(Math.round(x.balance))+' ₽')+'</td>'+
+            '<td>'+(x.camps_on==null?'—':x.camps_on)+'</td>'+
+            '<td>'+(x.camps_pay_stopped?'<b style="color:var(--red)">'+x.camps_pay_stopped+'</b>':'—')+'</td></tr>'))
+          :'<div class="muted" style="font-size:14px">Никто не встал. Это хорошая новость.</div>'};
+    }else if(key==='overspend'){
+      const r=await api('exp_overspend',15);
+      LAB_RES[key]={note:'проверено проектов: '+r.checked+', с превышением: '+r.rows.length,
+        html:r.rows.length?labTbl(['Клиент','Лимит в неделю','Факт за 7 дней','Превышение'],
+          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+'</div></td>'+
+            '<td class="nowrap">'+fmtInt(x.limit)+' ₽</td><td class="nowrap">'+fmtInt(x.fact)+' ₽</td>'+
+            '<td><b style="color:'+(x.over_pct>50?'var(--red)':'var(--amber)')+'">+'+x.over_pct+'%</b></td></tr>'))
+          :'<div class="muted" style="font-size:14px">Все в рамках лимитов.</div>'};
+    }else if(key==='trash'){
+      const sel=el('labCli'), login=sel&&sel.value;
+      if(!login){toast('Выбери клиента','err');LAB_BUSY[key]=false;renderLab();return;}
+      const r=await api('exp_trash',login,60,5,100);
+      LAB_RES[key]={note:'площадок всего '+r.total_placements+', кандидатов '+r.rows.length+', слито '+fmtInt(r.waste)+' ₽ за '+r.days+' дней',
+        html:r.rows.length?labTbl(['Площадка','Клики','Расход','CTR','Почему'],
+          r.rows.slice(0,25).map(x=>'<tr><td style="word-break:break-all">'+esc(x.placement)+'</td>'+
+            '<td>'+x.clicks+'</td><td class="nowrap">'+fmtInt(x.cost)+' ₽</td><td>'+x.ctr+'%</td>'+
+            '<td class="muted">'+esc(x.why)+'</td></tr>'))
+          :'<div class="muted" style="font-size:14px">Мусора не нашлось.</div>'};
+    }
+  }catch(e){LAB_RES[key]={note:'',html:'<div class="note">'+esc(humanError(e).msg)+'</div>'};}
+  LAB_BUSY[key]=false;
+  try{LAB=await api('experiments');}catch(e){}
+  renderLab();
+}
+
+async function labVote(key,param,score){
+  try{await api('exp_vote',key,param,score);LAB=await api('experiments');renderLab();}catch(e){}
+}
+async function labNote(key){
+  const i=el('labNote_'+key);if(!i||!i.value.trim())return;
+  try{await api('exp_note',key,i.value);i.value='';toast('Спасибо, записал','ok');
+    LAB=await api('experiments');renderLab();}catch(e){}
+}
+async function labShowNotes(key){
+  try{
+    const n=await api('exp_notes',key);
+    sheetOpen('Отзывы о фиче',n.length?n.map(x=>
+      '<div class="bnote"><div class="bnote-h"><b>'+esc(x.who)+'</b><span class="muted">'+esc(fmtDT(x.at)||'')+'</span></div>'+
+      '<div class="bnote-t">'+esc(x.text)+'</div></div>').join(''):'<div class="muted">Пока пусто.</div>');
   }catch(e){}
+}
+async function labStatus(key,status){
+  try{await api('exp_status',key,status);toast('Статус обновлён','ok');
+    LAB=await api('experiments');renderLab();}catch(e){renderLab();}
 }
 
 /* ---------- GOOGLE-ТАБЛИЦЫ ---------- */
