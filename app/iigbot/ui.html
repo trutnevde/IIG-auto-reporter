@@ -5122,6 +5122,13 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-17',tag:'fix',title:'Бенчмарк: медиана по всему агентству и выбор набора',
+ sum:'С одним проектом сравнивать было не с чем, теперь база всегда общая',items:[
+  '<b>База для медианы больше не зависит от того, кто смотрит.</b> Раньше и медиана, и строки считались только по своим клиентам: у специалиста с одним-двумя проектами база не набиралась, и фича молча отвечала «нужно хотя бы пять проектов с трафиком». Теперь медианные цена клика и кликабельность всегда считаются по всем проектам агентства с трафиком, независимо от выбора.',
+  '<b>Появилась настройка «С кем сравнивать».</b> Три варианта: свои проекты, все проекты IIG, проекты выбранного специалиста. Выбор влияет только на состав строк в таблице, база остаётся общей. Доступно всем: сравнить свои проекты с проектами коллег — это и есть смысл бенчмарка.',
+  '<b>Рядом с CTR теперь стоит отношение к медиане.</b> Видно не только цену клика относительно базы, но и кликабельность.',
+  '<b>Считает быстрее.</b> База выросла со «своих» до всего агентства, поэтому запросы к Директу идут одновременно, а не по очереди.',
+ ]},
 {date:'2026-08-17',tag:'new',title:'Экспериментальное: ещё пять рабочих фич',
  sum:'Достоверность конверсий, автотаргетинг, стандарт агентства, скачки расхода и бенчмарк',items:[
   '<b>Достоверность конверсий.</b> По выбранному клиенту считает конверсии по каждой цели отдельно и делит их на контактные и мягкие. Контактная — та, после которой с человеком можно связаться: форма, телефон, почта, мессенджер. Мягкая — поведение на сайте: клики по кнопкам, время, страницы, автоцели. Если мягких больше в пять раз и выше, в отчёте клиенту показаны не заявки.',
@@ -6334,7 +6341,7 @@ async function doClearErrlog(){
    Здесь работает настоящий функционал, а не описания. Человек жмёт «Запустить»,
    получает результат по своим клиентам и только после этого может оценить —
    оценка без использования тут не принимается, иначе это опять доска мнений. */
-let LAB=null, LAB_RES={}, LAB_BUSY={}, LAB_CLI='';
+let LAB=null, LAB_RES={}, LAB_BUSY={}, LAB_CLI='', LAB_BENCH='mine';
 const LAB_ST={testing:['На испытании','b-amber'],released:['Выпущено','b-green'],rejected:['Закрыто','b-gray']};
 
 async function renderLab(){
@@ -6362,6 +6369,18 @@ function labCard(e){
   const cliSel=(e.key==='trash'||e.key==='conv_trust')
     ? `<div class="field" style="margin:0 0 10px"><input type="search" class="pick-s" placeholder="Поиск клиента…" oninput="pickFilter(this,'labCli')"><select id="labCli" onchange="LAB_CLI=this.value">${((GS_ALL||[]).map(c=>'<option value="'+esc(c.login)+'"'+(LAB_CLI===c.login?' selected':'')+'>'+esc(c.name||c.login)+'</option>').join(''))||'<option value="">— клиентов нет —</option>'}</select></div>`
     : '';
+  // Бенчмарку нужен не клиент, а набор: свои / весь IIG / проекты выбранного специалиста.
+  // Открыт всем: сравнивать себя с коллегами — смысл фичи, скрывать внутри агентства нечего.
+  const staff=(LAB&&LAB.staff)||[];
+  const benchSel=(e.key==='bench')
+    ? `<div class="field" style="margin:0 0 10px"><label>С кем сравнивать</label>
+        <select id="labBench" onchange="LAB_BENCH=this.value">
+          <option value="mine"${LAB_BENCH==='mine'?' selected':''}>Мои проекты</option>
+          <option value="all"${LAB_BENCH==='all'?' selected':''}>Все проекты IIG</option>
+          ${staff.map(u=>'<option value="'+u.id+'"'+(String(LAB_BENCH)===String(u.id)?' selected':'')+'>Проекты: '+esc(u.name)+'</option>').join('')}
+        </select>
+        <div class="muted" style="font-size:11.5px;margin-top:4px">Медиана всегда по всему агентству, выбор меняет только состав строк</div></div>`
+    : '';
   return `<div class="lab-card">
     <div class="lab-head">
       <span class="badge ${st[1]}">${st[0]}</span>
@@ -6371,7 +6390,7 @@ function labCard(e){
     <h3 style="margin:6px 0 4px">${esc(e.title)}</h3>
     <div class="lab-sum">${esc(e.summary)}</div>
     <div class="lab-det"><b>Зачем:</b> ${esc(e.why)}<br><b>Как считает:</b> ${esc(e.run)}</div>
-    ${cliSel}
+    ${cliSel}${benchSel}
     <div class="cli-tools" style="margin:0 0 10px">
       <button class="btn primary" onclick="labRun('${e.key}')">${LAB_BUSY[e.key]?'<span class="spin"></span> Считаю…':'Запустить'}</button>
       ${res&&res.note?`<span class="muted" style="font-size:12.5px;align-self:center">${esc(res.note)}</span>`:''}
@@ -6396,6 +6415,8 @@ async function labRun(key){
   // и выбранный клиент к моменту запроса уже сбрасывался на первый вариант.
   const sel=el('labCli');
   if(sel&&sel.value)LAB_CLI=sel.value;
+  const bsel=el('labBench');
+  if(bsel&&bsel.value)LAB_BENCH=bsel.value;
   if((key==='trash'||key==='conv_trust')&&!LAB_CLI){toast('Выбери клиента','err');return;}
   LAB_BUSY[key]=true;renderLab();
   try{
@@ -6471,13 +6492,14 @@ async function labRun(key){
             '<td><b style="color:'+(x.times>=3?'var(--red)':'var(--amber)')+'">×'+x.times+'</b></td></tr>'))
           :'<div class="muted" style="font-size:14px">Резких дней не было.</div>'};
     }else if(key==='bench'){
-      const r=await api('exp_bench',null,30);
-      LAB_RES[key]={note:r.base?('база: '+r.base+' проектов · медиана клика '+r.med_cpc+' ₽, кликабельности '+r.med_ctr+'%'):'',
+      const r=await api('exp_bench',LAB_BENCH,30);
+      LAB_RES[key]={note:r.base?('база агентства: '+r.base+' проектов · медиана клика '+r.med_cpc+' ₽, кликабельности '+r.med_ctr+'% · показано '+(r.shown||0)+(r.skipped?', пропущено '+r.skipped:'')):'',
         html:r.rows.length?labTbl(['Клиент','Цена клика','К медиане','CTR','Кликов','Расход'],
           r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+'</div></td>'+
             '<td class="nowrap">'+x.cpc+' ₽</td>'+
             '<td><b style="color:'+(x.cpc_x>=2?'var(--red)':(x.cpc_x>=1.3?'var(--amber)':'var(--green)'))+'">×'+x.cpc_x+'</b></td>'+
-            '<td>'+x.ctr+'%</td><td>'+fmtInt(x.clicks)+'</td><td class="nowrap">'+fmtInt(x.cost)+' ₽</td></tr>'))
+            '<td class="nowrap">'+x.ctr+'%'+(x.ctr_x!=null?' <span class="muted" style="font-size:11px">×'+x.ctr_x+'</span>':'')+'</td>'+
+            '<td>'+fmtInt(x.clicks)+'</td><td class="nowrap">'+fmtInt(x.cost)+' ₽</td></tr>'))
           :'<div class="muted" style="font-size:14px">'+esc(r.hint||'Мало данных')+'</div>'};
     }
   }catch(e){LAB_RES[key]={note:'',html:'<div class="note">'+esc(humanError(e).msg)+'</div>'};}

@@ -1476,8 +1476,9 @@ class Api:
          "summary": "Клиент на фоне остальных проектов: цена клика и кликабельность",
          "why": "Фразы вроде «142 ₽ за клик это выше рынка» говорились на глазок. "
                 "У нас 395 аккаунтов — есть с чем сравнивать по-настоящему.",
-         "run": "Считает медианные цену клика и кликабельность по проектам с трафиком "
-                "и показывает, во сколько раз каждый отличается от медианы."},
+         "run": "Медиана цены клика и кликабельности считается по всем проектам агентства "
+                "с трафиком, а показать можно свои, весь IIG или проекты выбранного "
+                "специалиста. База общая всегда — иначе с одним проектом сравнивать не с чем."},
     ]
 
     def _exp_scope(self):
@@ -1490,8 +1491,13 @@ class Api:
         stats = self.db.exp_stats(keys)
         mine = self.db.exp_votes_of(self.user["id"]) if self.user else {}
         ran = {k: (self.db.exp_ran(k, self.user["id"]) if self.user else False) for k in keys}
+        # список специалистов нужен бенчмарку — он открыт всем, кто работает в агентстве
+        staff = [{"id": u["id"], "name": u["name"] or u["email"]}
+                 for u in self.db.list_users()
+                 if u["active"] and u["role"] in ("user", "admin")]
         return {"items": [dict(e, stat=stats.get(e["key"], {}), my=mine.get(e["key"], {}),
                                ran=ran.get(e["key"], False)) for e in self.EXPERIMENTS],
+                "staff": staff,
                 "params": [
                     {"key": "useful", "label": "Пригодилось", "hint": "нашла ли что-то полезное"},
                     {"key": "clear", "label": "Понятно", "hint": "ясно ли, что делать с результатом"},
@@ -1865,40 +1871,66 @@ class Api:
 
     # ── бенчмарк по агентству ──
     @safe
-    def exp_bench(self, login=None, days=30):
-        """Клиент на фоне остальных: медианы по агентству против его собственных чисел."""
+    def exp_bench(self, who="mine", days=30):
+        """Клиент на фоне остальных.
+
+        База для медианы — ВСЕГДА все проекты агентства с трафиком, независимо от выбора.
+        Раньше считалось только по своим, и у специалиста с одним проектом сравнивать было
+        не с чем: фича молча отвечала «нужно хотя бы пять проектов». Выбор влияет только
+        на то, чьи строки показать: 'mine' — свои, 'all' — весь IIG, <id> — специалиста.
+        """
         import time as _t
         import datetime as _d
         import statistics as _s
+        import concurrent.futures as _f
         t0 = _t.time()
         token = load_secrets()["yandex_oauth_token"]
-        scope = set(self._exp_scope())
         end = _d.date.today() - _d.timedelta(days=1)
         beg = end - _d.timedelta(days=int(days) - 1)
-        data, skipped = [], 0
-        for b in self.db.list_budgets():
-            if scope and b["login"] not in scope:
-                continue
-            if not (b["cost21"] or 0):
-                continue
+
+        # внутри агентства бенчмарк открыт всем: сравнивать себя с коллегами —
+        # это и есть смысл фичи, скрывать друг от друга нечего
+        who = "mine" if who in (None, "", "mine") else str(who)
+        if who == "mine":
+            show = set(self._exp_scope())
+        elif who == "all":
+            show = None
+        else:
+            show = {c["login"] for c in self.db.list_clients("all")
+                    if str(c["owner"]) == who}
+
+        pool = [b for b in self.db.list_budgets() if (b["cost21"] or 0)]
+
+        def measure(b):
+            """None — аккаунт не ответил, False — трафика мало для сравнения."""
             try:
                 rep = report.fetch_report(token, b["login"], beg.isoformat(), end.isoformat(),
                                           ["Impressions", "Clicks", "Cost"],
                                           report_type="ACCOUNT_PERFORMANCE_REPORT")
             except Exception:  # noqa: BLE001
-                skipped += 1
-                continue
+                return None
             imp = sum(report.parse_num(r.get("Impressions")) for r in rep)
             clk = sum(report.parse_num(r.get("Clicks")) for r in rep)
             cost = sum(report.parse_num(r.get("Cost")) for r in rep)
             if clk < 10:
-                continue
-            data.append({"login": b["login"], "name": b["name"] or b["login"],
-                         "cpc": cost / clk, "ctr": (clk / imp * 100) if imp else 0,
-                         "cost": cost, "clicks": int(clk)})
+                return False
+            return {"login": b["login"], "name": b["name"] or b["login"],
+                    "cpc": cost / clk, "ctr": (clk / imp * 100) if imp else 0,
+                    "cost": cost, "clicks": int(clk)}
+
+        # база выросла со «своих» до всего агентства — без параллели это минуты ожидания
+        data, skipped = [], 0
+        if pool:
+            with _f.ThreadPoolExecutor(max_workers=min(5, len(pool))) as ex:
+                for r in ex.map(measure, pool):
+                    if r is None:
+                        skipped += 1
+                    elif r:
+                        data.append(r)
+
         if len(data) < 5:
             self._exp_finish("bench", t0, 0)
-            return {"rows": [], "base": len(data), "skipped": skipped,
+            return {"rows": [], "base": len(data), "shown": 0, "skipped": skipped, "who": who,
                     "hint": "Для сравнения нужно хотя бы пять проектов с открученным трафиком."}
         med_cpc = _s.median([d["cpc"] for d in data])
         med_ctr = _s.median([d["ctr"] for d in data])
@@ -1907,14 +1939,21 @@ class Api:
             d["ctr"] = round(d["ctr"], 2)
             d["cost"] = round(d["cost"])
             d["cpc_x"] = round(d["cpc"] / med_cpc, 1) if med_cpc else None
-        data.sort(key=lambda d: -(d["cpc_x"] or 0))
-        self._exp_finish("bench", t0, len(data))
-        return {"rows": data, "base": len(data), "skipped": skipped,
-                "med_cpc": round(med_cpc, 1), "med_ctr": round(med_ctr, 2),
+            d["ctr_x"] = round(d["ctr"] / med_ctr, 1) if med_ctr else None
+        rows = data if show is None else [d for d in data if d["login"] in show]
+        rows.sort(key=lambda d: -(d["cpc_x"] or 0))
+        self._exp_finish("bench", t0, len(rows))
+        return {"rows": rows, "base": len(data), "shown": len(rows), "skipped": skipped,
+                "who": who, "med_cpc": round(med_cpc, 1), "med_ctr": round(med_ctr, 2),
                 "period": [beg.isoformat(), end.isoformat()],
-                "hint": "Медиана по вашим проектам, а не среднее: один дорогой аккаунт не "
-                        "перекашивает базу. Столбец «во сколько раз» — отношение клика "
-                        "к медиане; всё что выше двух стоит смотреть отдельно."}
+                "hint": "В этом наборе нет проектов, где за период набралось хотя бы "
+                        "десять кликов. База по агентству собрана, сравнивать не с чем."
+                        if not rows else
+                        "Медиана считается по всем проектам агентства, а не по выбранному "
+                        "набору: иначе специалисту с парой проектов сравнивать не с чем. "
+                        "Медиана, а не среднее — один дорогой аккаунт не перекашивает базу. "
+                        "Столбец «во сколько раз» — отношение клика к медиане; "
+                        "всё что выше двух стоит смотреть отдельно."}
 
     @safe
     def exp_vote(self, key, param, score):
