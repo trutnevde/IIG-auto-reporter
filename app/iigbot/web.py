@@ -345,6 +345,21 @@ def create_app(api=None):
         return Response(text, mimetype="text/markdown; charset=utf-8",
                         headers={"Content-Disposition": 'attachment; filename="iig-reporter-runbook.md"'})
 
+    @app.route("/download/docs.md")
+    def download_docs():
+        """Вся документация одним файлом — офлайн-копия.
+
+        Смысл: инструкция по подъёму кабинета не должна лежать только внутри кабинета.
+        Доступна любому вошедшему: в аварии под рукой может оказаться не админ.
+        """
+        if not g.user:
+            return jsonify({"ok": False, "error": "not_authenticated"}), 401
+        import datetime as _dt
+        text = Api(user=g.user).docs_bundle()
+        fn = "iig-reporter-docs-%s.md" % _dt.date.today().isoformat()
+        return Response(text, mimetype="text/markdown; charset=utf-8",
+                        headers={"Content-Disposition": 'attachment; filename="%s"' % fn})
+
     @app.route("/download/xlsx/<path:name>")
     def download_xlsx(name):
         """Отдаёт готовый .xlsx из reports/ браузеру (сохранение на сервере бесполезно вебу).

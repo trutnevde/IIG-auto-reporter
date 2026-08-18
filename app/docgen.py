@@ -87,8 +87,23 @@ def gen_api():
             continue
         if not any(getattr(d, "id", getattr(d, "attr", "")) == "safe" for d in n.decorator_list):
             continue
-        seg = ast.get_source_segment(src, n) or ""
-        guards = sorted({v for k, v in GUARD.items() if k + "(" in seg})
+        # Проверку прав, стоящую на верхнем уровне тела, объявляем как безусловную.
+        # Ту же проверку внутри if пишем с оговоркой: иначе документация утверждает,
+        # что метод закрыт для всех, хотя закрыта лишь одна его ветка.
+        def _calls(nodes):
+            names = set()
+            for st in nodes:
+                for sub in ast.walk(st):
+                    if isinstance(sub, ast.Call):
+                        f = sub.func
+                        names.add(getattr(f, "attr", getattr(f, "id", "")))
+            return names
+
+        top = _calls([st for st in n.body if isinstance(st, (ast.Expr, ast.Assign))])
+        deep = _calls(n.body)
+        guards = sorted({v for k, v in GUARD.items() if k in top})
+        guards += sorted({v + " (в части случаев)" for k, v in GUARD.items()
+                          if k in deep and k not in top})
         doc = (ast.get_docstring(n) or "").strip().split("\n")[0]
         args = [a.arg for a in n.args.args if a.arg != "self"]
         rows.append((n.name, ", ".join(args) or "—",

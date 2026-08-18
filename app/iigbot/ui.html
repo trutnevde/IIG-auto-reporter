@@ -1032,6 +1032,38 @@
   .lab-param{display:flex;align-items:center;gap:10px;justify-content:space-between}
   .lab-plab{font-size:12.5px;color:var(--muted);white-space:nowrap}
   .lab-plab b{color:var(--text);margin-left:5px;font-variant-numeric:tabular-nums}
+
+  /* документация */
+  .doc-wrap{display:grid;grid-template-columns:290px 1fr;gap:18px;align-items:start}
+  .doc-side{position:sticky;top:8px;display:flex;flex-direction:column;gap:14px}
+  .doc-grp{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .doc-grp h4{margin:0;padding:11px 14px 4px;font-size:13px}
+  .doc-grp .hint{padding:0 14px 10px;font-size:11.5px;color:var(--muted);line-height:1.45}
+  .doc-item{display:block;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;
+    padding:9px 14px;border-top:1px solid var(--line);color:var(--text);font-size:13.5px;line-height:1.35}
+  .doc-item:hover{background:var(--surface-2)}
+  .doc-item.on{background:var(--brand);color:#fff}
+  .doc-item.on .doc-meta{color:rgba(255,255,255,.75)}
+  .doc-meta{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+  .doc-body{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px 26px;min-height:320px}
+  .doc-body h1{font-size:23px;margin:0 0 6px}
+  .doc-body h2{font-size:17px;margin:22px 0 8px;padding-top:12px;border-top:1px solid var(--line)}
+  .doc-body h3{font-size:14.5px;margin:16px 0 6px}
+  .doc-body p{margin:0 0 10px;line-height:1.62;font-size:14.5px}
+  .doc-body ul,.doc-body ol{margin:0 0 12px;padding-left:22px}
+  .doc-body li{margin:0 0 5px;line-height:1.55;font-size:14.5px}
+  .doc-body code{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;
+    background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  .doc-body blockquote{margin:0 0 12px;padding:10px 14px;border-left:3px solid var(--amber);
+    background:var(--surface-2);border-radius:0 8px 8px 0;font-size:14px;line-height:1.55}
+  .doc-body blockquote p:last-child{margin:0}
+  .doc-body table{border-collapse:collapse;width:100%;font-size:13px}
+  .doc-body th{text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .doc-body td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top;line-height:1.5}
+  .doc-auto{border-left:3px solid var(--brand);background:var(--surface-2);border-radius:0 8px 8px 0;
+    padding:9px 13px;font-size:12.5px;color:var(--muted);line-height:1.5;margin:0 0 16px}
+  @media (max-width:900px){.doc-wrap{grid-template-columns:1fr}.doc-side{position:static}}
   .lab-dots{display:flex;gap:4px}
   .lab-dot{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:var(--surface-2);
     color:var(--muted);font-size:12px;cursor:pointer;padding:0;line-height:1}
@@ -1695,6 +1727,7 @@
       <a data-act="onboard"><svg class="ic"><use href="#i-add-circle"/></svg><span>Подключить клиента</span></a>
       <a data-go="settings"><svg class="ic"><use href="#i-gear"/></svg><span>Настройки</span></a>
       <a data-go="guide"><svg class="ic"><use href="#i-book"/></svg><span>Гайд</span></a>
+      <a data-go="docs"><svg class="ic"><use href="#i-book-2"/></svg><span>Документация</span></a>
     </nav>
     <div class="spacer"></div>
     <div class="mini" id="botInfo">Загрузка…</div>
@@ -1741,6 +1774,7 @@
       <section data-view="errlog"><div id="v_errlog"></div></section>
       <section data-view="system"><div id="v_system"></div></section>
       <section data-view="lab"><div id="v_lab"></div></section>
+      <section data-view="docs"><div id="v_docs"></div></section>
       <section data-view="guide"><div id="v_guide"></div></section>
       <section data-view="changelog"><div id="v_changelog"></div></section>
     </div>
@@ -2559,7 +2593,7 @@ let CURRENT='dashboard';
 function render(v){CURRENT=v;setTimeout(()=>{const s=document.querySelector('section[data-view="'+v+'"]');mobilizeTables(s);clampSubs(s);mobilizeToolbar(s);a11yFix(s);},60);
   setTimeout(()=>a11yFix(document.querySelector('section[data-view="'+v+'"]')),700);
   a11yWatch();
-  ({dashboard:renderDashboard,clients:renderClients,chats:renderChats,dialogs:renderDialogs,match:renderMatch,reports:renderReports,budgets:renderBudgets,presets:renderPresets,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,system:renderSystem,lab:renderLab,guide:renderGuide,changelog:renderChangelog}[v]||(()=>{}))();}
+  ({dashboard:renderDashboard,clients:renderClients,chats:renderChats,dialogs:renderDialogs,match:renderMatch,reports:renderReports,budgets:renderBudgets,presets:renderPresets,external:renderExternal,gsheets:renderGSheets,settings:renderSettings,supervision:renderSupervision,users:renderUsers,errlog:renderErrlog,system:renderSystem,lab:renderLab,guide:renderGuide,docs:renderDocs,changelog:renderChangelog}[v]||(()=>{}))();}
 function refresh(){render(CURRENT);loadBadges();}
 
 /* ---------- бейджи/статус ---------- */
@@ -5122,6 +5156,14 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-18',tag:'new',title:'Новый раздел «Документация»',
+ sum:'Что где и зачем, прямо в кабинете. Справочники пересобираются из кода',items:[
+  '<b>Документация теперь живёт внутри кабинета.</b> Пункт «Документация» в левом меню рядом с «Гайдом». Не отдельный документ где-то в облаке, который через три недели разойдётся с реальностью, а раздел, который обновляется тем же выкатом, что и код.',
+  '<b>Семь справочников собираются автоматически.</b> Карта разделов кабинета, все методы с правами по ролям, схема базы, расписание всех фоновых задач, команды консоли, карта модулей и цифры объёма. Их никто не пишет руками: переименовали раздел или метод — на следующем выкате документация меняется сама. Выкат вообще не пройдёт, если она отстала от кода.',
+  '<b>Живая справка по серверу.</b> Отдельная страница для админа: реальные пути, команды и расписание именно этой машины, собираются в момент открытия.',
+  '<b>Кнопка «Скачать всё одним файлом».</b> Держите копию офлайн: если кабинет ляжет, инструкция по его подъёму должна остаться под рукой, а не внутри упавшего кабинета.',
+  '<b>Каждому своё.</b> Специалист видит то, что нужно для работы, работодатель — ещё и расписание, администратор — техническую часть целиком.',
+ ]},
 {date:'2026-08-17',tag:'fix',title:'Бенчмарк: появился выбор эталона',
  sum:'В таблице всегда твои проекты, переключается линейка, которой их меряют',items:[
   '<b>Раньше сравнивать было не с чем.</b> И строки, и медиана брались из одного набора — «свои клиенты». У специалиста с одним-двумя проектами база не набиралась, и фича молча отвечала «нужно хотя бы пять проектов с трафиком».',
@@ -6342,6 +6384,93 @@ async function doClearErrlog(){
    Здесь работает настоящий функционал, а не описания. Человек жмёт «Запустить»,
    получает результат по своим клиентам и только после этого может оценить —
    оценка без использования тут не принимается, иначе это опять доска мнений. */
+let DOCS=null, DOC_CUR=null, DOC_TXT=null;
+
+// Разметка документов простая и своя: заголовки, таблицы, списки, цитаты, код.
+// Экранируем ДО разбора, иначе содержимое документа попадёт в вёрстку как теги.
+function mdToHtml(md){
+  const esc1=t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const inline=t=>esc1(t)
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>')
+    .replace(/(^|[\s(])\*([^*\n]+)\*/g,'$1<i>$2</i>');
+  const lines=md.replace(/\r/g,'').split('\n');
+  const out=[]; let i=0;
+  while(i<lines.length){
+    const L=lines[i];
+    if(/^<!--/.test(L)){ while(i<lines.length&&!/-->/.test(lines[i]))i++; i++; continue; }
+    if(/^\s*$/.test(L)){ i++; continue; }
+    if(/^#{1,4}\s/.test(L)){
+      const lv=L.match(/^#+/)[0].length;
+      out.push('<h'+lv+'>'+inline(L.replace(/^#+\s*/,''))+'</h'+lv+'>'); i++; continue;
+    }
+    if(/^\s*\|/.test(L)&&/^\s*\|[\s:|-]+\|\s*$/.test(lines[i+1]||'')){
+      const cells=r=>r.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+      const head=cells(L); i+=2; const rows=[];
+      while(i<lines.length&&/^\s*\|/.test(lines[i])){ rows.push(cells(lines[i])); i++; }
+      out.push('<div class="scrollx"><table><thead><tr>'+head.map(h=>'<th>'+inline(h)+'</th>').join('')+
+        '</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(c=>'<td>'+inline(c)+'</td>').join('')+'</tr>').join('')+
+        '</tbody></table></div>');
+      continue;
+    }
+    if(/^\s*>/.test(L)){
+      const buf=[];
+      while(i<lines.length&&/^\s*>/.test(lines[i])){ buf.push(lines[i].replace(/^\s*>\s?/,'')); i++; }
+      out.push('<blockquote>'+mdToHtml(buf.join('\n'))+'</blockquote>'); continue;
+    }
+    if(/^\s*[-*]\s/.test(L)||/^\s*\d+\.\s/.test(L)){
+      const ord=/^\s*\d+\.\s/.test(L); const buf=[];
+      while(i<lines.length&&(/^\s*[-*]\s/.test(lines[i])||/^\s*\d+\.\s/.test(lines[i]))){
+        buf.push(inline(lines[i].replace(/^\s*(?:[-*]|\d+\.)\s+/,''))); i++;
+      }
+      out.push('<'+(ord?'ol':'ul')+'>'+buf.map(x=>'<li>'+x+'</li>').join('')+'</'+(ord?'ol':'ul')+'>');
+      continue;
+    }
+    if(/^\s*(-{3,}|_{3,})\s*$/.test(L)){ out.push('<hr>'); i++; continue; }
+    const buf=[];
+    while(i<lines.length&&!/^\s*$/.test(lines[i])&&!/^#{1,4}\s/.test(lines[i])&&
+          !/^\s*\|/.test(lines[i])&&!/^\s*>/.test(lines[i])&&
+          !/^\s*[-*]\s/.test(lines[i])&&!/^\s*\d+\.\s/.test(lines[i])){ buf.push(lines[i]); i++; }
+    if(buf.length) out.push('<p>'+inline(buf.join(' '))+'</p>');
+  }
+  return out.join('');
+}
+
+async function renderDocs(){
+  const host=el('v_docs');
+  if(!DOCS){ host.innerHTML=skeleton('cards',2);
+    try{DOCS=await api('docs_list');}catch(e){host.innerHTML=errBlock(e,()=>{DOCS=null;renderDocs();});return;} }
+  const side=(DOCS.groups||[]).filter(g=>(g.items||[]).length).map(g=>
+    `<div class="doc-grp"><h4>${esc(g.group)}</h4><div class="hint">${esc(g.hint||'')}</div>`+
+    g.items.map(it=>`<button class="doc-item${DOC_CUR===it.id?' on':''}" onclick="docsOpen('${esc(it.id)}')">`+
+      esc(it.title)+`<span class="doc-meta">${it.lines} строк · ${esc(fmtDT(it.updated)||'')}</span></button>`).join('')+
+    '</div>').join('');
+  const extra=DOCS.runbook?`<div class="doc-grp"><h4>Эта машина</h4><div class="hint">Собирается в момент открытия: реальные пути, команды и расписание боевого сервера.</div>`+
+    `<button class="doc-item${DOC_CUR==='__runbook__'?' on':''}" onclick="docsOpen('__runbook__')">Живая справка<span class="doc-meta">обновляется при каждом открытии</span></button></div>`:'';
+  host.innerHTML=`
+    <h2 class="title"><svg class="ic"><use href="#i-book-2"/></svg> Документация</h2>
+    <p class="sub">Что где и зачем. Справочники пересобираются из кода при каждом выкате,
+      поэтому не расходятся с тем, как система работает на самом деле.</p>
+    <div class="cli-tools" style="margin:0 0 12px">
+      <a class="btn" href="/download/docs.md">Скачать всё одним файлом</a>
+      <span class="muted" style="font-size:12.5px;align-self:center">Держи копию офлайн: если кабинет ляжет, инструкция по его подъёму должна остаться под рукой</span>
+    </div>
+    <div class="doc-wrap">
+      <div class="doc-side">${side}${extra}</div>
+      <div class="doc-body" id="docBody">${DOC_TXT?DOC_TXT:'<div class="muted" style="font-size:14px">Выбери документ слева.</div>'}</div>
+    </div>`;
+}
+
+async function docsOpen(id){
+  DOC_CUR=id; DOC_TXT='<div class="muted">Открываю…</div>'; renderDocs();
+  try{
+    const d=await api('docs_read',id);
+    DOC_TXT=(d.auto?'<div class="doc-auto"><b>Собрано из кода.</b> Правки в этом тексте затрутся при следующей сборке — меняй код, а не документ.</div>':'')+
+      mdToHtml(d.text||'');
+  }catch(e){ DOC_TXT='<div class="note">'+esc(humanError(e).msg)+'</div>'; }
+  renderDocs();
+}
+
 let LAB=null, LAB_RES={}, LAB_BUSY={}, LAB_CLI='', LAB_BENCH='all';
 const LAB_ST={testing:['На испытании','b-amber'],released:['Выпущено','b-green'],rejected:['Закрыто','b-gray']};
 

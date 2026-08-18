@@ -3317,6 +3317,112 @@ class Api:
         from . import sysinfo
         return {"text": sysinfo.runbook(self.db)}
 
+    # ---------- документация ----------
+    # Справочники из docs/generated/ собирает docgen.py, руками их не правят.
+    # Кому показывать: по умолчанию всем вошедшим, здесь — исключения.
+    DOCS_ONLY = {
+        "generated/02-методы-и-права.md": ("admin",),
+        "generated/03-модель-данных.md": ("admin",),
+        "generated/05-команды-консоли.md": ("admin",),
+        "generated/06-карта-репозитория.md": ("admin",),
+        "generated/04-расписание.md": ("admin", "observer"),
+    }
+
+    @staticmethod
+    def _docs_root():
+        import os
+        return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs")
+
+    def _docs_visible(self, doc_id):
+        only = self.DOCS_ONLY.get(doc_id)
+        if not only or not self.user:      # десктоп/легаси видит всё
+            return True
+        return (self.user.get("role") or "") in only
+
+    @safe
+    def docs_list(self):
+        """Оглавление раздела: человеческие документы и собранные из кода справочники."""
+        import datetime as _dt
+        import io
+        import os
+        import re
+        root = self._docs_root()
+        groups = [("Документы", "", "Их пишут люди."),
+                  ("Справочники", "generated",
+                   "Собираются из кода командой docgen. Руками не правятся: правки затрутся.")]
+        out = []
+        for title, sub, hint in groups:
+            d = os.path.join(root, sub) if sub else root
+            items = []
+            for fn in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+                if not fn.endswith(".md"):
+                    continue
+                doc_id = (sub + "/" + fn) if sub else fn
+                if not self._docs_visible(doc_id):
+                    continue
+                p = os.path.join(d, fn)
+                text = io.open(p, encoding="utf-8").read()
+                m = re.search(r"^#\s+(.+)$", text, re.M)
+                items.append({
+                    "id": doc_id, "auto": bool(sub),
+                    "title": (m.group(1).strip() if m else fn),
+                    "lines": text.count("\n"),
+                    "updated": _dt.datetime.fromtimestamp(os.path.getmtime(p)).isoformat(timespec="minutes"),
+                })
+            out.append({"group": title, "hint": hint, "items": items})
+        return {"groups": out, "runbook": self._is_admin()}
+
+    @safe
+    def docs_read(self, doc_id):
+        """Текст одного документа. doc_id — только из docs_list, обходы пути запрещены."""
+        import io
+        import os
+        if doc_id == "__runbook__":
+            from . import sysinfo
+            self._require_admin()
+            return {"title": "Живая справка по этой машине", "text": sysinfo.runbook(self.db),
+                    "auto": True, "updated": None}
+        root = self._docs_root()
+        path = os.path.normpath(os.path.join(root, doc_id or ""))
+        if not path.startswith(os.path.normpath(root) + os.sep) or not path.endswith(".md"):
+            raise RuntimeError("Неизвестный документ")
+        norm = os.path.relpath(path, root).replace(os.sep, "/")
+        if not self._docs_visible(norm):
+            raise RuntimeError("Этот документ доступен администратору")
+        if not os.path.isfile(path):
+            raise RuntimeError("Документ не найден: %s" % norm)
+        import datetime as _dt
+        import re
+        text = io.open(path, encoding="utf-8").read()
+        m = re.search(r"^#\s+(.+)$", text, re.M)
+        return {"title": (m.group(1).strip() if m else norm), "text": text,
+                "auto": norm.startswith("generated/"),
+                "updated": _dt.datetime.fromtimestamp(os.path.getmtime(path)).isoformat(timespec="minutes")}
+
+    def docs_bundle(self):
+        """Всё одним файлом — для офлайн-копии. Не @safe: зовётся из маршрута скачивания."""
+        import datetime as _dt
+        import io
+        import os
+        root = self._docs_root()
+        parts = ["# Документация IIG Reporter",
+                 "",
+                 "Выгружено %s. Если этот файл старше двух недель — возьмите свежий "
+                 "в кабинете, раздел «Документация»."
+                 % _dt.datetime.now().strftime("%d.%m.%Y %H:%M"),
+                 ""]
+        for sub in ("", "generated"):
+            d = os.path.join(root, sub) if sub else root
+            for fn in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+                if fn.endswith(".md"):
+                    parts += ["", "---", "", io.open(os.path.join(d, fn), encoding="utf-8").read()]
+        try:
+            from . import sysinfo
+            parts += ["", "---", "", sysinfo.runbook(self.db)]
+        except Exception:  # noqa: BLE001 — справка по машине не должна ронять выгрузку
+            pass
+        return "\n".join(parts)
+
     # ---------- переотправка отчёта ----------
     @safe
     def resend_report(self, login):
