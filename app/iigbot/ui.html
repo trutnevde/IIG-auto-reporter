@@ -1719,7 +1719,7 @@
       <div class="nav-cap" id="navCapManage" style="display:none">Управление</div>
       <a data-go="supervision" id="navSup" style="display:none"><svg class="ic"><use href="#i-eye"/></svg><span>Контроль</span></a>
       <a data-go="users" id="navUsers" style="display:none"><svg class="ic"><use href="#i-key"/></svg><span>Пользователи</span></a>
-      <a data-go="errlog" id="navErrlog" style="display:none"><svg class="ic"><use href="#i-pulse"/></svg><span>Журнал</span></a>
+      <a data-go="errlog" id="navErrlog" style="display:none"><svg class="ic"><use href="#i-error-warning"/></svg><span>Журнал</span></a>
       <a data-go="system" id="navSystem" style="display:none"><svg class="ic"><use href="#i-heart-pulse"/></svg><span>Сервер</span></a>
 
       <div class="nav-cap">Система</div>
@@ -1727,7 +1727,7 @@
       <a data-act="onboard"><svg class="ic"><use href="#i-add-circle"/></svg><span>Подключить клиента</span></a>
       <a data-go="settings"><svg class="ic"><use href="#i-gear"/></svg><span>Настройки</span></a>
       <a data-go="guide"><svg class="ic"><use href="#i-book"/></svg><span>Гайд</span></a>
-      <a data-go="docs"><svg class="ic"><use href="#i-book-2"/></svg><span>Документация</span></a>
+      <a data-go="docs"><svg class="ic"><use href="#i-file-list-2"/></svg><span>Документация</span></a>
     </nav>
     <div class="spacer"></div>
     <div class="mini" id="botInfo">Загрузка…</div>
@@ -2417,17 +2417,18 @@ function cmdkSources(){
     ['dashboard','<svg class="ic"><use href="#i-home-5"/></svg>'],['clients','<svg class="ic"><use href="#i-group"/></svg>'],['chats','<svg class="ic"><use href="#i-chat-3"/></svg>'],['dialogs','<svg class="ic"><use href="#i-time"/></svg>'],['match','<svg class="ic"><use href="#i-links"/></svg>'],
     ['reports','<svg class="ic"><use href="#i-send-plane"/></svg>'],['budgets','<svg class="ic"><use href="#i-wallet-3"/></svg>'],['external','<svg class="ic"><use href="#i-upload-2"/></svg>'],['gsheets','<svg class="ic"><use href="#i-table"/></svg>'],
     ...(boss?[['supervision','<svg class="ic"><use href="#i-eye"/></svg>'],['users','<svg class="ic"><use href="#i-key-2"/></svg>']]:[]),
-    ...(ME&&ME.role==='admin'?[['errlog','<svg class="ic"><use href="#i-heart-pulse"/></svg>']]:[]),
-    ['settings','<svg class="ic"><use href="#i-settings-3"/></svg>'],['guide','<svg class="ic"><use href="#i-book-2"/></svg>'],['changelog','<svg class="ic"><use href="#i-sparkling-2"/></svg>'],
+    ...(ME&&ME.role==='admin'?[['errlog','<svg class="ic"><use href="#i-error-warning"/></svg>'],['system','<svg class="ic"><use href="#i-heart-pulse"/></svg>']]:[]),
+    ['lab','<svg class="ic"><use href="#i-flask"/></svg>'],
+    ['settings','<svg class="ic"><use href="#i-settings-3"/></svg>'],['guide','<svg class="ic"><use href="#i-book"/></svg>'],['docs','<svg class="ic"><use href="#i-file-list-2"/></svg>'],['changelog','<svg class="ic"><use href="#i-sparkling-2"/></svg>'],
   ].map(([k,ic])=>({group:'Разделы',ic,label:NAMES[k]||k,run:()=>go(k)}));
   const acts=[
     {ic:'<svg class="ic"><use href="#i-send-plane"/></svg>',label:'Запустить рассылку',hint:'отчёты клиентам',run:()=>{go('dashboard');setTimeout(()=>{const b=[...document.querySelectorAll('#v_dashboard button')].find(x=>/Запустить рассылку/.test(x.textContent));if(b)b.click();},250)}},
-    {ic:'flask',label:'Проба — собрать без отправки',run:()=>{go('dashboard');setTimeout(()=>{const b=[...document.querySelectorAll('#v_dashboard button')].find(x=>/Проба|НЕ отправлять/i.test(x.textContent+(x.title||'')));if(b)b.click();},250)}},
-    {ic:'wallet-3',label:'Обновить бюджеты',run:()=>{go('budgets');setTimeout(()=>doBudgetsRefresh(),250)}},
+    {ic:'<svg class="ic"><use href="#i-flask"/></svg>',label:'Проба — собрать без отправки',run:()=>{go('dashboard');setTimeout(()=>{const b=[...document.querySelectorAll('#v_dashboard button')].find(x=>/Проба|НЕ отправлять/i.test(x.textContent+(x.title||'')));if(b)b.click();},250)}},
+    {ic:'<svg class="ic"><use href="#i-wallet-3"/></svg>',label:'Обновить бюджеты',run:()=>{go('budgets');setTimeout(()=>doBudgetsRefresh(),250)}},
     {ic:'<svg class="ic"><use href="#i-add-circle"/></svg>',label:'Подключить клиента',run:()=>openOnboard()},
     {ic:'<svg class="ic"><use href="#i-contrast-2"/></svg>',label:'Светлая / тёмная тема',run:()=>toggleTheme()},
     {ic:'<svg class="ic"><use href="#i-gamepad"/></svg>',label:'Перерыв — игра',run:()=>{if(!document.getElementById('gmWrap').classList.contains('on'))gmToggle();}},
-    {ic:'keyboard-box',label:'Горячие клавиши',run:()=>showKeys()},
+    {ic:'<svg class="ic"><use href="#i-keyboard-box"/></svg>',label:'Горячие клавиши',run:()=>showKeys()},
   ].map(a=>Object.assign({group:'Действия'},a));
   const cls=(CLIENTS||[]).map(c=>({group:'Клиенты',ic:'<svg class="ic"><use href="#i-group"/></svg>',label:c.name||c.login,
     hint:c.login,run:()=>{go('clients');setTimeout(()=>openClient(c.login),220);}}));
@@ -2539,7 +2540,7 @@ function applyTheme(t){document.documentElement.setAttribute('data-theme',t);try
 function toggleTheme(){const cur=document.documentElement.getAttribute('data-theme')||'light';applyTheme(cur==='dark'?'light':'dark');}
 
 /* ---------- роутинг ---------- */
-const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',dialogs:'Ждут ответа',match:'Привязки',reports:'Отчёты',budgets:'Бюджеты',presets:'Шаблоны кампаний (мега-демо)',external:'Сторонний мессенджер',gsheets:'Google-таблицы',settings:'Настройки',supervision:'Контроль',users:'Пользователи',errlog:'Журнал',system:'Сервер',guide:'Гайд',changelog:'Что нового'};
+const NAMES={dashboard:'Обзор',clients:'Клиенты',chats:'Чаты',dialogs:'Ждут ответа',match:'Привязки',reports:'Отчёты',budgets:'Бюджеты',presets:'Шаблоны кампаний (мега-демо)',external:'Сторонний мессенджер',gsheets:'Google-таблицы',settings:'Настройки',supervision:'Контроль',users:'Пользователи',errlog:'Журнал',system:'Сервер',lab:'Экспериментальное',guide:'Гайд',docs:'Документация',changelog:'Что нового'};
 /* Модели атрибуции Директа: код -> как это называется в самом Директе. «D» на конце —
    кросс-девайс (сшивка по Яндекс ID), пишется через два C. Дефолт агентства — LSCCD. */
 const ATTR_RU={LSCCD:'Последний значимый, кросс-девайс',LSC:'Последний значимый переход',
@@ -5156,6 +5157,12 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-19',tag:'fix',title:'Значки в меню перестали повторяться',
+ sum:'«Гайд» и «Документация» выглядели одинаково, «Журнал» и «Сервер» тоже',items:[
+  '<b>Два значка в меню были буквально одним и тем же рисунком под разными именами.</b> «Гайд» и «Документация» рисовались одинаковой книгой, «Журнал» и «Сервер» — одинаковой кардиограммой. Теперь «Документация» — страницы с текстом, «Журнал» — знак внимания, потому что это журнал ошибок. Проверил все восемнадцать разделов: одинаковых пар не осталось.',
+  '<b>«Документации» и «Экспериментального» не было в палитре Ctrl+K.</b> Разделы есть, а быстрым поиском не находились. Добавил, заодно и «Сервер» для администратора.',
+  '<b>В словаре названий не хватало двух разделов.</b> Из-за этого в некоторых местах вместо человеческого названия мог показаться служебный ключ.',
+ ]},
 {date:'2026-08-18',tag:'new',title:'Новый раздел «Документация»',
  sum:'Что где и зачем, прямо в кабинете. Справочники пересобираются из кода',items:[
   '<b>Документация теперь живёт внутри кабинета.</b> Пункт «Документация» в левом меню рядом с «Гайдом». Не отдельный документ где-то в облаке, который через три недели разойдётся с реальностью, а раздел, который обновляется тем же выкатом, что и код.',
@@ -6448,7 +6455,7 @@ async function renderDocs(){
   const extra=DOCS.runbook?`<div class="doc-grp"><h4>Эта машина</h4><div class="hint">Собирается в момент открытия: реальные пути, команды и расписание боевого сервера.</div>`+
     `<button class="doc-item${DOC_CUR==='__runbook__'?' on':''}" onclick="docsOpen('__runbook__')">Живая справка<span class="doc-meta">обновляется при каждом открытии</span></button></div>`:'';
   host.innerHTML=`
-    <h2 class="title"><svg class="ic"><use href="#i-book-2"/></svg> Документация</h2>
+    <h2 class="title"><svg class="ic"><use href="#i-file-list-2"/></svg> Документация</h2>
     <p class="sub">Что где и зачем. Справочники пересобираются из кода при каждом выкате,
       поэтому не расходятся с тем, как система работает на самом деле.</p>
     <div class="cli-tools" style="margin:0 0 12px">
