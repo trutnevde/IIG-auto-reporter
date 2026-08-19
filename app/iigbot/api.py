@@ -10,7 +10,7 @@ import re
 import difflib
 import functools
 
-from . import yandex, report, listener, auth
+from . import yandex, report, listener
 from .storage import Storage
 from .telegram_api import Telegram, TelegramError
 from .settings import (
@@ -511,9 +511,14 @@ class Api:
                 if g["id"] not in seen:
                     seen.add(g["id"])
                     g["active"] = _is_key_goal(g["name"], g.get("type"))
-                    goals.append(g)
+                    g["counter"] = str(cid)   # у клиента бывают счётчики-клоны с
+                    goals.append(g)           # одинаковыми названиями целей
+
+        # Молча пропускать недоступные счётчики нельзя: человек ищет свою цель, не находит
+        # и думает, что подтяжка сломана, — а она просто не смогла прочитать часть счётчиков.
+        denied = [str(c) for c in camp_ids if str(c) not in {str(u) for u in used}]
         note = "" if goals else "Не нашёл доступного счётчика Метрики для этого клиента (нет доступа к его счётчику)."
-        return {"goals": goals, "counters": used, "note": note,
+        return {"goals": goals, "counters": used, "denied": denied, "note": note,
                 "from_campaigns": camp_ids, "from_domain": dom_ids}
 
     @safe
@@ -542,13 +547,18 @@ class Api:
         except Exception:  # noqa: BLE001
             pass
         merged = [{"id": g["id"], "name": g["name"], "type": g.get("type", ""),
+                   "counter": g.get("counter", ""),
                    "active": prev.get(g["id"], g["active"])} for g in goals]
         self.db.upsert_client(login=login, goals=normalize_goals(merged))
         self._cloud_push_safe()
-        out = [{"id": str(g["id"]), "name": g["name"], "active": (g["active"] is not False)} for g in merged]
-        return {"goals": out, "counters": found.get("counters", []),
-                "note": "Подтянуто целей: {} (ключевых вкл.: {})".format(
-                    len(out), sum(1 for g in out if g["active"]))}
+        out = [{"id": str(g["id"]), "name": g["name"], "counter": g.get("counter", ""),
+                "active": (g["active"] is not False)} for g in merged]
+        denied = found.get("denied") or []
+        note = "Подтянуто целей: {} с {} счётчиков (ключевых вкл.: {})".format(
+            len(out), len(found.get("counters") or []), sum(1 for g in out if g["active"]))
+        if denied:
+            note += ". Не прочитано счётчиков: {} — нет доступа".format(len(denied))
+        return {"goals": out, "counters": found.get("counters", []), "denied": denied, "note": note}
 
     @safe
     def metrika_goals_bulk(self):
@@ -587,11 +597,16 @@ class Api:
 
     @safe
     def client_goals(self, login):
-        """Цели клиента для выбора в конструкторе: [{'id','name','active'}]."""
+        """Цели клиента для выбора в конструкторе.
+
+        Отдаёт не голый список, а объект: рядом с целями нужны номер счётчика (у клиентов
+        бывают счётчики-клоны с одинаковыми названиями целей) и перечень счётчиков, которые
+        мы прочитать не смогли, — иначе отсутствие цели выглядит как «такой цели нет».
+        """
         self._require_owned(login)
         c = self.db.get_client(login)
         if not c:
-            return []
+            return {"goals": [], "denied": []}
         try:
             items = json.loads(c["goals"] or "[]")
         except (ValueError, TypeError):
@@ -601,10 +616,11 @@ class Api:
             if isinstance(g, dict):
                 gid = str(g.get("id"))
                 out.append({"id": gid, "name": g.get("name") or ("Цель " + gid),
+                            "counter": str(g.get("counter") or ""),
                             "active": (g.get("active") is not False)})
             else:
                 out.append({"id": str(g), "name": "Цель " + str(g), "active": True})
-        return out
+        return {"goals": out, "denied": self._denied_counters(login)}
 
     @safe
     def sync_clients(self):
@@ -1684,20 +1700,38 @@ class Api:
     # ── достоверность конверсий ──
     # Контактное действие человек совершает, когда реально хочет связаться. Всё остальное —
     # поведение на сайте. Если «мягких» в разы больше контактных, отчёт клиенту завышен.
+    # Три уровня, и порядок важен. Сначала то, что обращением не является никогда:
+    # «Страница "Оплата и доставка"» это просмотр, хотя слово «оплата» в ней есть,
+    # а «оформление подписки» на карточку организации — не заказ. Потом обращения:
+    # «Клик по кнопке "Позвонить"» это контакт, хотя слово «кнопка» в ней есть.
+    # Остальные клики по кнопкам — мягкие. Раньше проверка шла одним проходом
+    # и путала и то, и другое.
+    _NOT_LEAD = ("страниц", "посет", "просмотр", "прокрут", "скролл", "визит",
+                 "глубин", "время", "минут", "сессия", "открыл", "подписк",
+                 "marquiz-step", "marquiz-start", "marquiz-result")
     _CONTACT_WORDS = ("телефон", "звон", "позвон", "email", "e-mail", "почт", "мессенджер",
-                      "whatsapp", "telegram", "вайбер", "viber", "контакт", "заявк", "форм",
-                      "обратн", "заказ", "оформ", "купить", "корзин", "оплат", "покупк")
-    _SOFT_WORDS = ("клик по кнопке", "кнопк", "скролл", "просмотр", "посет", "визит",
-                   "страниц", "время", "минут", "сессия", "вовлеч", "открыл", "квиз",
-                   "скачив", "автоцель", "auto-goal", "соц", "поделил")
+                      "whatsapp", "telegram", "вайбер", "viber", "в max", "«max»",
+                      "контакт", "заявк", "форм", "обратн", "заказ", "оформ",
+                      "купить", "корзин", "оплат", "покупк", "узнать цен",
+                      "marquiz-contact", "marquiz-form", "marquiz-finish")
+    _SOFT_WORDS = ("клик по кнопке", "кнопк", "вовлеч", "квиз", "скачив", "соц", "поделил",
+                   "автоцель", "auto-goal", "ссылк", "каталог", "галере", "marquiz")
+
+    # «Автоцель:» — это приставка Яндекса, а не суть цели. Без её отбрасывания
+    # «Автоцель: отправка формы» и «Автоцель: клик по номеру телефона» уезжали
+    # в мягкие действия, и достоверность конверсий занижала обращения вдвое.
+    _AUTO_PREFIX = re.compile(r"^\s*(?:автоцель|auto-?goal|яндекс бизнес автоцель|автосбор)\s*[:\-–]?\s*",
+                              re.IGNORECASE)
 
     @classmethod
     def _goal_kind(cls, name):
-        n = (name or "").lower()
-        if any(w in n for w in cls._SOFT_WORDS):
+        n = cls._AUTO_PREFIX.sub("", (name or "")).lower()
+        if any(w in n for w in cls._NOT_LEAD):
             return "soft"
         if any(w in n for w in cls._CONTACT_WORDS):
             return "contact"
+        if any(w in n for w in cls._SOFT_WORDS):
+            return "soft"
         return "other"
 
     @safe
@@ -2238,7 +2272,13 @@ class Api:
     @safe
     def user_create(self, email, password, name=None, role="user"):
         """Завести сотрудника. Наблюдатель (работодатель) тоже может — он же нанимает; но выдать
-        роль «Администратор» (доступ к токенам/журналу) может только админ."""
+        роль «Администратор» (доступ к токенам/журналу) может только админ.
+
+        Импорт auth — локальный и ПЕРВОЙ строкой: auth тянет flask, а api.py должен
+        импортироваться и там, где flask нет (консольные задачи по расписанию).
+        Раньше он стоял ниже первого обращения к auth, и метод падал всегда.
+        """
+        from . import auth
         auth.check_password_rules(password)
         self._require_supervisor()
         email = (email or "").strip().lower()
@@ -2285,6 +2325,7 @@ class Api:
 
     @safe
     def user_set_password(self, user_id, password):
+        from . import auth      # локально: auth тянет flask, а api.py нужен и без него
         auth.check_password_rules(password)
         u = self._require_manage_user(user_id)
         if not password:

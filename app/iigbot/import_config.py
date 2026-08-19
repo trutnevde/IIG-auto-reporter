@@ -13,10 +13,13 @@ from .storage import Storage
 
 
 def normalize_goals(goals):
-    """Единый вид цели: {'id','name','active','type'}.
+    """Единый вид цели: {'id','name','active','type','counter'}.
 
     active — показывать ли цель в отчётах (по умолчанию True, для обратной совместимости
     со старыми целями без этого поля). type — тип цели Метрики (для авто-пресета «ключевых»).
+    counter — номер счётчика, откуда цель приехала: у клиентов с несколькими лендингами
+    счётчики бывают клонами, и в списке из сотни целей четыре одинаковых названия подряд
+    иначе не различить.
     """
     out = []
     for g in goals or []:
@@ -27,9 +30,11 @@ def normalize_goals(goals):
                 "name": g.get("name") or "Цель {}".format(gid),
                 "active": (g.get("active") is not False),
                 "type": g.get("type") or "",
+                "counter": str(g.get("counter") or ""),
             })
         else:
-            out.append({"id": str(g), "name": "Цель {}".format(g), "active": True, "type": ""})
+            out.append({"id": str(g), "name": "Цель {}".format(g), "active": True,
+                        "type": "", "counter": ""})
     return out
 
 

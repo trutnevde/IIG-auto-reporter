@@ -5157,6 +5157,13 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-19',tag:'fix',title:'Цели Метрики: кнопка обновления и честный список',
+ sum:'Кнопка была только при пустом списке, а недоступные счётчики никак не показывались',items:[
+  '<b>Кнопка «Обновить из Метрики» теперь есть всегда.</b> Раньше она появлялась только когда у клиента вообще нет целей, поэтому обновить список после правок в Метрике было нечем: специалист искал кнопку, не находил и решал, что подтяжка сломана.',
+  '<b>Видно, какие счётчики прочитать не удалось.</b> У клиента бывает несколько счётчиков, и часть из них не расшарена на нас. Раньше такие просто молча пропускались, и отсутствие цели выглядело как «такой цели нет». Теперь над списком стоит предупреждение с номерами, а в ответе подтяжки написано «подтянуто столько-то целей с шести счётчиков, два не прочитано».',
+  '<b>Рядом с целью стоит номер её счётчика.</b> У проектов с несколькими лендингами счётчики бывают клонами: четыре одинаковых «Клик по кнопке Позвонить» подряд различить было невозможно.',
+  '<b>Разделение целей на обращения и поведение переработано.</b> Приставка «Автоцель» — это метка Яндекса, а не суть: из-за неё «Автоцель: отправка формы» и «Автоцель: клик по номеру телефона» считались поведением, а не обращением. Плюс порядок проверки был такой, что слово «кнопка» перебивало «позвонить». Теперь сначала распознаётся явное поведение (страницы, прокрутки, время), потом обращения, потом остальные клики.',
+ ]},
 {date:'2026-08-19',tag:'fix',title:'Разбор прав по всем методам кабинета',
  sum:'Токен бота утекал в интерфейс при обрыве связи; заведение сотрудника не работало вовсе',items:[
   '<b>Токен бота больше не попадает в текст ошибки.</b> Когда связь с Telegram обрывалась, подробность ошибки уходила на экран вместе с адресом запроса, а токен — часть этого адреса. Метод настроек доступен любому вошедшему и вызывается при каждом входе, так что увидеть его мог кто угодно из команды. Теперь токен вычищается в самом месте возникновения ошибки, то есть закрыт и любой другой путь, куда этот текст мог попасть. Воспроизвёл на подставном токене до правки и после.',
@@ -5914,25 +5921,51 @@ async function rbLoadCampaigns(){
   }catch(e){sel.innerHTML='<option value="">Все кампании</option>';}
   sel.disabled=false;
 }
+// Номер счётчика рядом с названием: у клиентов бывают счётчики-клоны, и тогда в списке
+// подряд идут четыре одинаковых «Клик по кнопке Позвонить» — различить их иначе нельзя.
+function rbGoalRow(g){
+  const cnt=g.counter?` <span class="muted" style="font-size:11px">счётчик ${esc(g.counter)}</span>`:'';
+  return `<label style="${RB_CHK}"><input type="checkbox" class="rbg" value="${esc(g.id)}" ${g.active!==false?'checked':''}> ${esc(g.name)}${cnt}</label>`;
+}
+// Предупреждение о счётчиках, которые прочитать не удалось. Без него отсутствие цели
+// выглядит как «такой цели нет», хотя она лежит в нерасшаренном счётчике.
+function rbDeniedNote(denied){
+  if(!denied||!denied.length)return '';
+  return `<div class="note" style="margin:0 0 8px;border-left-color:var(--amber)">`+
+    `<svg class="ic"><use href="#i-error-warning"/></svg> Список неполный: нет доступа к счётчикам Метрики `+
+    `<b>${esc(denied.join(', '))}</b>. Их цели сюда не попадут — попросите клиента открыть доступ.</div>`;
+}
+function rbPullBtn(empty){
+  if(ME&&ME.role==='observer')return '';
+  return ` <button class="btn sm${empty?' primary':''}" style="margin-left:8px" onclick="rbPullGoals()">`+
+    `<svg class="ic"><use href="#i-focus-3"/></svg> ${empty?'Подтянуть цели':'Обновить из Метрики'}</button>`;
+}
 async function rbLoadGoals(){
   const login=el('rbClient')?el('rbClient').value:'';const host=el('rbGoals');if(!login||!host)return;
   host.innerHTML='<span class="muted" style="font-size:12.5px">загрузка целей…</span>';
-  try{const gs=await api('client_goals',login);
-    if(!gs||!gs.length){
-      const canPull=!(ME&&ME.role==='observer');
-      host.innerHTML='<span class="muted" style="font-size:12.5px">у клиента нет целей → будут общие конверсии.</span>'+
-        (canPull?' <button class="btn sm primary" style="margin-left:8px" onclick="rbPullGoals()"><svg class="ic"><use href="#i-focus-3"/></svg> Подтянуть цели</button>':'');
+  try{const r=await api('client_goals',login);
+    const gs=(r&&r.goals)||[], denied=(r&&r.denied)||[];
+    if(!gs.length){
+      host.innerHTML=rbDeniedNote(denied)+
+        '<span class="muted" style="font-size:12.5px">у клиента нет целей → будут общие конверсии.</span>'+
+        rbPullBtn(true);
       return;
     }
-    host.innerHTML=gs.map(g=>`<label style="${RB_CHK}"><input type="checkbox" class="rbg" value="${esc(g.id)}" ${g.active!==false?'checked':''}> ${esc(g.name)}</label>`).join('');
+    // Кнопку показываем ВСЕГДА: раньше она была только при пустом списке, и специалист,
+    // у которого цели уже есть, не мог обновить их после правок в Метрике.
+    host.innerHTML=rbDeniedNote(denied)+
+      `<div class="cli-tools" style="margin:0 0 8px"><span class="muted" style="font-size:12px;align-self:center">целей ${gs.length}, отмечено ${gs.filter(g=>g.active!==false).length}</span>${rbPullBtn(false)}</div>`+
+      gs.map(rbGoalRow).join('');
   }catch(e){errToast(e);host.innerHTML='<span class="muted" style="font-size:12.5px">не удалось загрузить цели</span>';}
 }
 async function rbPullGoals(){
   const login=el('rbClient')?el('rbClient').value:'';if(!login)return;
   const host=el('rbGoals');host.innerHTML='<span class="muted" style="font-size:12.5px"><span class="spin"></span> ищу счётчик и цели в Метрике…</span>';
   try{const r=await api('client_goals_pull',login);
-    if(!r.goals||!r.goals.length){host.innerHTML='<span class="muted" style="font-size:12.5px">'+esc(r.note||'Цели не найдены')+'</span>';toast(r.note||'Цели не найдены','err');return;}
-    host.innerHTML=r.goals.map(g=>`<label style="${RB_CHK}"><input type="checkbox" class="rbg" value="${esc(g.id)}" ${g.active!==false?'checked':''}> ${esc(g.name)}</label>`).join('');
+    if(!r.goals||!r.goals.length){host.innerHTML=rbDeniedNote(r.denied)+'<span class="muted" style="font-size:12.5px">'+esc(r.note||'Цели не найдены')+'</span>';toast(r.note||'Цели не найдены','err');return;}
+    host.innerHTML=rbDeniedNote(r.denied)+
+      `<div class="cli-tools" style="margin:0 0 8px"><span class="muted" style="font-size:12px;align-self:center">целей ${r.goals.length}, отмечено ${r.goals.filter(g=>g.active!==false).length}</span>${rbPullBtn(false)}</div>`+
+      r.goals.map(rbGoalRow).join('');
     toast(r.note||'Цели подтянуты','ok');
   }catch(e){errToast(e);host.innerHTML='<span class="muted" style="font-size:12.5px">не удалось подтянуть цели</span>';}
 }
