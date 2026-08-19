@@ -1149,6 +1149,10 @@ class Storage:
                ORDER BY n.created_at""",
             (user_id, user_id)).fetchall()
 
+    def get_note(self, note_id):
+        """Одно сообщение по id — чтобы проверить, кому оно адресовано."""
+        return self.conn.execute("SELECT * FROM notes WHERE id=?", (int(note_id),)).fetchone()
+
     def ack_note(self, note_id, user_id):
         self.conn.execute(
             "INSERT OR IGNORE INTO note_ack(note_id,user_id,ack_at) VALUES(?,?,?)",

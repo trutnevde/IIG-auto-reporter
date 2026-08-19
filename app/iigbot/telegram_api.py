@@ -43,6 +43,16 @@ class Telegram:
         self.timeout = timeout
         self.s = session or requests.Session()
 
+    def _redact(self, text):
+        """Убрать токен из текста ошибки.
+
+        requests кладёт в сообщение полный URL, а токен — часть пути. Без этой чистки
+        текст сетевой ошибки уносил боевой токен туда, куда попадал сам текст:
+        в журнал, в ответ API и на экран любому, кто открыл кабинет.
+        """
+        t = str(text)
+        return t.replace(self.token, "<токен скрыт>") if self.token else t
+
     def _call(self, method, params=None, http_timeout=None, retries=4):
         url = self.base + method
         last = None
@@ -52,7 +62,7 @@ class Telegram:
             except (requests.RequestException, OSError) as e:
                 # OSError ловим тоже: при битом пути к CA-бандлу requests кидает именно его —
                 # без этого слушатель падал насмерть. Здесь же он станет повторяемой ошибкой.
-                last = "сеть: {}".format(e)
+                last = "сеть: {}".format(self._redact(e))
                 time.sleep(min(2 ** attempt, 10))
                 continue
             try:
@@ -68,8 +78,9 @@ class Telegram:
                 last = "429 (retry_after={})".format(retry_after)
                 time.sleep(retry_after + 0.5)
                 continue
-            raise TelegramError("{}: {} {}".format(method, data.get("error_code"), data.get("description")))
-        raise TelegramError("{}: не удалось ({})".format(method, last))
+            raise TelegramError("{}: {} {}".format(
+                method, data.get("error_code"), self._redact(data.get("description"))))
+        raise TelegramError("{}: не удалось ({})".format(method, self._redact(last)))
 
     def get_me(self):
         return self._call("getMe", retries=2)

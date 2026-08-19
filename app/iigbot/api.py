@@ -10,7 +10,7 @@ import re
 import difflib
 import functools
 
-from . import yandex, report, listener
+from . import yandex, report, listener, auth
 from .storage import Storage
 from .telegram_api import Telegram, TelegramError
 from .settings import (
@@ -119,6 +119,21 @@ class Api:
         if self._is_admin_scope():
             return None
         return set(self.db.owned_logins(self.user["id"]))
+
+    def _require_note_addressee(self, note_id):
+        """Отвечать и помечать прочитанным можно своё сообщение или общую рассылку.
+
+        Раньше id сообщения ничем не проверялся: перебором можно было отвечать
+        на чужую переписку работодателя со специалистом и гасить чужие баннеры.
+        """
+        if not self.user:
+            return
+        row = self.db.get_note(int(note_id))
+        if not row:
+            raise RuntimeError("Сообщение не найдено")
+        to = row["to_user"] if "to_user" in row.keys() else None
+        if to is not None and to != self.user["id"]:
+            raise RuntimeError("Это сообщение адресовано не вам")
 
     def _require_owned(self, login):
         s = self._owned_set()
@@ -978,8 +993,14 @@ class Api:
                 res = json.loads(j["result"])
             except Exception:  # noqa: BLE001
                 res = None
+        # Прогресс нужен шапке у всех, а результат и текст ошибки — нет: под ключом
+        # админских задач там лежал вывод проверки базы и путей сервера.
+        mine = (self.user is None or self._is_admin()
+                or (j.get("owner") is not None and j.get("owner") == self.user["id"]))
         return {"running": j.get("state") == "running", "title": j.get("title"),
-                "note": j.get("note"), "result": res, "error": j.get("error"),
+                "note": j.get("note"),
+                "result": res if mine else None,
+                "error": j.get("error") if mine else None,
                 "started": j.get("started"), "finished": j.get("finished")}
 
     @safe
@@ -1329,6 +1350,12 @@ class Api:
             return {"available": False,
                     "note": "Ключ sa_key.json не найден рядом с программой — положи его туда."}
         sheets = G.discover()
+        # Полный список расшаренных таблиц — это перечень клиентов всего агентства,
+        # включая чужих. Специалисту он не нужен: свои таблицы он видит в gsheets_clients,
+        # где выборка уже сужена его скоупом.
+        if not (self._is_admin() or self._is_observer()):
+            return {"available": True, "sheets": [], "scoped": True,
+                    "note": "Свои таблицы — в списке клиентов ниже."}
         return {"available": True,
                 "sheets": [{"domain": k, "title": v["title"]} for k, v in sorted(sheets.items())]}
 
@@ -1518,7 +1545,7 @@ class Api:
         scope = set(self._exp_scope())
         rows = []
         for b in self.db.list_budgets():
-            if scope and b["login"] not in scope:
+            if b["login"] not in scope:   # пустой скоуп = ничего своего, а не «всё»
                 continue
             c7, c21 = (b["cost7"] or 0), (b["cost21"] or 0)
             if c7 <= 0 < c21:
@@ -1551,7 +1578,7 @@ class Api:
         beg = end - _d.timedelta(days=6)
         rows, checked, skipped = [], 0, 0
         for b in self.db.list_budgets():
-            if scope and b["login"] not in scope:
+            if b["login"] not in scope:   # пустой скоуп = ничего своего, а не «всё»
                 continue
             if not (b["cost7"] or 0):
                 continue
@@ -1733,7 +1760,7 @@ class Api:
         beg = end - _d.timedelta(days=int(days) - 1)
         rows, checked, skipped = [], 0, 0
         for b in self.db.list_budgets():
-            if scope and b["login"] not in scope:
+            if b["login"] not in scope:   # пустой скоуп = ничего своего, а не «всё»
                 continue
             if not (b["cost21"] or 0):
                 continue
@@ -1778,7 +1805,7 @@ class Api:
         scope = set(self._exp_scope())
         rows, checked, skipped = [], 0, 0
         for b in self.db.list_budgets():
-            if scope and b["login"] not in scope:
+            if b["login"] not in scope:   # пустой скоуп = ничего своего, а не «всё»
                 continue
             if not (b["cost21"] or 0):
                 continue
@@ -1838,7 +1865,7 @@ class Api:
         beg = end - _d.timedelta(days=int(days) - 1)
         rows, checked, skipped = [], 0, 0
         for b in self.db.list_budgets():
-            if scope and b["login"] not in scope:
+            if b["login"] not in scope:   # пустой скоуп = ничего своего, а не «всё»
                 continue
             if not (b["cost7"] or 0):
                 continue
@@ -2214,7 +2241,6 @@ class Api:
         роль «Администратор» (доступ к токенам/журналу) может только админ."""
         auth.check_password_rules(password)
         self._require_supervisor()
-        from . import auth
         email = (email or "").strip().lower()
         if not email or not password:
             raise RuntimeError("Нужны email и пароль")
@@ -2261,7 +2287,6 @@ class Api:
     def user_set_password(self, user_id, password):
         auth.check_password_rules(password)
         u = self._require_manage_user(user_id)
-        from . import auth
         if not password:
             raise RuntimeError("Пустой пароль")
         self.db.set_user_password(int(user_id), auth.hash_password(password))
@@ -2513,6 +2538,7 @@ class Api:
         self._require_write()
         import json as _json
         import datetime as _dt
+        _seen_chats = set()
         if isinstance(payload, str):
             payload = _json.loads(payload)
         chats = payload.get("chats", {}).get("list") if isinstance(payload, dict) else None
@@ -2538,6 +2564,14 @@ class Api:
                             if (c["title"] or "").strip().lower() == nm and nm), None)
             if cid is None:
                 res["details"].append({"chat": ch.get("name"), "status": "не нашёл такой чат в базе"})
+                continue
+            # Чужой чат импортом не трогаем. Раньше по выгрузке из Telegram Desktop
+            # можно было переписать активность любого чата агентства, включая чужие:
+            # id брался из файла и ничем не сверялся с доступом.
+            try:
+                self._require_chat_visible(cid)
+            except Exception as e:  # noqa: BLE001
+                res["details"].append({"chat": ch.get("name"), "status": str(e)})
                 continue
             last = {"client": None, "our": None, "client_name": None, "client_text": None, "our_name": None}
             for m in msgs:
@@ -2899,6 +2933,7 @@ class Api:
 
     @safe
     def preset_delete(self, preset_id):
+        self._require_write()     # как в preset_save и preset_undo: наблюдатель не правит
         row = self._preset_load(preset_id, need_edit=True)
         self.db.preset_delete(row["id"])
         self._audit("preset_delete", row["name"], "шаблон удалён")
@@ -3976,6 +4011,7 @@ class Api:
     def note_ack(self, note_id):
         """«Прочитано» — убрать баннер у текущего пользователя."""
         if self.user:
+            self._require_note_addressee(note_id)
             self.db.ack_note(int(note_id), self.user["id"])
         return {"acked": int(note_id)}
 
@@ -3988,6 +4024,7 @@ class Api:
         text = (text or "").strip()
         if not text:
             raise RuntimeError("Пустой ответ")
+        self._require_note_addressee(note_id)
         self.db.add_note_reply(int(note_id), self.user["id"], text)
         self.db.ack_note(int(note_id), self.user["id"])   # ответил → баннер убираем
         return {"replied": int(note_id)}
@@ -4014,12 +4051,17 @@ class Api:
                 tg_name = self._bot_name()
                 tg_status = "ок"
             except Exception as e:  # noqa: BLE001
-                tg_status = "ошибка: {}".format(e)
+                # Подробность — только в журнал. В ответ уходит короткий статус:
+                # текст сетевой ошибки содержал URL с токеном бота, а метод
+                # доступен любому вошедшему и дёргается при каждом входе.
+                log_error("settings.telegram", e)
+                tg_status = "нет связи"
         return {
             "intro": rep.get("intro", ""),
             "specialist_note": rep.get("specialist_note", ""),
             "attribution_model": rep.get("attribution_model") or default_attribution(),
-            "admin_user_ids": app.get("admin_user_ids", []),
+            # список админов бота — управленческая настройка, специалисту не нужна
+            "admin_user_ids": (app.get("admin_user_ids", []) if self._is_admin() else []),
             "report_day": app.get("report_day", "Понедельник"),
             "report_time": app.get("report_time", "09:00"),
             "telegram": {"status": tg_status, "username": tg_name, "has_token": tg_has},
