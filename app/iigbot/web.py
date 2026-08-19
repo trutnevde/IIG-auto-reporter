@@ -355,7 +355,7 @@ def create_app(api=None):
         if not g.user:
             return jsonify({"ok": False, "error": "not_authenticated"}), 401
         import datetime as _dt
-        text = Api(user=g.user).docs_bundle()
+        text = Api(user=g.user)._docs_bundle(admin=(g.user.get("role") == "admin"))
         fn = "iig-reporter-docs-%s.md" % _dt.date.today().isoformat()
         return Response(text, mimetype="text/markdown; charset=utf-8",
                         headers={"Content-Disposition": 'attachment; filename="%s"' % fn})
@@ -504,7 +504,9 @@ def create_app(api=None):
 
         api_u = _api_for(g.user)
         fn = getattr(api_u, method, None)
-        if not callable(fn):
+        # Запрещено по умолчанию: наружу выставлены только методы с декоратором @safe.
+        # Раньше вызвать можно было ЛЮБОЙ публичный метод объекта, включая служебные.
+        if not callable(fn) or not getattr(fn, "_api_exposed", False):
             return jsonify({"ok": False, "error": "неизвестный метод: " + method}), 404
         args = request.get_json(force=True, silent=True)
         if args is None:

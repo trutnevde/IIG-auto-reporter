@@ -51,6 +51,7 @@ def safe(fn):
             except Exception:          # noqa: BLE001
                 pass
             return {"ok": False, "error": str(e)}
+    wrapper._api_exposed = True    # диспетчер пускает только помеченное этим
     return wrapper
 
 
@@ -3405,7 +3406,7 @@ class Api:
                 "auto": norm.startswith("generated/"),
                 "updated": _dt.datetime.fromtimestamp(os.path.getmtime(path)).isoformat(timespec="minutes")}
 
-    def docs_bundle(self):
+    def _docs_bundle(self, admin=False):
         """Всё одним файлом — для офлайн-копии. Не @safe: зовётся из маршрута скачивания."""
         import datetime as _dt
         import io
@@ -3417,16 +3418,30 @@ class Api:
                  "в кабинете, раздел «Документация»."
                  % _dt.datetime.now().strftime("%d.%m.%Y %H:%M"),
                  ""]
+        if not admin:
+            parts += ["> Это пользовательская выгрузка. Техническое описание, справочники по коду",
+                      "> и справка по серверу в неё не входят — их выгружает администратор.", ""]
+        n = 0
         for sub in ("", "generated"):
             d = os.path.join(root, sub) if sub else root
             for fn in sorted(os.listdir(d)) if os.path.isdir(d) else []:
-                if fn.endswith(".md"):
-                    parts += ["", "---", "", io.open(os.path.join(d, fn), encoding="utf-8").read()]
-        try:
-            from . import sysinfo
-            parts += ["", "---", "", sysinfo.runbook(self.db)]
-        except Exception:  # noqa: BLE001 — справка по машине не должна ронять выгрузку
-            pass
+                if not fn.endswith(".md"):
+                    continue
+                doc_id = (sub + "/" + fn) if sub else fn
+                # В файл кладём ровно то, что человеку видно в кабинете. Иначе выгрузка
+                # обходит разграничение ролей: специалисту уезжали бы пути, имена
+                # аккаунтов, порядок выката и места хранения секретов.
+                if not admin and not self._docs_visible(doc_id):
+                    continue
+                parts += ["", "---", "", io.open(os.path.join(d, fn), encoding="utf-8").read()]
+                n += 1
+        if admin:
+            try:
+                from . import sysinfo
+                parts += ["", "---", "", sysinfo.runbook(self.db)]
+            except Exception:  # noqa: BLE001 — справка по машине не должна ронять выгрузку
+                pass
+        parts += ["", "---", "", "Документов в этой выгрузке: %d." % n]
         return "\n".join(parts)
 
     # ---------- переотправка отчёта ----------
@@ -4014,6 +4029,8 @@ class Api:
     @safe
     def save_settings(self, intro=None, specialist_note=None, attribution_model=None,
                       admin_user_ids=None, report_day=None, report_time=None):
+        """Настройки агентства целиком, включая список администраторов бота. Только админ."""
+        self._require_admin()
         rep_patch = {}
         if intro is not None:
             rep_patch["intro"] = intro
@@ -4042,7 +4059,12 @@ class Api:
 
     @safe
     def save_secrets(self, telegram_bot_token=None, yandex_oauth_token=None):
-        """Сохраняет токены в secrets.json прямо из интерфейса (без правки файла руками)."""
+        """Сохраняет токены в secrets.json прямо из интерфейса (без правки файла руками).
+
+        Только администратор: метод перезаписывает боевые токены Telegram и Яндекс.Директа,
+        то есть может разом отключить рассылку и сбор данных по всему агентству.
+        """
+        self._require_admin()
         patch = {}
         if telegram_bot_token and telegram_bot_token.strip():
             patch["telegram_bot_token"] = telegram_bot_token.strip()

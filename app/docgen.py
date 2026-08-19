@@ -128,9 +128,20 @@ def gen_api():
 # ─────────────────────────── 3. схема базы ───────────────────────────
 def gen_schema():
     src = read(os.path.join(PKG, "storage.py"))
-    tabs = re.findall(r"CREATE TABLE IF NOT EXISTS\s+(\w+)\s*\((.*?)\)\s*[\"']", src, re.S)
-    if not tabs:
-        tabs = re.findall(r"CREATE TABLE(?:\s+IF NOT EXISTS)?\s+(\w+)\s*\((.*?)\n\s*\)", src, re.S)
+    # Тело таблицы вырезаем подсчётом скобок, а не регуляркой: в определениях есть
+    # вложенные скобки (DEFAULT (...), CHECK (...)), и «до первой закрывающей» теряло
+    # девять таблиц из двадцати шести, среди них clients, users, budgets и send_log.
+    tabs = []
+    for m in re.finditer(r"CREATE TABLE(?:\s+IF NOT EXISTS)?\s+(\w+)\s*\(", src):
+        i = m.end()
+        depth, start = 1, i
+        while i < len(src) and depth:
+            if src[i] == "(":
+                depth += 1
+            elif src[i] == ")":
+                depth -= 1
+            i += 1
+        tabs.append((m.group(1), src[start:i - 1]))
     body = ["# Модель данных", "",
             "Собрано из `iigbot/storage.py` (операторы CREATE TABLE).", ""]
     for name, cols in sorted(tabs):
