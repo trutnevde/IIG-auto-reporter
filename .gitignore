@@ -31,6 +31,12 @@ app/iigbot.sqlite3
 app/iigbot.sqlite3-wal
 app/iigbot.sqlite3-shm
 
+# --- Копии базы: там данные клиентов, в репозиторий им нельзя ---
+app/backups/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
 # --- Сборка PyInstaller ---
 app/build/
 app/dist/
