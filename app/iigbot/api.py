@@ -1474,49 +1474,49 @@ class Api:
     # Здесь лежит РАБОЧИЙ функционал, а не описания. Человек нажимает «Запустить»,
     # получает настоящий результат по своим клиентам и только после этого оценивает.
     EXPERIMENTS = [
-        {"key": "idle", "title": "Детектор простоя",
+        {"key": "idle", "tags": ["Контроль бюджета", "Простой", "Быстрая"], "title": "Детектор простоя",
          "summary": "Кампании крутились и вдруг встали — находит такие проекты",
          "why": "У artdigo кампании стояли 11 дней, мимо прошло около 26 000 ₽, "
                 "и заметили это случайно через две недели.",
          "run": "Ищет клиентов, у которых за прошлую неделю ноль расхода, а за три недели до "
                 "этого деньги шли. Считается по собранным бюджетам, к Директу не ходит."},
-        {"key": "overspend", "title": "Контроль перерасхода",
+        {"key": "overspend", "tags": ["Контроль бюджета", "Лимиты", "Директ"], "title": "Контроль перерасхода",
          "summary": "Сравнивает фактический недельный расход с лимитом кампаний",
          "why": "simplefoods два месяца жил с превышением до +71% (27 300 ₽ при лимите 16 000 ₽), "
                 "и узнали мы об этом от клиента.",
          "run": "Берёт недельные лимиты активных кампаний из Директа и сравнивает с расходом "
                 "за последние 7 дней. Показывает всех, кто вышел за рамку больше чем на 15%."},
-        {"key": "trash", "title": "Мусорные площадки",
+        {"key": "trash", "tags": ["Качество трафика", "Сети", "По клиенту"], "title": "Мусорные площадки",
          "summary": "Собирает кандидатов в запрет по сетевым кампаниям одного клиента",
          "why": "У одного клиента 1 632 площадки, руками это не разбирается. "
                 "За август так вычищено 88 площадок у трёх проектов.",
          "run": "Отчёт по площадкам за 60 дней: мобильные приложения от 5 кликов и сайты "
                 "с кликабельностью выше 10% при заметном расходе. Ничего не меняет, только показывает."},
-        {"key": "conv_trust", "title": "Достоверность конверсий",
+        {"key": "conv_trust", "tags": ["Аналитика", "Цели", "По клиенту"], "title": "Достоверность конверсий",
          "summary": "Сколько из конверсий — настоящие обращения, а сколько поведение на сайте",
          "why": "У artdigo 802 «конверсии» из 873 — клики по кнопкам и таймер. "
                 "У simplefoods 163 отправки формы против 3 отправок контактов.",
          "run": "Считает конверсии по каждой цели отдельно и делит их на контактные "
                 "и мягкие. Показывает, во сколько раз одни больше других."},
-        {"key": "autotarget", "title": "Доля автотаргетинга",
+        {"key": "autotarget", "tags": ["Качество трафика", "Автотаргетинг", "Директ"], "title": "Доля автотаргетинга",
          "summary": "У кого автотаргетинг съедает большую часть бюджета",
          "why": "У simplefoods 82% денег ушло на строки ---autotargeting, при том что "
                 "в кампании лежат 54 корпоративные фразы.",
          "run": "Отчёт по критериям за 30 дней: расход автотаргетинга против расхода фраз. "
                 "Показывает всех, у кого автотаргетинг взял больше половины."},
-        {"key": "standard", "title": "Отклонения от стандарта агентства",
+        {"key": "standard", "tags": ["Стандарт агентства", "Настройки", "Директ"], "title": "Отклонения от стандарта агентства",
          "summary": "Сверяет активные кампании с нашим чек-листом настроек",
          "why": "Ручная сверка пяти клиентов дала одно и то же: максимум позиции вместо "
                 "ручных ставок, пустой потолок, выключенная приоритизация, ноль минус-фраз.",
          "run": "Проверяет стратегию, потолок ставки, приоритизацию по ближайшей фразе, "
                 "мониторинг сайта, расширенный гео и наличие минус-фраз."},
-        {"key": "spike", "title": "Скачок расхода за сутки",
+        {"key": "spike", "tags": ["Поиск аномалий", "Расход", "Директ"], "title": "Скачок расхода за сутки",
          "summary": "День, когда потратили кратно больше обычного",
          "why": "У simplefoods 20 июля ушло 8 459 ₽ при обычных двух-трёх тысячах, "
                 "и недельный контроль такое не ловит.",
          "run": "Берёт дневной расход за три недели и сравнивает худший день с медианой "
                 "по остальным. Медиана, чтобы выброс не оправдывал сам себя."},
-        {"key": "bench", "title": "Бенчмарк по агентству",
+        {"key": "bench", "tags": ["Сравнение", "Агентство", "Директ"], "title": "Бенчмарк по агентству",
          "summary": "Клиент на фоне остальных проектов: цена клика и кликабельность",
          "why": "Фразы вроде «142 ₽ за клик это выше рынка» говорились на глазок. "
                 "У нас 395 аккаунтов — есть с чем сравнивать по-настоящему.",
@@ -1593,6 +1593,7 @@ class Api:
         end = _d.date.today() - _d.timedelta(days=1)     # вчера: сегодня ещё набирается
         beg = end - _d.timedelta(days=6)
         rows, checked, skipped = [], 0, 0
+        measured = []
         for b in self.db.list_budgets():
             if b["login"] not in scope:   # пустой скоуп = ничего своего, а не «всё»
                 continue
@@ -1636,12 +1637,15 @@ class Api:
             if allowed <= 0:
                 continue
             over = (fact - allowed) / allowed * 100
+            measured.append({"login": b["login"], "name": b["name"] or b["login"], "value": round(over, 1),
+                             "extra": {"limit": round(limit), "fact": round(fact), "camps": len(with_limit)}})
             if over >= threshold:
                 rows.append({"login": b["login"], "name": b["name"] or b["login"],
                              "limit": round(limit), "grace": grace, "allowed": round(allowed),
                              "fact": round(fact), "other": round(other),
                              "camps": len(with_limit), "over_pct": round(over)})
         rows.sort(key=lambda r: -r["over_pct"])
+        self.db.exp_metric_save("over_pct", measured)
         self._exp_finish("overspend", t0, len(rows))
         return {"rows": rows, "checked": checked, "skipped": skipped, "threshold": threshold,
                 "period": [beg.isoformat(), end.isoformat()],
@@ -1793,6 +1797,7 @@ class Api:
         end = _d.date.today() - _d.timedelta(days=1)
         beg = end - _d.timedelta(days=int(days) - 1)
         rows, checked, skipped = [], 0, 0
+        measured = []
         for b in self.db.list_budgets():
             if b["login"] not in scope:   # пустой скоуп = ничего своего, а не «всё»
                 continue
@@ -1817,11 +1822,14 @@ class Api:
             if tot <= 0:
                 continue
             pct = auto / tot * 100
+            measured.append({"login": b["login"], "name": b["name"] or b["login"], "value": round(pct, 1),
+                             "extra": {"auto": round(auto), "phrase": round(phrase)}})
             if pct >= threshold:
                 rows.append({"login": b["login"], "name": b["name"] or b["login"],
                              "auto": round(auto), "phrase": round(phrase),
                              "pct": round(pct)})
         rows.sort(key=lambda r: -r["pct"])
+        self.db.exp_metric_save("auto_pct", measured)
         self._exp_finish("autotarget", t0, len(rows))
         return {"rows": rows, "checked": checked, "skipped": skipped, "threshold": threshold,
                 "period": [beg.isoformat(), end.isoformat()],
@@ -1838,6 +1846,7 @@ class Api:
         token = load_secrets()["yandex_oauth_token"]
         scope = set(self._exp_scope())
         rows, checked, skipped = [], 0, 0
+        measured = []
         for b in self.db.list_budgets():
             if b["login"] not in scope:   # пустой скоуп = ничего своего, а не «всё»
                 continue
@@ -1875,10 +1884,13 @@ class Api:
                     bad.append("%s: расширенный географический таргетинг включён" % nm)
                 if not ((c.get("NegativeKeywords") or {}).get("Items") or []):
                     bad.append("%s: нет минус-фраз" % nm)
+            measured.append({"login": b["login"], "name": b["name"] or b["login"], "value": len(bad),
+                             "extra": {"camps": len(cs), "issues": bad[:5]}})
             if bad:
                 rows.append({"login": b["login"], "name": b["name"] or b["login"],
                              "camps": len(cs), "issues": bad[:10], "n": len(bad)})
         rows.sort(key=lambda r: -r["n"])
+        self.db.exp_metric_save("std_issues", measured)
         self._exp_finish("standard", t0, sum(r["n"] for r in rows))
         return {"rows": rows, "checked": checked, "skipped": skipped,
                 "hint": "Сверяется со стандартом агентства: максимум кликов с ручными ставками, "
@@ -1898,6 +1910,7 @@ class Api:
         end = _d.date.today() - _d.timedelta(days=1)
         beg = end - _d.timedelta(days=int(days) - 1)
         rows, checked, skipped = [], 0, 0
+        measured = []
         for b in self.db.list_budgets():
             if b["login"] not in scope:   # пустой скоуп = ничего своего, а не «всё»
                 continue
@@ -1921,11 +1934,15 @@ class Api:
             if med <= 0:
                 continue
             worst = max(by.items(), key=lambda kv: kv[1])
+            measured.append({"login": b["login"], "name": b["name"] or b["login"],
+                             "value": round(worst[1] / med, 1),
+                             "extra": {"day": worst[0], "cost": round(worst[1]), "median": round(med)}})
             if worst[1] >= med * float(times):
                 rows.append({"login": b["login"], "name": b["name"] or b["login"],
                              "day": worst[0], "cost": round(worst[1]),
                              "median": round(med), "times": round(worst[1] / med, 1)})
         rows.sort(key=lambda r: -r["times"])
+        self.db.exp_metric_save("spike_x", measured)
         self._exp_finish("spike", t0, len(rows))
         return {"rows": rows, "checked": checked, "skipped": skipped,
                 "period": [beg.isoformat(), end.isoformat()], "times": times,
@@ -2013,6 +2030,25 @@ class Api:
             d["cpc_x"] = round(d["cpc"] / med_cpc, 1) if med_cpc else None
             d["ctr_x"] = round(d["ctr"] / med_ctr, 1) if med_ctr else None
         rows.sort(key=lambda d: -(d["cpc_x"] or 0))
+        # Бенчмарк меряет всё агентство, поэтому на доску кладём весь замер, а не только строки
+        # пользователя: иначе у специалиста с одним проектом «лучший» и «худший» совпадут.
+        #
+        # И считаем для доски ВСЕГДА от медианы всего агентства, а не от выбранного эталона.
+        # Эталон — личная линейка того, кто нажал кнопку: если Ксения посмотрит бенчмарк
+        # с эталоном «Мария», медиана станет другой, и на общей доске у всех проектов
+        # разом появится движение, которого в рекламе не было. Доска одна на всех,
+        # значит и линейка у неё должна быть одна.
+        all_cpc = _s.median([d["cpc"] for d in data]) if data else 0
+        all_ctr = _s.median([d["ctr"] for d in data]) if data else 0
+        self.db.exp_metric_save("cpc_x", [
+            {"login": d["login"], "name": d["name"],
+             "value": round(d["cpc"] / all_cpc, 1) if all_cpc else 0,
+             "extra": {"cpc": d["cpc"], "clicks": d["clicks"], "cost": d["cost"], "days": int(days)}}
+            for d in data])
+        self.db.exp_metric_save("ctr_x", [
+            {"login": d["login"], "name": d["name"],
+             "value": round(d["ctr"] / all_ctr, 1) if all_ctr else 0,
+             "extra": {"ctr": d["ctr"], "clicks": d["clicks"], "days": int(days)}} for d in data])
         self._exp_finish("bench", t0, len(rows))
         thin = len(refset) < 5
         return {"rows": rows, "base": len(refset), "shown": len(rows), "skipped": skipped,
@@ -2031,6 +2067,94 @@ class Api:
                          "по которому берётся медиана. Медиана, а не среднее: один дорогой "
                          "аккаунт не перекашивает линейку. Столбец «к эталону» — во сколько "
                          "раз клик отличается от неё; выше двух стоит смотреть отдельно.")}
+
+    # ── итоги: стоячая доска по проектам ──
+    # Показатели, которые копят фичи. dir=-1 значит «меньше лучше».
+    EXP_METRICS = [
+        {"key": "cpc_x", "title": "Цена клика к эталону", "unit": "×", "dir": -1,
+         "from": "bench", "hint": "во сколько раз клик дороже медианы агентства"},
+        {"key": "ctr_x", "title": "Кликабельность к эталону", "unit": "×", "dir": 1,
+         "from": "bench", "hint": "во сколько раз CTR выше медианы агентства"},
+        {"key": "auto_pct", "title": "Доля автотаргетинга", "unit": "%", "dir": -1,
+         "from": "autotarget", "hint": "сколько процентов расхода забрал автотаргетинг"},
+        {"key": "std_issues", "title": "Отклонений от стандарта", "unit": "", "dir": -1,
+         "from": "standard", "hint": "сколько замечаний по чек-листу агентства"},
+        # Односторонний: уйти за лимит плохо, а не дойти до лимита — не заслуга.
+        # «Лучший» здесь всегда оказывался остановленный аккаунт с −99,9%.
+        {"key": "over_pct", "title": "Превышение недельного лимита", "unit": "%", "dir": -1,
+         "from": "overspend", "hint": "насколько факт ушёл за лимит с допуском",
+         "one_sided": True, "ok_word": "в пределах"},
+        {"key": "spike_x", "title": "Скачок расхода за сутки", "unit": "×", "dir": -1,
+         "from": "spike", "hint": "во сколько раз худший день дороже обычного"},
+    ]
+
+    @safe
+    def exp_summary(self):
+        """Итоги: кто лучший и худший по каждому показателю, и что изменилось.
+
+        Чемпионы считаются по ВСЕМУ агентству, а таблица — по своим проектам. Ровно как
+        эталон в бенчмарке: у специалиста с одним проектом «лучший» и «худший» иначе
+        оказались бы одним и тем же клиентом, и сравнивать было бы не с чем. Скрывать
+        тут нечего — доска общая, и место своего проекта видно только рядом с чужими.
+
+        Доска не считает ничего сама — она показывает то, что уже намеряли фичи.
+        Так сделано намеренно: пересчёт всего агентства занимает минуты, а доска
+        должна открываться мгновенно и быть одинаковой у всех, кто её смотрит.
+        """
+        scope = set(self._exp_scope())
+        seen = {m["metric"]: m for m in self.db.exp_metric_seen()}
+        cards, table, when, ranks = [], {}, {}, {}
+        for spec in self.EXP_METRICS:
+            k = spec["key"]
+            allrows = self.db.exp_metric_latest(k)          # всё агентство: по нему чемпионы
+            info = seen.get(k) or {}
+            mine = [r for r in allrows if r["login"] in scope]
+            when[k] = {"last": info.get("last"), "projects": len(allrows), "mine": len(mine)}
+            if not allrows:
+                continue
+            key_fn = lambda r: r["value"] * (-1 if spec["dir"] > 0 else 1)   # noqa: E731
+            worst = max(allrows, key=key_fn)
+            card = {"metric": k, "title": spec["title"], "unit": spec["unit"],
+                    "hint": spec["hint"], "dir": spec["dir"],
+                    "one_sided": bool(spec.get("one_sided")),
+                    "ok_word": spec.get("ok_word"),
+                    "worst": {"login": worst["login"], "name": worst["name"],
+                              "value": round(worst["value"], 1)},
+                    "count": len(allrows), "at": allrows[0].get("at")}
+            if spec.get("one_sided"):
+                # вместо «лучшего» — сколько проектов вообще не вышли за лимит
+                card["ok_n"] = sum(1 for r in allrows if r["value"] <= 0)
+                if worst["value"] <= 0:
+                    card["worst"] = None      # за лимит не вышел никто, и хвалить некого
+            else:
+                best = min(allrows, key=key_fn)
+                card["best"] = {"login": best["login"], "name": best["name"],
+                                "value": round(best["value"], 1)}
+            cards.append(card)
+            # место в агентстве и попадание в худшую треть считаем по всему списку,
+            # иначе единственный проект специалиста всегда «худший из одного»
+            order = sorted(allrows, key=key_fn)
+            edge = max(1, len(order) // 3)
+            bad = {r["login"] for r in order[-edge:]}
+            if spec.get("one_sided"):
+                bad = {r["login"] for r in order if r["value"] > 0}
+            ranks[k] = {r["login"]: i + 1 for i, r in enumerate(order)}
+            for r in mine:
+                cell = table.setdefault(r["login"], {"login": r["login"], "name": r["name"],
+                                                     "m": {}, "flags": 0})
+                delta = None
+                if r.get("prev") is not None:
+                    d = r["value"] - r["prev"]
+                    delta = round(d, 1) if abs(d) >= 0.05 else 0
+                cell["m"][k] = {"v": round(r["value"], 1), "d": delta,
+                                "rank": ranks[k].get(r["login"]), "of": len(order)}
+                if r["login"] in bad:
+                    cell["flags"] += 1
+        rowsout = sorted(table.values(), key=lambda c: (-(c.get("flags") or 0), c["name"] or ""))
+        return {"cards": cards, "rows": rowsout, "metrics": self.EXP_METRICS, "when": when,
+                "scope": len(scope),
+                "hint": "Доска показывает последний замер каждой фичи. Запусти фичу — "
+                        "её столбец обновится и появится движение к прошлому замеру."}
 
     @safe
     def exp_vote(self, key, param, score):

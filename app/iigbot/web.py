@@ -121,9 +121,11 @@ def _autosync_job(base):
         log_error("autosync", "ок: клиентов в Директе {}, цели обновлены у {} из {} привязанных".format(
             d1.get("synced", "?"), d2.get("with_goals", "?"), d2.get("clients", "?")))
         try:
-            # раз в сутки заодно проверяем базу и подчищаем учёт расхода процессора
+            # раз в сутки заодно проверяем базу и подчищаем накопленное:
+            # учёт расхода процессора и старые замеры доски «Итоги»
             res = base._integrity_run()
             base.db.cpu_trim()
+            base.db.exp_metric_trim()
             if not res.get("ok"):
                 base.db.add_notification(None, "system", "База повреждена",
                                          "Проверка целостности не прошла — нужен откат из копии",

@@ -1064,6 +1064,79 @@
   .doc-auto{border-left:3px solid var(--brand);background:var(--surface-2);border-radius:0 8px 8px 0;
     padding:9px 13px;font-size:12.5px;color:var(--muted);line-height:1.5;margin:0 0 16px}
   @media (max-width:900px){.doc-wrap{grid-template-columns:1fr}.doc-side{position:static}}
+
+  /* итоги экспериментального */
+
+  /* лицо лаборатории */
+  .lab-top{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(280px,1fr);gap:14px;margin:0 0 18px}
+  @media(max-width:1080px){.lab-top{grid-template-columns:1fr}}
+  .lab-hero{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:16px;
+    padding:22px 24px;background:
+      radial-gradient(120% 140% at 88% 18%, color-mix(in srgb, var(--brand) 16%, transparent) 0%, transparent 62%),
+      linear-gradient(135deg, color-mix(in srgb, var(--brand) 9%, var(--surface)) 0%, var(--surface) 58%)}
+  .lab-hero h2{margin:0 0 6px;font-size:23px;letter-spacing:-.01em}
+  .lab-hero .lead{font-size:13.5px;color:var(--muted);line-height:1.55;max-width:56ch;margin:0 0 16px}
+  .lab-hero .art{position:absolute;right:18px;bottom:-6px;width:186px;opacity:.9;pointer-events:none}
+  @media(max-width:900px){.lab-hero .art{display:none}}
+  .lab-props{display:flex;gap:20px;flex-wrap:wrap}
+  .lab-prop{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.4;max-width:210px}
+  .lab-prop .ic{width:17px;height:17px;flex:none;color:var(--brand);margin-top:1px}
+  .lab-prop b{display:block;color:var(--text);font-weight:600}
+  .lab-prop span{color:var(--muted)}
+
+  .lab-side{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:17px 19px;
+    display:flex;flex-direction:column}
+  .lab-side h3{margin:0 0 3px;font-size:14px}
+  .lab-side .sub{font-size:11.5px;color:var(--muted);margin-bottom:14px}
+  .lab-nums{display:flex;gap:18px;margin-bottom:14px;flex-wrap:wrap}
+  .lab-num b{display:block;font-size:22px;line-height:1.15;font-variant-numeric:tabular-nums}
+  .lab-num span{font-size:11.5px;color:var(--muted)}
+  .lab-worst{border-top:1px solid var(--line);padding-top:11px;font-size:12.5px;line-height:1.5;margin-bottom:12px}
+  .lab-worst .who{font-weight:600}
+
+  .lab-bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:0 0 15px}
+  .lab-chip{border:1px solid var(--line);background:var(--surface);border-radius:9px;cursor:pointer;
+    padding:7px 13px;font-size:12.5px;color:var(--muted);display:inline-flex;gap:6px;align-items:center;
+    white-space:nowrap}
+  .lab-chip:hover{color:var(--text);border-color:color-mix(in srgb, var(--brand) 45%, var(--line))}
+  .lab-chip.on{background:color-mix(in srgb, var(--brand) 12%, var(--surface));
+    border-color:var(--brand);color:var(--brand);font-weight:600}
+  .lab-chip .n{font-size:11px;opacity:.75;font-variant-numeric:tabular-nums}
+  .lab-search{flex:1;min-width:180px;max-width:340px}
+  .lab-search input{width:100%}
+
+  .lab-facts{display:flex;gap:15px;flex-wrap:wrap;margin:11px 0 12px;font-size:12px;color:var(--muted)}
+  .lab-fact{display:inline-flex;gap:6px;align-items:center;white-space:nowrap}
+  .lab-fact .ic{width:14px;height:14px;flex:none;opacity:.8}
+  .lab-fact b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+  .lab-two{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:11px}
+  @media(max-width:560px){.lab-two{grid-template-columns:1fr}}
+  .lab-box{background:var(--surface-2);border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.5}
+  .lab-box b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+    color:var(--muted);font-weight:700;margin-bottom:4px}
+  .lab-tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .lab-tag{font-size:11px;padding:3px 9px;border-radius:7px;background:var(--surface-2);color:var(--muted)}
+  .lab-tabs{display:flex;gap:6px;margin:0 0 16px;border-bottom:1px solid var(--line)}
+  .lab-tab{border:0;background:transparent;cursor:pointer;padding:9px 15px;font-size:13.5px;
+    color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .lab-tab:hover{color:var(--text)}
+  .lab-tab.on{color:var(--brand);border-bottom-color:var(--brand);font-weight:600}
+  .bd-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:12px;margin:0 0 18px}
+  .bd-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:13px 15px}
+  .bd-card h4{margin:0 0 2px;font-size:13.5px}
+  .bd-card .sub{font-size:11.5px;color:var(--muted);line-height:1.4;margin-bottom:10px}
+  .bd-pair{display:flex;flex-direction:column;gap:7px}
+  .bd-row{display:flex;align-items:baseline;gap:8px;font-size:12.5px}
+  .bd-row .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+  .bd-row .val{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .bd-tag{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    padding:1px 6px;border-radius:4px;white-space:nowrap}
+  .bd-good{background:var(--green-bg,rgba(45,140,95,.12));color:var(--green)}
+  .bd-bad{background:var(--red-bg,rgba(190,60,50,.12));color:var(--red)}
+  .bd-when{font-size:11px;color:var(--muted);margin-top:9px;padding-top:8px;border-top:1px solid var(--line)}
+  .bd-d{font-size:11px;font-variant-numeric:tabular-nums}
+  .bd-flag{display:inline-block;min-width:20px;text-align:center;font-weight:700;
+    font-size:11.5px;padding:1px 6px;border-radius:5px}
   .lab-dots{display:flex;gap:4px}
   .lab-dot{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:var(--surface-2);
     color:var(--muted);font-size:12px;cursor:pointer;padding:0;line-height:1}
@@ -5157,6 +5230,21 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-19',tag:'fix',title:'Документация: роли вместо имён',
+ sum:'Руководства описывали систему фамилиями сотрудников и устаревали бы от первого кадрового изменения',items:[
+  '<b>Имена сотрудников заменены на роли — 79 мест в пяти документах.</b> Было «попроси Дениса выполнить команду», «Экран Ксении», «инструкция для Ирины и Марии». Стало «администратор», «экран работодателя», «инструкция для специалиста». Документ перестал быть перепиской и стал документом.',
+  '<b>Имена держателей остались в одной таблице в начале каждого руководства.</b> При кадровых изменениях правится она одна, остальной текст не устаревает. Раньше пришлось бы вычитывать пять документов целиком.',
+  '<b>Единственный администратор из фамилии превратился в строку риска.</b> Раньше это читалось как «Денис, Денис, Денис» и выглядело описанием должности. Теперь в таблице стоит «две роли из четырёх держит один человек, замены нет» — то же самое, но видно, что это риск, а не штатное расписание.',
+  '<b>Личная почта восстановления доступа убрана из текста.</b> Факт остался: восстановление панели хостинга идёт на личный адрес, а не на корпоративный. Сам адрес в документе, открытом всем ролям, не нужен.',
+ ]},
+{date:'2026-08-19',tag:'new',title:'Экспериментальное: вкладка «Итоги»',
+ sum:'Фичи копят замеры по проектам, и теперь видно лучших и худших без запуска',items:[
+  '<b>Появилась вкладка «Итоги» — доска, которая стоит всегда.</b> Раньше каждая фича была разовой кнопкой: нажал, посмотрел, закрыл, ничего не осталось. Теперь шесть показателей — цена клика и кликабельность к эталону агентства, доля автотаргетинга, отклонения от стандарта, превышение недельного лимита и скачок расхода за сутки — сохраняются при каждом прогоне, и доска показывает по каждому лучший и худший проект.',
+  '<b>Видно движение к прошлому замеру.</b> У каждой цифры стоит стрелка: цена клика выросла или упала с прошлого раза. Цвет учитывает смысл показателя — рост кликабельности зелёный, рост цены клика красный.',
+  '<b>Столбец «Тревог» подсказывает, с кого начинать.</b> Это количество показателей, по которым проект попал в худшую треть. Не оценка работы специалиста, а порядок разбора: у кого тревог больше, тот наверху таблицы.',
+  '<b>Фичи стали записывать все замеренные проекты, а не только провалившие проверку.</b> Иначе лучшего просто не существует: в выдачу попадали одни нарушители. На сам вид фич это не влияет, там по-прежнему только те, к кому есть вопросы.',
+  '<b>Доска ничего не считает сама и открывается мгновенно.</b> Она показывает последний замер каждой фичи, а обновляется, когда фичу запускают. Пересчёт всего агентства занимает минуты, поэтому доску не стали вешать на открытие раздела.',
+ ]},
 {date:'2026-08-19',tag:'fix',title:'Цели Метрики: кнопка обновления и честный список',
  sum:'Кнопка была только при пустом списке, а недоступные счётчики никак не показывались',items:[
   '<b>Кнопка «Обновить из Метрики» теперь есть всегда.</b> Раньше она появлялась только когда у клиента вообще нет целей, поэтому обновить список после правок в Метрике было нечем: специалист искал кнопку, не находил и решал, что подтяжка сломана.',
@@ -6530,6 +6618,219 @@ async function docsOpen(id){
   renderDocs();
 }
 
+let LAB_TAB='feats', BOARD=null;
+let LAB_FILTER='all', LAB_Q='', LAB_SORT='rec';
+
+/* Колба: рисуем сами, чтобы она жила в наших цветах и в обеих темах. */
+function labArt(){
+  return `<svg class="art" viewBox="0 0 200 150" fill="none" aria-hidden="true">
+    <ellipse cx="104" cy="132" rx="62" ry="9" fill="var(--brand)" opacity=".10"/>
+    <path d="M86 26h30v34l30 52a14 14 0 0 1-12 21H68a14 14 0 0 1-12-21l30-52V26z"
+          fill="var(--surface)" stroke="var(--brand)" stroke-width="2.6" stroke-linejoin="round"/>
+    <path d="M69 100h64l14 24a10 10 0 0 1-8 15H63a10 10 0 0 1-8-15l14-24z"
+          fill="var(--brand)" opacity=".30"/>
+    <path d="M63 112h76l8 14a9 9 0 0 1-8 13H63a9 9 0 0 1-8-13l8-14z" fill="var(--brand)" opacity=".55"/>
+    <path d="M80 22h42" stroke="var(--brand)" stroke-width="2.6" stroke-linecap="round"/>
+    <circle cx="86" cy="124" r="4.5" fill="var(--surface)" opacity=".75"/>
+    <circle cx="104" cy="131" r="3" fill="var(--surface)" opacity=".6"/>
+    <circle cx="119" cy="122" r="2.4" fill="var(--surface)" opacity=".5"/>
+    <path d="M150 34l2.6 7 7 2.6-7 2.6-2.6 7-2.6-7-7-2.6 7-2.6L150 34z" fill="var(--brand)" opacity=".55"/>
+    <path d="M172 62l1.8 4.8 4.8 1.8-4.8 1.8-1.8 4.8-1.8-4.8-4.8-1.8 4.8-1.8L172 62z" fill="var(--brand)" opacity=".35"/>
+    <path d="M40 52l1.6 4.4 4.4 1.6-4.4 1.6L40 64l-1.6-4.4-4.4-1.6 4.4-1.6L40 52z" fill="var(--brand)" opacity=".4"/>
+  </svg>`;
+}
+
+function labHero(){
+  const P=[['i-flash','Работает по-настоящему','считает по твоим живым проектам, а не на демо-данных'],
+           ['i-shield-check','Ничего не меняет','все восемь проверок только читают Директ'],
+           ['i-chat-1','Решает твоя оценка','по ней решаем, что переезжает в кабинет, а что закрываем']];
+  return `<div class="lab-hero">
+    ${labArt()}
+    <h2>Лаборатория</h2>
+    <p class="lead">Проверки, которые ещё не переехали в кабинет. Запусти любую по своим клиентам,
+      посмотри, что она нашла, и поставь оценку — от неё зависит судьба фичи.</p>
+    <div class="lab-props">${P.map(([i,t,d])=>
+      `<div class="lab-prop"><svg class="ic"><use href="#${i}"/></svg><div><b>${t}</b><span>${d}</span></div></div>`).join('')}</div>
+  </div>`;
+}
+
+/* Правая панель — не счётчик активности, а то, ради чего сюда заходят:
+   что лаборатория УЖЕ нашла по твоим проектам и с кого начинать разбор. */
+function labSide(){
+  const b=BOARD;
+  if(!b) return `<div class="lab-side"><h3>Что нашла лаборатория</h3>
+    <div class="sub">Сводка по последним замерам</div>
+    <div class="muted" style="font-size:12.5px">Считаю…</div></div>`;
+  if(!b.cards.length) return `<div class="lab-side"><h3>Что нашла лаборатория</h3>
+    <div class="sub">Сводка по последним замерам</div>
+    <div class="muted" style="font-size:12.5px;flex:1">Пока ничего: ни одна фича ещё не проходила
+      по проектам. Запусти любую — сюда попадёт результат.</div></div>`;
+  // Одна тревога — не новость: худшая треть по шести показателям накрывает почти всех.
+  // Сигналом считаем три и более, иначе панель показывает «плохо у всех» и её перестают читать.
+  const alarm=(b.rows||[]).filter(r=>(r.flags||0)>=3).length;
+  const worst=(b.rows||[])[0];
+  const wm=worst&&b.metrics.find(m=>worst.m[m.key]);
+  return `<div class="lab-side">
+    <h3>Что нашла лаборатория</h3>
+    <div class="sub">По последним замерам, ${esc(fmtAgo(b.cards[0].at)||'')}</div>
+    <div class="lab-nums">
+      <div class="lab-num"><b>${b.rows.length}</b><span>проектов под наблюдением</span></div>
+      <div class="lab-num" title="проекты в худшей трети агентства сразу по трём и более показателям"><b style="color:${alarm?'var(--red)':'var(--green)'}">${alarm}</b><span>в красной зоне</span></div>
+      <div class="lab-num"><b>${b.cards.length}</b><span>показателей замерено</span></div>
+    </div>
+    ${worst&&wm?`<div class="lab-worst">Разбор стоит начать с
+      <span class="who">${esc(worst.name||worst.login)}</span> —
+      тревог ${worst.flags||0}, ${esc(wm.title.toLowerCase())}
+      <b>${bdNum(worst.m[wm.key].v,wm.unit)}${esc(wm.unit)}</b>.</div>`:''}
+    <div class="grow"></div>
+    <button class="btn" onclick="labTabGo('board')" style="width:100%">
+      <svg class="ic"><use href="#i-bar-chart"/></svg> Открыть итоги</button>
+  </div>`;
+}
+
+/* Фильтры считаются по настоящему состоянию, а не по выдуманным категориям. */
+function labBuckets(items){
+  return {all:items,
+          mine:items.filter(e=>e.ran),
+          fresh:items.filter(e=>!e.ran),
+          found:items.filter(e=>(e.stat&&e.stat.found)>0),
+          rated:items.filter(e=>Object.values(e.my||{}).some(v=>v))};
+}
+function labVisible(){
+  const items=((LAB&&LAB.items)||[]);
+  let out=labBuckets(items)[LAB_FILTER]||items;
+  const q=LAB_Q.trim().toLowerCase();
+  if(q) out=out.filter(e=>(e.title+' '+e.summary+' '+(e.tags||[]).join(' ')).toLowerCase().includes(q));
+  const s=LAB_SORT;
+  out=out.slice().sort((a,b)=>{
+    if(s==='runs')  return ((b.stat||{}).runs||0)-((a.stat||{}).runs||0);
+    if(s==='found') return ((b.stat||{}).found||0)-((a.stat||{}).found||0);
+    if(s==='name')  return a.title.localeCompare(b.title,'ru');
+    return (a.ran?1:0)-(b.ran?1:0);      // рекомендуемые: сначала то, что ты не пробовал
+  });
+  return out;
+}
+function labSetFilter(k){LAB_FILTER=k;renderLab();}
+function labSetSort(v){LAB_SORT=v;renderLab();}
+function labSetQ(v){LAB_Q=v;const h=el('labList');if(h)h.innerHTML=labListHtml();}
+
+function labBar(){
+  const b=labBuckets((LAB&&LAB.items)||[]);
+  const F=[['all','Все'],['fresh','Не запускал'],['mine','Мои'],['found','С находками'],['rated','Оценённые']];
+  return `<div class="lab-bar">
+    ${F.map(([k,t])=>`<button class="lab-chip${LAB_FILTER===k?' on':''}" onclick="labSetFilter('${k}')">
+      ${t} <span class="n">${(b[k]||[]).length}</span></button>`).join('')}
+    <div class="grow"></div>
+    <div class="lab-search"><input type="search" placeholder="Поиск по фичам…" value="${esc(LAB_Q)}"
+      oninput="labSetQ(this.value)"></div>
+    <select onchange="labSetSort(this.value)" style="width:auto">
+      <option value="rec"${LAB_SORT==='rec'?' selected':''}>Сначала непробованные</option>
+      <option value="runs"${LAB_SORT==='runs'?' selected':''}>По числу запусков</option>
+      <option value="found"${LAB_SORT==='found'?' selected':''}>По числу находок</option>
+      <option value="name"${LAB_SORT==='name'?' selected':''}>По названию</option>
+    </select></div>`;
+}
+function labListHtml(){
+  const v=labVisible();
+  if(!v.length)return emptyState('<svg class="ic"><use href="#i-search-2"/></svg>','Ничего не нашлось',
+    'Поменяй фильтр или запрос.',{label:'Показать все',onclick:()=>{LAB_Q='';labSetFilter('all');}});
+  return `<div class="lab-grid">${v.map(labCard).join('')}</div>`;
+}
+
+
+function labTabs(){
+  return `<div class="lab-tabs">
+    <button class="lab-tab${LAB_TAB==='feats'?' on':''}" onclick="labTabGo('feats')">Фичи</button>
+    <button class="lab-tab${LAB_TAB==='board'?' on':''}" onclick="labTabGo('board')">Итоги</button>
+  </div>`;
+}
+function labTabGo(t){LAB_TAB=t;renderLab();}
+
+// Единица показателя решает, как печатать число: «11 отклонений», но «5.1×» и «34.0%».
+function bdNum(v,unit){return (unit==='')?String(Math.round(v)):Number(v).toFixed(1);}
+// Стрелка движения к прошлому замеру. Хорошо это или плохо — зависит от показателя:
+// для цены клика рост это плохо, для кликабельности наоборот. Если прошлого замера
+// не было вовсе, сравнивать не с чем — тогда молчим, а не пишем «без изменений».
+function bdDelta(d,dir,unit){
+  if(d===null||d===undefined)return '';
+  if(d===0)return '<span class="bd-d muted">без изменений</span>';
+  const up=d>0, good=(dir>0)===up;
+  return `<span class="bd-d" style="color:${good?'var(--green)':'var(--red)'}">${up?'▲':'▼'} ${bdNum(Math.abs(d),unit)}</span>`;
+}
+// У одностороннего показателя «лучшего» не бывает: не выйти за недельный лимит —
+// это норма, а не достижение, и первым местом там оказывался остановленный аккаунт.
+function bdCard(c){
+  const line=(tag,cls,x,col)=>`<div class="bd-row"><span class="bd-tag ${cls}">${tag}</span>`+
+    `<span class="who" title="${esc(x.name||'')}">${esc(x.name||x.login)}</span>`+
+    `<span class="val" style="color:${col}">${bdNum(x.value,c.unit)}${esc(c.unit)}</span></div>`;
+  let body='';
+  if(c.one_sided){
+    body=(c.worst?line('вышел за лимит','bd-bad',c.worst,'var(--red)')
+                 :'<div class="bd-row"><span class="bd-tag bd-good">все чисто</span>'+
+                  '<span class="who muted">за лимит не вышел никто</span></div>')+
+      `<div class="bd-row muted" style="font-size:11.5px">уложились: ${c.ok_n} из ${c.count}</div>`;
+  }else{
+    body=line('лучший','bd-good',c.best,'var(--green)')+line('худший','bd-bad',c.worst,'var(--red)');
+  }
+  return `<div class="bd-card">
+    <h4>${esc(c.title)}</h4>
+    <div class="sub">${esc(c.hint)}</div>
+    <div class="bd-pair">${body}</div>
+    <div class="bd-when">по ${c.count} проектам · замер ${esc(fmtDT(c.at)||'')}</div>
+  </div>`;
+}
+async function renderBoard(host){
+  if(!BOARD){
+    host.innerHTML=skeleton('cards',3);
+    try{BOARD=await api('exp_summary');}catch(e){host.innerHTML=errBlock(e,()=>{BOARD=null;renderLab();});return;}
+  }
+  const b=BOARD;
+  const never=(b.metrics||[]).filter(m=>!(b.when[m.key]&&b.when[m.key].last));
+  if(!b.cards.length){
+    host.innerHTML=emptyState('<svg class="ic"><use href="#i-bar-chart"/></svg>','Доска пока пустая',
+      'Она наполняется из фич: запусти любую на вкладке «Фичи», и её показатель появится здесь — '+
+      'с лучшим, худшим и движением к прошлому замеру.',{label:'К фичам',onclick:()=>labTabGo('feats')});
+    return;
+  }
+  const metrics=(b.metrics||[]).filter(m=>b.cards.some(c=>c.metric===m.key));
+  const head=['Проект','Тревог'].concat(metrics.map(m=>m.title));
+  const rows=(b.rows||[]).map(r=>{
+    const f=r.flags||0;
+    const fc=f>=3?'var(--red)':f===2?'var(--amber)':f===1?'var(--muted)':'var(--green)';
+    return '<tr><td><b>'+esc(r.name||r.login)+'</b><div class="muted" style="font-size:11px">'+esc(r.login)+'</div></td>'+
+      `<td><span class="bd-flag" style="color:${fc}">${f}</span></td>`+
+      metrics.map(m=>{
+        const c=r.m[m.key];
+        if(!c)return '<td class="muted">—</td>';
+        const mv=bdDelta(c.d,m.dir,m.unit);
+        const ok=m.one_sided&&c.v<=0;
+        const txt=ok?`<span class="muted">${esc(m.ok_word||'в норме')}</span>`
+                    :`<b>${bdNum(c.v,m.unit)}${esc(m.unit)}</b>`;
+        // Место в агентстве важнее движения: специалисту нужно знать, где он среди всех,
+        // а не только «стало ли лучше, чем в прошлый вторник».
+        const rk=c.rank?`<span class="bd-d muted" title="место среди всех замеренных проектов агентства">${c.rank} из ${c.of}</span>`:'';
+        const sub=[(mv&&!ok)?mv:'',rk].filter(Boolean).join('<span class="muted"> · </span>');
+        return `<td class="nowrap">${txt}${sub?'<div>'+sub+'</div>':''}</td>`;
+      }).join('')+'</tr>';
+  });
+  host.innerHTML=`
+    <div class="bd-cards">${b.cards.map(bdCard).join('')}</div>
+    ${never.length?`<div class="note" style="margin:0 0 12px;border-left-color:var(--amber)">
+      <svg class="ic"><use href="#i-error-warning"/></svg> Ещё не мерили: <b>${never.map(m=>esc(m.title)).join(', ')}</b>.
+      Запусти соответствующие фичи, и столбцы появятся.</div>`:''}
+    <div class="cli-tools" style="margin:0 0 10px">
+      <button class="btn sm" onclick="BOARD=null;renderLab()"><svg class="ic"><use href="#i-refresh"/></svg> Перечитать</button>
+      <span class="muted" style="font-size:12.5px;align-self:center">${esc(b.hint)}</span>
+    </div>
+    ${rows.length?labTbl(head,rows):
+      '<div class="note">Среди замеренных проектов твоих пока нет. Карточки выше — по всему агентству; '+
+      'таблица наполнится, когда фичи пройдут по твоим клиентам.</div>'}
+    <p class="muted" style="font-size:12px;margin-top:10px">Карточки сверху — по всему агентству,
+      таблица — по твоим проектам. «Тревог» — во скольких показателях проект попал в худшую треть
+      агентства. Это не оценка качества работы, а подсказка, с кого начинать разбор.
+      Под каждой цифрой — движение к прошлому замеру и место среди всех замеренных проектов.</p>`;
+}
+
 let LAB=null, LAB_RES={}, LAB_BUSY={}, LAB_CLI='', LAB_BENCH='all';
 const LAB_ST={testing:['На испытании','b-amber'],released:['Выпущено','b-green'],rejected:['Закрыто','b-gray']};
 
@@ -6539,11 +6840,14 @@ async function renderLab(){
   LAB=d;
   if(!GS_ALL||!GS_ALL.length){try{GS_ALL=await api('clients');}catch(e){GS_ALL=[];}}
   host.innerHTML=`
-    <h2 class="title"><svg class="ic"><use href="#i-flask"/></svg> Экспериментальное</h2>
-    <p class="sub">Готовые фичи на испытании. Работают по-настоящему и по твоим клиентам.
-      Запусти, посмотри на результат и оцени — по этим оценкам решаем, что переезжает
-      в основной кабинет, а что закрываем.</p>
-    <div class="lab-grid">${(d.items||[]).map(labCard).join('')}</div>`;
+    <div class="lab-top">${labHero()}<div id="labSide">${labSide()}</div></div>
+    ${labTabs()}
+    <div id="labBody">${LAB_TAB==='board'?'':labBar()+'<div id="labList">'+labListHtml()+'</div>'}</div>`;
+  if(LAB_TAB==='board')renderBoard(el('labBody'));
+  // Сводку в правой панели читаем один раз за открытие раздела: она берётся
+  // из сохранённых замеров и ничего не считает заново.
+  if(!BOARD){api('exp_summary').then(b=>{BOARD=b;const h=el('labSide');if(h)h.innerHTML=labSide();})
+    .catch(()=>{});}
 }
 
 function labCard(e){
@@ -6569,15 +6873,30 @@ function labCard(e){
         </select>
         <div class="muted" style="font-size:11.5px;margin-top:4px">Линейка, которой меряем. В таблице всегда твои проекты</div></div>`
     : '';
+  // Все цифры ниже — из базы: запуски, люди, среднее время прогона, сумма находок.
+  // Выдуманных счётчиков вроде «4 260 тестеров» тут нет и быть не может: нас четверо.
+  const secs=s.ms?Math.max(1,Math.round(s.ms/1000)):null;
+  const facts=[['i-play-circle','запусков','<b>'+(s.runs||0)+'</b>'],
+    s.users?['i-user','','<b>'+s.users+'</b> '+clPlural(s.users,'человек','человека','человек')]:null,
+    secs?['i-time','прогон','<b>'+secs+'</b> сек']:null,
+    (s.found?['i-search-eye','нашла','<b>'+s.found+'</b> '+clPlural(s.found,'повод','повода','поводов')]:null),
+    ['i-shield-check','','только чтение'],
+    s.last?['i-history','',esc(fmtAgo(s.last))]:null].filter(Boolean);
   return `<div class="lab-card">
     <div class="lab-head">
       <span class="badge ${st[1]}">${st[0]}</span>
+      ${e.ran?'':'<span class="lab-prio">не запускал</span>'}
       <div class="grow"></div>
-      <span class="muted" style="font-size:12px">запусков ${s.runs||0}${s.users?' · людей '+s.users:''}</span>
     </div>
     <h3 style="margin:6px 0 4px">${esc(e.title)}</h3>
     <div class="lab-sum">${esc(e.summary)}</div>
-    <div class="lab-det"><b>Зачем:</b> ${esc(e.why)}<br><b>Как считает:</b> ${esc(e.run)}</div>
+    <div class="lab-facts">${facts.map(([i,l,v])=>
+      `<span class="lab-fact"><svg class="ic"><use href="#${i}"/></svg>${l?esc(l)+' ':''}${v}</span>`).join('')}</div>
+    <div class="lab-two">
+      <div class="lab-box"><b>Зачем сделали</b>${esc(e.why)}</div>
+      <div class="lab-box"><b>Как считает</b>${esc(e.run)}</div>
+    </div>
+    ${(e.tags||[]).length?`<div class="lab-tags">${e.tags.map(t=>'<span class="lab-tag">'+esc(t)+'</span>').join('')}</div>`:''}
     ${cliSel}${benchSel}
     <div class="cli-tools" style="margin:0 0 10px">
       <button class="btn primary" onclick="labRun('${e.key}')">${LAB_BUSY[e.key]?'<span class="spin"></span> Считаю…':'Запустить'}</button>
@@ -6693,6 +7012,7 @@ async function labRun(key){
     }
   }catch(e){LAB_RES[key]={note:'',html:'<div class="note">'+esc(humanError(e).msg)+'</div>'};}
   LAB_BUSY[key]=false;
+  BOARD=null;                       // фича записала новый замер — доска устарела
   try{LAB=await api('experiments');}catch(e){}
   renderLab();
 }

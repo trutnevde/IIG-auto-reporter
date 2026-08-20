@@ -595,6 +595,22 @@ class Storage:
                 status TEXT DEFAULT 'testing',  -- testing | released | rejected
                 at     TEXT
             )""")
+        # Замеры фич по клиентам. Фичи сами по себе разовые: нажал, посмотрел, забыл.
+        # Чтобы «Итоги» показывали лучших и худших и видели движение, каждый прогон
+        # складывает сюда ВСЕ измеренные проекты, а не только провалившие проверку —
+        # иначе лучшего не из кого выбирать.
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS exp_metrics (
+                id     INTEGER PRIMARY KEY AUTOINCREMENT,
+                metric TEXT NOT NULL,          -- машинное имя показателя
+                login  TEXT NOT NULL,          -- проект
+                name   TEXT,                   -- имя проекта на момент замера
+                value  REAL,                   -- само число
+                extra  TEXT,                   -- json: чем объяснить цифру
+                at     TEXT
+            )""")
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_exp_metrics ON exp_metrics(metric, login, at)")
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS sheet_cols (
                 login    TEXT NOT NULL,       -- клиент
@@ -734,6 +750,44 @@ class Storage:
 
     # ─────────── Экспериментальное ───────────
     EXP_PARAMS = ("useful", "clear", "keep")
+
+    def exp_metric_save(self, metric, rows):
+        """Записать замер по проектам. rows: [{'login','name','value','extra'}]."""
+        at = _now()
+        self.conn.executemany(
+            "INSERT INTO exp_metrics(metric,login,name,value,extra,at) VALUES(?,?,?,?,?,?)",
+            [(metric, r["login"], r.get("name"), float(r.get("value") or 0),
+              json.dumps(r.get("extra") or {}, ensure_ascii=False), at) for r in rows])
+        self.conn.commit()
+        return len(rows)
+
+    def exp_metric_latest(self, metric, logins=None):
+        """Последний замер по каждому проекту + предыдущий, чтобы видеть движение."""
+        rows = self.conn.execute(
+            "SELECT * FROM exp_metrics WHERE metric=? ORDER BY login, at DESC", (metric,)).fetchall()
+        out = {}
+        for r in rows:
+            if logins is not None and r["login"] not in logins:
+                continue
+            cur = out.get(r["login"])
+            if cur is None:
+                out[r["login"]] = {"login": r["login"], "name": r["name"], "value": r["value"],
+                                   "extra": r["extra"], "at": r["at"], "prev": None}
+            elif cur["prev"] is None and r["at"] != cur["at"]:
+                cur["prev"] = r["value"]
+        return list(out.values())
+
+    def exp_metric_seen(self):
+        """Какие показатели вообще замерялись и когда в последний раз."""
+        return [dict(r) for r in self.conn.execute(
+            "SELECT metric, COUNT(DISTINCT login) n, MAX(at) last FROM exp_metrics GROUP BY metric")]
+
+    def exp_metric_trim(self, keep_days=120):
+        """Замеры старше срока не нужны: доска показывает последнее и предыдущее."""
+        import datetime as _dt
+        edge = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=keep_days)).isoformat()
+        self.conn.execute("DELETE FROM exp_metrics WHERE at < ?", (edge,))
+        self.conn.commit()
 
     def exp_stats(self, keys):
         """Сводка по каждой фиче: сколько раз запускали, кто, средние оценки, отзывы.
