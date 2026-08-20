@@ -7,13 +7,15 @@
 
 Как снимается. Через встроенное копирование SQLite (`Connection.backup`), а не
 `cp`: база работает в режиме WAL, и простое копирование файла даёт неконсистентный
-снимок, если в этот момент кто-то пишет. Дальше файл сжимается — база из мегабайтов
-текста жмётся примерно вчетверо.
+снимок, если в этот момент кто-то пишет. Дальше файл сжимается — 2,46 МБ базы
+превращаются в 0,30 МБ.
 
-Куда кладётся. В папку Google-диска, которую расшарили на сервисный аккаунт
-(тот же ключ, что раскладывает отчёты по таблицам клиентов). Идентификатор папки
-лежит в app_config под ключом gdrive_backup_folder. Нет ключа — задача просто
-не выполняется и говорит об этом, а не падает.
+Куда кладётся. В папку на «Общем диске» организации, куда добавлен сервисный аккаунт
+(тот же ключ, что раскладывает отчёты по таблицам клиентов). Именно общий диск, а не
+папка на личном: у сервисных аккаунтов Google своего места на Диске не выделяет вовсе,
+и загрузка в обычную папку отбивается с ошибкой про квоту. Идентификатор папки лежит
+в app_config под ключом gdrive_backup_folder. Нет его — задача не выполняется и
+говорит об этом, а не падает.
 
 Права. Берём узкую область drive.file: она даёт доступ только к тем файлам,
 которые создало само приложение. Таблицы клиентов этой задаче недоступны.
@@ -33,7 +35,10 @@ from . import gsheets, settings
 # drive.file — только свои файлы. Полный drive тут не нужен и опасен: тем же
 # ключом раскладываются отчёты клиентов, и задача копирования не должна их видеть.
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
-UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
+# supportsAllDrives обязателен: у сервисных аккаунтов НЕТ своего места на Диске,
+# поэтому копия кладётся на «Общий диск» организации, а туда без этого флага не пускают.
+UPLOAD_URL = ("https://www.googleapis.com/upload/drive/v3/files"
+              "?uploadType=multipart&supportsAllDrives=true")
 FILES_URL = "https://www.googleapis.com/drive/v3/files"
 PREFIX = "iigbot_"
 TIMEOUT = 120
@@ -80,8 +85,15 @@ def _upload(path, folder_id, token):
     r = requests.post(UPLOAD_URL, headers={"Authorization": "Bearer " + token},
                       files=files, timeout=TIMEOUT)
     if r.status_code >= 300:
+        t = r.text or ""
+        if "storage quota" in t:
+            raise RuntimeError(
+                "У сервисного аккаунта нет своего места на Google-диске — это правило Google, "
+                "обойти его нельзя. Копию надо класть на «Общий диск» организации: создать общий "
+                "диск, добавить туда сервисный аккаунт как «Организатор контента» и указать папку "
+                "оттуда. Обычная папка на личном диске не подойдёт.")
         raise RuntimeError("Google-диск не принял файл ({}): {}"
-                           .format(r.status_code, _short(r.text)))
+                           .format(r.status_code, _short(t)))
     return (r.json() or {}).get("id")
 
 
@@ -92,7 +104,9 @@ def _rotate(folder_id, token, keep):
                      params={"q": "'{}' in parents and name contains '{}' and trashed=false"
                                   .format(folder_id, PREFIX),
                              "fields": "files(id,name,createdTime)",
-                             "orderBy": "createdTime desc", "pageSize": 200})
+                             "orderBy": "createdTime desc", "pageSize": 200,
+                             "supportsAllDrives": "true", "includeItemsFromAllDrives": "true",
+                             "corpora": "allDrives"})
     if r.status_code >= 300:
         raise RuntimeError("Не прочитался список копий ({}): {}"
                            .format(r.status_code, _short(r.text)))
@@ -100,6 +114,7 @@ def _rotate(folder_id, token, keep):
     dropped = []
     for f in files[int(keep):]:
         d = requests.delete("{}/{}".format(FILES_URL, f["id"]), timeout=TIMEOUT,
+                            params={"supportsAllDrives": "true"},
                             headers={"Authorization": "Bearer " + token})
         if d.status_code < 300:
             dropped.append(f["name"])
