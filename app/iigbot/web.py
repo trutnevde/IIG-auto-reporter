@@ -126,6 +126,20 @@ def _autosync_job(base):
             res = base._integrity_run()
             base.db.cpu_trim()
             base.db.exp_metric_trim()
+            # копия наружу: суточная копия лежит на том же диске и от потери
+            # сервера не спасает, поэтому раз в сутки увозим базу на Google-диск
+            try:
+                from . import backup_cloud
+                r3 = backup_cloud.run()
+                log_error("backup_cloud", r3.get("note") or "выполнено")
+                if not r3.get("ok") and not r3.get("skipped"):
+                    base.db.add_notification(None, "system", "Копия наружу не ушла",
+                                             r3.get("note") or "причина неизвестна",
+                                             "errlog", dedup_key=True)
+            except Exception as e3:  # noqa: BLE001
+                log_error("backup_cloud", "сбой: {}".format(e3))
+                base.db.add_notification(None, "system", "Копия наружу не ушла",
+                                         str(e3)[:200], "errlog", dedup_key=True)
             if not res.get("ok"):
                 base.db.add_notification(None, "system", "База повреждена",
                                          "Проверка целостности не прошла — нужен откат из копии",

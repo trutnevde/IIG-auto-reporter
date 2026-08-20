@@ -2929,6 +2929,52 @@ class Api:
         return {"file": name, "size_kb": round(size / 1024)}
 
     @safe
+    def backup_cloud_now(self):
+        """Увезти копию базы на Google-диск прямо сейчас (админ).
+
+        Суточная копия лежит на том же диске, что и база: она спасает от нашей
+        ошибки, но не от потери сервера. Эта — уходит наружу.
+        """
+        self._require_admin()
+        from . import backup_cloud
+        r = backup_cloud.run()
+        if r.get("ok"):
+            self._audit("backup", r.get("file") or "—", "копия увезена на Google-диск")
+        return r
+
+    @safe
+    def backup_cloud_state(self):
+        """Настроена ли выгрузка наружу и когда была последней (админ)."""
+        self._require_admin()
+        cfg = self.cfg
+        folder = (cfg.get("gdrive_backup_folder") or "").strip()
+        from . import gsheets
+        # последняя отметка берётся из файлового журнала: задача пишет туда каждую ночь
+        last = None
+        r = self.error_log(400)
+        for row in ((r.get("data") or {}).get("entries") or []) if r.get("ok") else []:
+            if row.get("where") == "backup_cloud":
+                last = row
+                break
+        return {"folder": bool(folder), "keep": int(cfg.get("gdrive_backup_keep") or 30),
+                "key": bool(gsheets.key_path()),
+                "account": self._sa_email(),
+                "last": (last or {}).get("ts"), "last_note": (last or {}).get("msg")}
+
+    @staticmethod
+    def _sa_email():
+        """Почта сервисного аккаунта — её надо указать в доступе к папке."""
+        import json
+        from . import gsheets
+        p = gsheets.key_path()
+        if not p:
+            return None
+        try:
+            return json.load(open(p, encoding="utf-8")).get("client_email")
+        except Exception:  # noqa: BLE001
+            return None
+
+    @safe
     def backup_list(self):
         """Список бэкапов (админ): что есть, когда, сколько весит."""
         self._require_admin()
@@ -3532,7 +3578,10 @@ class Api:
         # в аварии под рукой может оказаться кто угодно, и отсутствие доступа тогда дороже,
         # чем лишний читатель.
         "02-руководство-работодателя.md": ("admin", "observer"),
-        "04-техническое-описание.md": ("admin",),
+        # Техописание открыто и наблюдателю: у роли сидит руководство, а на вопросы
+        # про стандарты, бэкапы и преемственность отвечает именно этот документ.
+        # Секретов в нём нет — только инвентарь ключей без значений.
+        "04-техническое-описание.md": ("admin", "observer"),
     }
 
     @staticmethod
