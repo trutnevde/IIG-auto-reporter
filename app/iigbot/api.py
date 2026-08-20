@@ -2947,6 +2947,7 @@ class Api:
         """Настроена ли выгрузка наружу и когда была последней (админ)."""
         self._require_admin()
         cfg = self.cfg
+        target = (cfg.get("backup_target") or "").strip().lower()
         folder = (cfg.get("gdrive_backup_folder") or "").strip()
         from . import gsheets
         # последняя отметка берётся из файлового журнала: задача пишет туда каждую ночь
@@ -2956,8 +2957,27 @@ class Api:
             if row.get("where") == "backup_cloud":
                 last = row
                 break
-        return {"folder": bool(folder), "keep": int(cfg.get("gdrive_backup_keep") or 30),
-                "key": bool(gsheets.key_path()),
+        # «настроено» зависит от адресата: у Telegram нужен чат, у Яндекса пароль
+        # приложения, у Google папка общего диска
+        sec = {}
+        try:
+            sec = load_secrets()
+        except Exception:  # noqa: BLE001
+            pass
+        ready = False
+        if target == "telegram":
+            ready = bool(str(cfg.get("backup_telegram_chat") or "").strip()
+                         or (cfg.get("admin_user_ids") or []))
+        elif target == "yandex":
+            ready = bool(sec.get("yandex_disk_login") and sec.get("yandex_disk_password"))
+        elif target == "gdrive":
+            ready = bool(folder and gsheets.key_path())
+        names = {"telegram": "Telegram, личный чат", "yandex": "Яндекс.Диск",
+                 "gdrive": "Google, общий диск"}
+        return {"target": target, "target_name": names.get(target), "ready": ready,
+                "keep": int(cfg.get("backup_keep") or cfg.get("gdrive_backup_keep") or 30),
+                "rotates": target != "telegram",
+                "folder": bool(folder), "key": bool(gsheets.key_path()),
                 "account": self._sa_email(),
                 "last": (last or {}).get("ts"), "last_note": (last or {}).get("msg")}
 
