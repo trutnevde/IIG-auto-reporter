@@ -689,6 +689,18 @@ class Storage:
     # ---------- clients ----------
     def upsert_client(self, login, name=None, goals=None, attribution=None, source=None):
         # COALESCE: не затираем уже заданные вручную поля при повторной синхронизации.
+        #
+        # Цели сериализуем здесь и только здесь. Если сюда прилетела уже готовая строка
+        # JSON, повторная сериализация превращает список в JSON внутри JSON, и при
+        # чтении он рассыпается на отдельные символы: так 115 целей одного клиента
+        # стали 10 968 «целями» по одному знаку, все неактивные. Разбираем строку
+        # обратно, вместо того чтобы молча испортить данные.
+        if isinstance(goals, str):
+            try:
+                разобрано = json.loads(goals)
+                goals = разобрано if isinstance(разобрано, (list, dict)) else goals
+            except ValueError:
+                pass
         goals_json = json.dumps(goals, ensure_ascii=False) if goals is not None else None
         if self.get_client(login):
             self.conn.execute(

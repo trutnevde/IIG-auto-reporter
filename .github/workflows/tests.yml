@@ -1,0 +1,46 @@
+# Проверки на каждый push и на каждый pull request.
+#
+# Раньше два сторожа (целостность интерфейса и свежесть справочников) жили в скрипте
+# выката на одной машине: они срабатывали, только когда кто-то решил выкатывать, и
+# только у него. Теперь они здесь, вместе с тестами, и работают у всех и всегда.
+name: Проверки
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Тесты и сторожа
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Та же версия, что на боевом хостинге: на другой библиотеки ведут себя иначе,
+      # и зелёный прогон здесь ничего не доказывал бы про боевую.
+      - name: Python 3.10, как на сервере
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: Установить закреплённые версии
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r app/requirements-dev.txt
+
+      - name: Тесты
+        run: python -m pytest app/tests -q --tb=short
+
+      # Справочники собираются из кода. Если код изменился, а они нет — документация
+      # врёт, и это должно останавливать сборку, а не всплывать через месяц.
+      - name: Справочники не отстали от кода
+        run: python app/docgen.py --check
+        working-directory: ${{ github.workspace }}
+
+      - name: Синтаксис всех модулей
+        run: python -m compileall -q app/iigbot app/docgen.py

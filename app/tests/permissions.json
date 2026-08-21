@@ -1,0 +1,902 @@
+{
+ "alert_link": {
+  "admin": "разрешено",
+  "agency": "отказано",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "alert_unlink": {
+  "admin": "разрешено",
+  "agency": "отказано",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "assign_client": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "assignable_users": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "audit_log": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "backup_cloud_now": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "backup_cloud_state": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "backup_list": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "backup_now": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "bind": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "bind_bulk": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "разрешено"
+ },
+ "bind_for": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "budgets": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "budgets_refresh": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "chat_check": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "chats": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "client": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "client_campaigns": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "client_goals": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "client_goals_pull": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "client_sheet_get": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "client_sheet_set": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "clients": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "cloud_pull": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "cloud_push": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "cloud_status": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "connect_link": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "copy_reports": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "counter_check": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "coverage_history": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "dashboard": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "delete_chat": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "dialog_dismiss": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "dialog_restore": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "dialogs": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "digest_preview": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "digest_send": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "docs_list": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "docs_read": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "dossier": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "dossier_cut": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "dossier_options": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "error_log": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "error_log_clear": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "excuse_add": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "excuse_add_bulk": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "excuse_remove": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "excuses_list": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "exp_autotarget": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "exp_bench": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "exp_conv_trust": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "exp_idle": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "exp_note": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "exp_notes": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "exp_overspend": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "exp_spike": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "exp_standard": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "exp_status": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "exp_summary": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "exp_trash": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "exp_vote": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "experiments": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "gsheets_breakdowns": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "gsheets_clients": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "gsheets_push": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "gsheets_push_start": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "gsheets_status": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "health_last": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "health_start": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "history": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "import_chat_history": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "разрешено"
+ },
+ "import_config": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "job_progress": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "jobs_state": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "metrika_goals": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "metrika_goals_bulk": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "разрешено"
+ },
+ "metrika_goals_bulk_start": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "разрешено"
+ },
+ "my_alert": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "my_note": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "my_notes": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "note_ack": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "note_create": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "note_delete": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "note_reply": {
+  "admin": "разрешено",
+  "agency": "отказано",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "notes_list": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "notif_read": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "notifications": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "pool_clients": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "preset_apply": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "preset_delete": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "разрешено"
+ },
+ "preset_from_campaign": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "preset_get": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "preset_label_set": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "preset_preview": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "preset_runs": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "preset_save": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "разрешено"
+ },
+ "preset_spec": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "preset_undo": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "разрешено"
+ },
+ "presets_list": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "preview": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "reassign_all": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "report_campaigns": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "report_export_xlsx": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "report_options": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "report_query": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "report_send": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "resend_report": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "run_weekly": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "разрешено"
+ },
+ "run_weekly_progress": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "run_weekly_start": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "разрешено"
+ },
+ "save_client": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "save_secrets": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "save_settings": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "seed_dialogs_from_history": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "разрешено"
+ },
+ "send_test": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "set_client_note": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "set_delivery": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "set_delivery_super": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "set_my_alert": {
+  "admin": "разрешено",
+  "agency": "отказано",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "set_my_alert_scope": {
+  "admin": "разрешено",
+  "agency": "отказано",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "set_my_note": {
+  "admin": "разрешено",
+  "agency": "отказано",
+  "observer": "отказано",
+  "user": "разрешено"
+ },
+ "settings": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "sheet_column_set": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sheet_columns": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "specialist_card": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "suggestions": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
+ "supervision": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "sync_clients": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "sync_clients_start": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "sys_backup_send": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sys_cpu": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sys_deploys": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sys_integrity": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sys_maintenance": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sys_ping": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sys_restart": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sys_restore": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sys_rollback": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sys_runbook": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sys_secret_rotated": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sys_secrets": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sys_status": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "sys_watch": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "отказано"
+ },
+ "unbind": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "разрешено"
+ },
+ "user_create": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "user_set_active": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "user_set_password": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "user_set_role": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "users_list": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
+ "workload": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ }
+}

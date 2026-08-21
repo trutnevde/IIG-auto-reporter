@@ -2355,6 +2355,13 @@ class Api:
 
     @safe
     def cloud_status(self):
+        """Состояние общей таблицы привязок (админ).
+
+        Найдено матрицей прав: метод отдавал почту сервисного аккаунта и имя
+        конфиг-таблицы любому вошедшему, хотя соседние cloud_pull и cloud_push
+        закрыты админом. Из кабинета не вызывается — наследие десктопной версии.
+        """
+        self._require_admin()
         from . import cloudsync
         if not cloudsync.available():
             return {"available": False, "note": "Нет ключа sa_key.json рядом с программой."}
