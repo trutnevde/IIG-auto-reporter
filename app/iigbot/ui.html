@@ -1116,6 +1116,14 @@
     color:var(--muted);font-weight:700;margin-bottom:4px}
   .lab-tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
   .lab-tag{font-size:11px;padding:3px 9px;border-radius:7px;background:var(--surface-2);color:var(--muted)}
+
+  /* ссылки на внешние кабинеты */
+  .go-ext{display:inline-flex;gap:4px;align-items:center;vertical-align:middle}
+  .go-ext a{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;
+    border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--muted);
+    text-decoration:none;flex:none}
+  .go-ext a:hover{color:var(--brand);border-color:color-mix(in srgb, var(--brand) 45%, var(--line))}
+  .go-ext .ic{width:13px;height:13px}
   .lab-tabs{display:flex;gap:6px;margin:0 0 16px;border-bottom:1px solid var(--line)}
   .lab-tab{border:0;background:transparent;cursor:pointer;padding:9px 15px;font-size:13.5px;
     color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -4101,7 +4109,7 @@ async function presetLabel(code){
 
 /* ---------- снять шаблон с готовой кампании ---------- */
 async function presetClients(){
-  if(!PRE.clients){try{PRE.clients=await api('clients');}catch(e){PRE.clients=[];}}
+  if(!PRE.clients){try{PRE.clients=await api('clients');rememberCounters(PRE.clients);}catch(e){PRE.clients=[];}}
   return PRE.clients;
 }
 async function presetGrab(){
@@ -4231,7 +4239,7 @@ const CL_CHEV='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.172 12 
 
 async function renderClients(){
   const host=el('v_clients');host.innerHTML=skeleton('rows',7);
-  try{CLIENTS=await api('clients');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
+  try{CLIENTS=await api('clients');rememberCounters(CLIENTS);}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   const isObs=(ME&&ME.role==='observer');
   if(!CL_PER)CL_PER=isPhone()?10:25;
   const st=clStats();
@@ -4248,6 +4256,7 @@ async function renderClients(){
         <p class="sub">Управление подключениями, чатами и целями по проектам.</p></div>
       <div class="row-actions">
         <button class="btn" onclick="doSync()"><svg class="ic"><use href="#i-refresh"/></svg> Подтянуть из Директа</button>
+        <button class="btn" onclick="doCounters()" title="Достаёт номера счётчиков Метрики из настроек кампаний — без них не работает ссылка «Метрика»"><svg class="ic"><use href="#i-line-chart"/></svg> Найти счётчики</button>
         ${'<button class="btn primary" onclick="openOnboard()"><svg class="ic"><use href="#i-add-circle"/></svg> Добавить клиента</button>'}
       </div>
     </div>
@@ -4410,7 +4419,7 @@ function drawClients(){
         : `<div class="t"><svg class="ic"><use href="#i-chat-3"/></svg><span class="muted">— не привязан</span></div><small class="no">Чат не подключён</small>`);
     return `<div class="cli-row" tabindex="0" role="button" onclick="openClient('${esc(c.login)}')"
         onkeydown="if(event.key==='Enter')openClient('${esc(c.login)}')">
-      <div class="cli-who">${clAvatar(c)}<div class="cli-nm"><b>${esc(c.name)}</b><small>${esc(c.login)}</small></div></div>
+      <div class="cli-who">${clAvatar(c)}<div class="cli-nm"><b>${esc(c.name)}</b><small>${esc(c.login)} ${goExt(c.login)}</small></div></div>
       <div class="cli-link">${link}</div>
       <div class="cli-goals" style="--gc:${gcol}">
         <b>${act} <span class="muted" style="font-weight:600">/ ${gs.length}</span></b>
@@ -4631,7 +4640,7 @@ async function renderDialogs(){
 let CHAT_FILTER='mine';   // mine = мои привязанные; free = свободные (можно забрать); all = все видимые
 async function renderChats(){
   const host=el('v_chats');host.innerHTML=skeleton('rows',6);
-  let chats,cls;try{chats=await api('chats');cls=await api('clients');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
+  let chats,cls;try{chats=await api('chats');cls=await api('clients');rememberCounters(cls);}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   CHATS=chats;
   const opts=cls.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
   const mineN=chats.filter(c=>c.login).length, freeN=chats.filter(c=>!c.login).length;
@@ -5230,6 +5239,12 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-22',tag:'new',title:'Кнопки «Директ» и «Метрика» рядом с клиентом',
+ sum:'Логин копировали руками и искали нужный аккаунт в интерфейсе Яндекса',items:[
+  '<b>Рядом с логином клиента появились две иконки.</b> Рупор открывает его кампании в Яндекс.Директе, график — счётчик в Метрике. Обе открываются в новой вкладке и не мешают клику по самой карточке.',
+  '<b>Стоят везде, где виден клиент:</b> список клиентов, карточка, бюджеты, пользователи, доска «Итоги» и таблицы экспериментальных фич.',
+  '<b>Появилась кнопка «Найти счётчики».</b> Номер счётчика Метрики нигде не хранился: из 401 клиента цели заведены у 39, а счётчик не проставлен ни у кого — то есть ссылка на Метрику не появилась бы никогда. Кнопка достаёт номера из настроек кампаний Директа и запоминает. На проектах Дениса нашлось 21 из 22; у одного счётчик в Директе не задан, и там ссылка просто не рисуется.',
+ ]},
 {date:'2026-08-21',tag:'fix',title:'Скрипт выката переехал в репозиторий',
  sum:'Он жил на одной машине: сменился бы человек — и выкатывать стало бы нечем',items:[
   '<b>Выкат теперь лежит в коде: <code>app/tools/deploy.py</code>.</b> Раньше его не было в репозитории вообще, и документация честно писала «требует уточнения: без него преемник не выкатит ни одной правки». Пароль по-прежнему только в переменной окружения, в репозиторий он не попал.',
@@ -5822,7 +5837,7 @@ function clAll(open){CHANGELOG.forEach((e,i)=>CL_OPEN[i]=open);renderChangelog()
 let RTAB='prev';
 async function renderReports(){
   const host=el('v_reports');
-  let cls;try{cls=await api('clients');}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
+  let cls;try{cls=await api('clients');rememberCounters(cls);}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   RB_BOUND=new Set(cls.filter(c=>c.chat_id).map(c=>c.login));   // у кого есть привязанный чат
   const opts=cls.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})${c.chat_id?'':' • без чата'}</option>`).join('');
   host.innerHTML=`
@@ -6296,7 +6311,7 @@ async function renderBudgets(){
     const st=BUD_ST[r.status]||BUD_ST.ok;
     const camps=r.camps_total?`<svg class="ic"><use href="#i-checkbox-circle"/></svg> ${r.camps_on}/${r.camps_total}${r.camps_pay_stopped?` · <b style="color:var(--red)"><svg class="ic"><use href="#i-bank-card"/></svg> ${r.camps_pay_stopped} стоп</b>`:''}`:'<span class="muted">—</span>';
     return `<tr${r.status==='critical'?' style="background:var(--red-bg)"':''}>
-      <td><b>${esc(r.name||r.login)}</b><div class="muted" style="font-size:11.5px">${esc(r.login)}</div></td>
+      <td><b>${esc(r.name||r.login)}</b><div class="muted" style="font-size:11.5px">${esc(r.login)} ${goExt(r.login)}</div></td>
       <td class="nowrap">${budMoney(r.balance,r.currency)}</td>
       <td class="nowrap">${r.rate?budMoney(r.rate,r.currency)+'/д':'<span class="muted">—</span>'}</td>
       <td>${budDays(r.days_left)}</td>
@@ -6387,7 +6402,7 @@ function extPlural(n){
 async function renderExternal(){
   const host=el('v_external');host.innerHTML=skeleton('rows',5);
   let cls;
-  try{cls=await api('clients');CLIENTS=cls;}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
+  try{cls=await api('clients');CLIENTS=cls;rememberCounters(cls);}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   const ext=cls.filter(c=>c.delivery==='external');
   // Сторонних собирают руками, и про них проще всего забыть: показываем, когда сдавали
   // в последний раз, и отдельно — кого не сдавали больше недели.
@@ -6830,7 +6845,7 @@ async function renderBoard(host){
   const rows=(b.rows||[]).map(r=>{
     const f=r.flags||0;
     const fc=f>=3?'var(--red)':f===2?'var(--amber)':f===1?'var(--muted)':'var(--green)';
-    return '<tr><td><b>'+esc(r.name||r.login)+'</b><div class="muted" style="font-size:11px">'+esc(r.login)+'</div></td>'+
+    return '<tr><td><b>'+esc(r.name||r.login)+'</b><div class="muted" style="font-size:11px">'+esc(r.login)+' '+goExt(r.login)+'</div></td>'+
       `<td><span class="bd-flag" style="color:${fc}">${f}</span></td>`+
       metrics.map(m=>{
         const c=r.m[m.key];
@@ -6871,7 +6886,7 @@ async function renderLab(){
   const host=el('v_lab');host.innerHTML=skeleton('cards',3);
   let d;try{d=await api('experiments');}catch(e){host.innerHTML=errBlock(e,()=>renderLab());return;}
   LAB=d;
-  if(!GS_ALL||!GS_ALL.length){try{GS_ALL=await api('clients');}catch(e){GS_ALL=[];}}
+  if(!GS_ALL||!GS_ALL.length){try{GS_ALL=await api('clients');rememberCounters(GS_ALL);}catch(e){GS_ALL=[];}}
   host.innerHTML=`
     <div class="lab-top">${labHero()}<div id="labSide">${labSide()}</div></div>
     ${labTabs()}
@@ -6964,7 +6979,7 @@ async function labRun(key){
       const r=await api('exp_idle');
       LAB_RES[key]={note:'проверено проектов: '+r.checked+', встало: '+r.rows.length,
         html:r.rows.length?labTbl(['Клиент','Расход за 3 недели','Остаток','Кампаний вкл.','Стоп по оплате'],
-          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+'</div></td>'+
+          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+' '+goExt(x.login)+'</div></td>'+
             '<td class="nowrap">'+fmtInt(x.cost21)+' ₽</td>'+
             '<td class="nowrap">'+(x.balance==null?'—':fmtInt(Math.round(x.balance))+' ₽')+'</td>'+
             '<td>'+(x.camps_on==null?'—':x.camps_on)+'</td>'+
@@ -6974,7 +6989,7 @@ async function labRun(key){
       const r=await api('exp_overspend',15);
       LAB_RES[key]={note:'проверено '+r.checked+', с превышением '+r.rows.length+(r.skipped?', пропущено '+r.skipped:'')+' · период '+r.period[0]+'—'+r.period[1],
         html:r.rows.length?labTbl(['Клиент','Кампаний с лимитом','Лимит + допуск','Факт по ним','Мимо лимита','Превышение'],
-          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+'</div></td>'+
+          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+' '+goExt(x.login)+'</div></td>'+
             '<td>'+x.camps+'</td>'+
             '<td class="nowrap">'+fmtInt(x.limit)+(x.grace?' +'+x.grace+'%':'')+' ₽</td>'+
             '<td class="nowrap">'+fmtInt(x.fact)+' ₽</td>'+
@@ -7009,7 +7024,7 @@ async function labRun(key){
       const r=await api('exp_autotarget',30,50);
       LAB_RES[key]={note:'проверено '+r.checked+', нашлось '+r.rows.length+(r.skipped?', пропущено '+r.skipped:''),
         html:r.rows.length?labTbl(['Клиент','Автотаргетинг','По фразам','Доля автотаргетинга'],
-          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+'</div></td>'+
+          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+' '+goExt(x.login)+'</div></td>'+
             '<td class="nowrap">'+fmtInt(x.auto)+' ₽</td><td class="nowrap">'+fmtInt(x.phrase)+' ₽</td>'+
             '<td><b style="color:'+(x.pct>=75?'var(--red)':'var(--amber)')+'">'+x.pct+'%</b></td></tr>'))
           :'<div class="muted" style="font-size:14px">Ни у кого автотаргетинг не забирает больше половины.</div>'};
@@ -7026,7 +7041,7 @@ async function labRun(key){
       const r=await api('exp_spike',21,2);
       LAB_RES[key]={note:'проверено '+r.checked+', со скачками '+r.rows.length+' · период '+((r.period&&r.period[0])||'')+'—'+((r.period&&r.period[1])||''),
         html:r.rows.length?labTbl(['Клиент','День','Потрачено','Обычный день','Во сколько раз'],
-          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+'</div></td>'+
+          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+' '+goExt(x.login)+'</div></td>'+
             '<td class="nowrap">'+esc(fmtD(x.day)||x.day)+'</td><td class="nowrap">'+fmtInt(x.cost)+' ₽</td>'+
             '<td class="nowrap">'+fmtInt(x.median)+' ₽</td>'+
             '<td><b style="color:'+(x.times>=3?'var(--red)':'var(--amber)')+'">×'+x.times+'</b></td></tr>'))
@@ -7036,7 +7051,7 @@ async function labRun(key){
       LAB_RES[key]={note:r.base?('эталон: '+(r.ref_name||'')+' · '+(r.base_label||'')+' · медиана клика '+r.med_cpc+' ₽, кликабельности '+r.med_ctr+'% · твоих проектов '+(r.shown||0)+(r.skipped?', пропущено '+r.skipped:'')):'',
         html:(r.thin&&r.rows.length?'<div class="note" style="border-left-color:var(--amber)">'+esc(r.hint)+'</div>':'')+
           (r.rows.length?labTbl(['Клиент','Цена клика','К эталону','CTR','Кликов','Расход'],
-          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+'</div></td>'+
+          r.rows.map(x=>'<tr><td><b>'+esc(x.name)+'</b><div class="muted" style="font-size:11px">'+esc(x.login)+' '+goExt(x.login)+'</div></td>'+
             '<td class="nowrap">'+x.cpc+' ₽</td>'+
             '<td><b style="color:'+(x.cpc_x>=2?'var(--red)':(x.cpc_x>=1.3?'var(--amber)':'var(--green)'))+'">×'+x.cpc_x+'</b></td>'+
             '<td class="nowrap">'+x.ctr+'%'+(x.ctr_x!=null?' <span class="muted" style="font-size:11px">×'+x.ctr_x+'</span>':'')+'</td>'+
@@ -7075,6 +7090,57 @@ async function labStatus(key,status){
 
 /* Привязка таблицы ссылкой. Поиск по названию «Auto-Reporter ОТЧЕТ <домен>» остаётся,
    но у клиентов таблицы называются как попало, а переименовывать чужой файл — не дело. */
+/* ── ссылки в кабинеты Яндекса ──
+   Логин клиента у нас есть везде, поэтому ссылка на Директ собирается всегда.
+   Счётчик Метрики отдельно нигде не хранится — берём его из целей клиента
+   (у каждой цели проставлен свой счётчик), поэтому кнопка Метрики появляется
+   только там, где цели уже подтянуты. Это честнее, чем вести ещё одно поле,
+   которое кто-то забудет заполнить. */
+const CLIENT_COUNTER = {};                 // логин -> счётчик, наполняется по мере загрузки
+
+function rememberCounters(list){
+  (list||[]).forEach(c=>{
+    if(!c || !c.login) return;
+    if(c.counter){CLIENT_COUNTER[c.login]=String(c.counter);return;}
+    const g=(c.goals||[]).find(x=>x && x.counter);
+    if(g) CLIENT_COUNTER[c.login]=String(g.counter);
+  });
+}
+
+/* Номер счётчика Метрики не хранился нигде: у 401 клиента цели заведены у 39,
+   а счётчик не проставлен ни у кого. Достаём его из настроек кампаний Директа
+   и запоминаем — иначе ссылка «Метрика» не появится никогда. */
+async function doCounters(){
+  toast('Ищу счётчики в настройках кампаний…');
+  try{
+    const r = await api('counters_backfill');
+    toast(r.note, r.found ? 'ok' : 'err');
+    CLIENTS = await api('clients');
+    rememberCounters(CLIENTS);
+    drawClients();
+  }catch(e){}
+}
+function counterOf(login){return CLIENT_COUNTER[login]||'';}
+
+/* Ссылки открываются в новой вкладке и не должны срабатывать вместо клика по
+   строке — отсюда stopPropagation: строка клиента сама по себе кликабельна. */
+function goExt(login, opts){
+  if(!login) return '';
+  const o=opts||{};
+  const cnt=o.counter||counterOf(login);
+  const stop="event.stopPropagation()";
+  let out='<span class="go-ext">';
+  out+=`<a href="https://direct.yandex.ru/dna/grid/campaigns?ulogin=${encodeURIComponent(login)}"
+      target="_blank" rel="noopener" title="Открыть в Яндекс.Директе" onclick="${stop}">
+      <svg class="ic"><use href="#i-megaphone"/></svg></a>`;
+  if(cnt){
+    out+=`<a href="https://metrika.yandex.ru/dashboard?id=${encodeURIComponent(cnt)}"
+      target="_blank" rel="noopener" title="Открыть счётчик ${esc(cnt)} в Метрике" onclick="${stop}">
+      <svg class="ic"><use href="#i-line-chart"/></svg></a>`;
+  }
+  return out+'</span>';
+}
+
 let GS_ALL=[];
 async function gsLinkLoad(){
   const login=el('gsLinkClient')&&el('gsLinkClient').value;
@@ -7491,7 +7557,8 @@ async function openClient(login){
   DR_LOGIN=login;el('drawerBg').classList.add('on');el('drawer').classList.add('on');
   el('drTitle').textContent=login;el('drBody').innerHTML=skeleton('rows',6);
   let c;try{c=await api('client',login);}catch(e){el('drBody').innerHTML=errBlock(e);return;}
-  el('drTitle').innerHTML=esc(c.name)+' <span class="muted" style="font-weight:400">· '+esc(c.login)+'</span>';
+  rememberCounters([c]);
+  el('drTitle').innerHTML=esc(c.name)+' <span class="muted" style="font-weight:400">· '+esc(c.login)+'</span>'+' '+goExt(c.login);
   el('drBody').innerHTML=`
     <div class="field"><label>Название</label><input id="dName" value="${esc(c.name)}"></div>
     <div class="field"><label>Привязанные чаты</label><div>${c.chats.length?c.chats.map(ch=>'<span class="chip"><svg class="ic"><use href="#i-chat-3"/></svg> '+esc(ch.title)+'</span>').join(''):'<span class="muted">— нет. Привяжи во вкладке «Чаты»/«Привязки».</span>'}</div></div>
@@ -8114,7 +8181,7 @@ async function renderUsers(){
 }
 function poolRows(list,opts){
   return list.map(c=>`<tr data-q="${esc((c.name||'')+' '+c.login).toLowerCase()}" data-owner="${c.owner||''}" data-delivery="${esc(c.delivery||'telegram')}">
-      <td><b>${esc(c.name||c.login)}</b><div class="mini-2">${esc(c.login)}</div></td>
+      <td><b>${esc(c.name||c.login)}</b><div class="mini-2">${esc(c.login)} ${goExt(c.login)}</div></td>
       <td><select onchange="assignClient('${esc(c.login)}',this.value)">
         <option value="">— общий пул —</option>
         ${opts.replace('value="'+(c.owner||'')+'"','value="'+(c.owner||'')+'" selected')}

@@ -41,3 +41,6 @@ app/backups/
 app/build/
 app/dist/
 *.exe
+
+# Разовый запускатор операций по кампаниям, не часть продукта
+bids.bat

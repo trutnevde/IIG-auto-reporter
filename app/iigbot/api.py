@@ -424,8 +424,61 @@ class Api:
                 "chat_title": self._chat_title(b["chat_id"]) if b else None,
                 # когда клиента последний раз сдавали: у сторонних по этому видно, кого забыли
                 "last_sent": sent.get(c["login"]),
+                # для ссылки в Метрику: нужен номер счётчика, а не сами цели
+                "counter": self._counter_of(c["login"], goals),
             })
         return out
+
+    def _counter_of(self, login, goals=None):
+        """Счётчик Метрики клиента: сперва из целей, потом из запомненного.
+
+        Отдельного поля под счётчик в базе нет и заводить его не стали: у целей
+        он и так проставляется при подтяжке. Но у 401 клиента из базы цели есть
+        только у 39, поэтому для остальных счётчик достаётся из настроек кампаний
+        Директа и кладётся в kv — иначе ссылка на Метрику не появится никогда.
+        """
+        if goals is None:
+            c = self.db.get_client(login)
+            try:
+                goals = json.loads((c["goals"] if c else None) or "[]")
+            except (ValueError, TypeError):
+                goals = []
+        for g in goals:
+            if isinstance(g, dict) and g.get("counter"):
+                return str(g["counter"])
+        return self.db.get_kv("counter:" + login) or None
+
+    @safe
+    def counters_backfill(self, only_active=True):
+        """Достать счётчики из кампаний Директа и запомнить (админ/наблюдатель).
+
+        Ходит в Директ по одному разу на клиента, поэтому по умолчанию только
+        по тем, у кого есть бюджет: остальные 360 аккаунтов — архив и мусор.
+        """
+        self._require_supervisor()
+        from . import yandex
+        token = load_secrets()["yandex_oauth_token"]
+        живые = {b["login"] for b in self.db.list_budgets()} if only_active else None
+        нашли = пусто = сбой = 0
+        for c in self.db.list_clients(self._owner()):
+            login = c["login"]
+            if живые is not None and login not in живые:
+                continue
+            if self.db.get_kv("counter:" + login):
+                continue
+            try:
+                ids = list(yandex.get_campaign_counters(token, login) or [])
+            except Exception:                                          # noqa: BLE001
+                сбой += 1
+                continue
+            if ids:
+                self.db.set_kv("counter:" + login, str(ids[0]))
+                нашли += 1
+            else:
+                пусто += 1
+        return {"found": нашли, "empty": пусто, "failed": сбой,
+                "note": "счётчик нашёлся у {}, не задан у {}, не прочиталось {}".format(
+                    нашли, пусто, сбой)}
 
     @safe
     def client(self, login):

@@ -173,6 +173,12 @@
   "observer": "разрешено",
   "user": "отказано"
  },
+ "counters_backfill": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
  "coverage_history": {
   "admin": "разрешено",
   "agency": "разрешено",
