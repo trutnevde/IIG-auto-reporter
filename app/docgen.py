@@ -292,15 +292,35 @@ def gen_numbers():
     return "\n".join(body)
 
 
+# Третьим полем — нужна ли живая база. Такой справочник собирается ТОЛЬКО там,
+# где база есть, то есть на боевом сервере: в CI и на чужой машине его цифры
+# заведомо другие, и требовать совпадения бессмысленно.
 BLOCKS = [
-    ("01-разделы-кабинета.md", gen_sections),
-    ("02-методы-и-права.md", gen_api),
-    ("03-модель-данных.md", gen_schema),
-    ("04-расписание.md", gen_schedule),
-    ("05-команды-консоли.md", gen_cli),
-    ("06-карта-репозитория.md", gen_modules),
-    ("07-объём.md", gen_numbers),
+    ("01-разделы-кабинета.md", gen_sections, False),
+    ("02-методы-и-права.md", gen_api, False),
+    ("03-модель-данных.md", gen_schema, False),
+    ("04-расписание.md", gen_schedule, False),
+    ("05-команды-консоли.md", gen_cli, False),
+    ("06-карта-репозитория.md", gen_modules, False),
+    ("07-объём.md", gen_numbers, True),
 ]
+
+
+def есть_живая_база():
+    """База с данными: пустой файл или его отсутствие — это не боевая."""
+    import sqlite3
+    sys.path.insert(0, APP)
+    from iigbot.settings import load_app_config
+    p = load_app_config()["db_path"]
+    if not os.path.isfile(p):
+        return False
+    try:
+        c = sqlite3.connect("file:%s?mode=ro" % p.replace("\\", "/"), uri=True)
+        n = c.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
+        c.close()
+        return n > 0
+    except Exception:                                                   # noqa: BLE001
+        return False
 
 HEAD = ("<!-- СОБРАНО АВТОМАТИЧЕСКИ. Не редактировать руками: правки затрутся.\n"
         "     Пересобрать: python app/docgen.py -->\n\n")
@@ -309,7 +329,12 @@ HEAD = ("<!-- СОБРАНО АВТОМАТИЧЕСКИ. Не редактиро
 def main(check=False):
     os.makedirs(OUT, exist_ok=True)
     diff = []
-    for name, fn in BLOCKS:
+    живая = есть_живая_база()
+    for name, fn, нужна_база in BLOCKS:
+        if нужна_база and not живая:
+            # Не «разошлось», а «нечем собирать»: цифры паспорта живут только на боевой.
+            print("  [%s] %-28s %s" % ("пропуск", name, "нет боевой базы, цифры не пересобираются"))
+            continue
         try:
             text = HEAD + fn() + "\n"
         except Exception as e:                                          # noqa: BLE001
