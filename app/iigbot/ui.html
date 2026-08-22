@@ -46,8 +46,13 @@
     --radius:13px;
     --side-bg:linear-gradient(180deg,#0d2a44 0%,#08192a 100%);
     --side-ink:#c8d6e4; --side-muted:#8497ab;
+    /* Без этого браузер рисует СВОИ элементы по светлой теме: календарь у поля даты,
+       список у select, полосы прокрутки. В тёмной теме они выпрыгивают белыми
+       прямоугольниками — самый заметный разрыв, и чинится он одной строкой. */
+    color-scheme:light;
   }
   [data-theme="dark"]{
+    color-scheme:dark;
     --on-brand:#06131f;
     /* не инверсия светлой, а свой набор: фон уходит в чернильно-синий,
        поверхности отделяются светлой кромкой сверху, а не тенью */
@@ -876,7 +881,13 @@
   tbody tr{transition:background .1s}
   tbody tr:hover{background:var(--surface-2)}
   tbody tr.click{cursor:pointer}
-  .scrollx{overflow-x:auto}
+  /* Шапка таблицы должна оставаться на виду: в «Бюджетах», «Журнале» и истории
+     отправок строк за сотню, и на двадцатой уже не помнишь, где «Остаток», а где
+     «Днев. бюджет». Прокрутка обеих осей заперта внутри контейнера, страница вбок
+     не едет. */
+  .scrollx{overflow:auto;max-height:calc(100dvh - 240px)}
+  .scrollx thead th{position:sticky;top:0;z-index:2;background:var(--surface);
+    box-shadow:inset 0 -1px 0 var(--line)}
   .panel td select{max-width:230px}
   .panel td{white-space:nowrap}
   .panel td:first-child{white-space:normal}
@@ -1530,7 +1541,9 @@
      карточкой: сверху название, ниже «подпись — значение», внизу действия.
      Подписи берутся из шапки таблицы автоматически (см. mobilizeTables). --- */
   @media (max-width:640px){
-    .scrollx{overflow-x:visible}
+    /* На телефоне таблицы превращаются в карточки (.m-cards), высоту не режем —
+       иначе список окажется в собственном окошке внутри страницы. */
+    .scrollx{overflow-x:visible;max-height:none}
     table.m-cards{display:block;width:100%;border:0}
     table.m-cards thead{display:none}
     table.m-cards tbody{display:flex;flex-direction:column;gap:10px}
@@ -2618,7 +2631,18 @@ async function callBackend(method,args){
     // выставить этот заголовок с чужого сайта без разрешающего CORS
     headers:{'Content-Type':'application/json','X-IIG':'1'},
     body:JSON.stringify(args)});
-  return await resp.json();
+  // Само приложение всегда отвечает JSON-ом. HTML сюда приходит только от хостинга
+  // при 502/504 — то есть ровно на долгих операциях: отправке отчёта, предпросмотре,
+  // выгрузке в таблицу. Раньше resp.json() спотыкался, и человек читал
+  // «Unexpected token '<'» вместо объяснения. По !resp.ok бросать НЕЛЬЗЯ: на теле
+  // 401 держится показ окна входа.
+  const текст=await resp.text();
+  try{return JSON.parse(текст);}
+  catch(e){
+    throw new Error(resp.status===504||resp.status===502
+      ? 'Сервер не ответил вовремя. Задача могла продолжить выполняться — обнови страницу через минуту.'
+      : 'Сервер ответил не по делу (код '+resp.status+'). Обнови страницу.');
+  }
 }
 async function api(method,...args){
   // Единственная точка, где ошибка превращается в сообщение человеку: переводим на
@@ -2935,12 +2959,14 @@ async function renderDashboard(){
     </div>`;
   const a=el('dashAlerts');const A=[];
   // нажимается вся строка: на телефоне ссылка в 19px пальцем не берётся
-  const attRow=(sev,ic,title,sub,label,act)=>`<div class="att-row${sev==='ok'?' ok':''}${act?' click':''}"
+  // Возвращаем и важность отдельным полем: раньше критичные считали поиском
+  // подстроки «var(--red)» в готовом HTML — стоило поменять цвет, и счётчик врал.
+  const attRow=(sev,ic,title,sub,label,act)=>({sev, html:`<div class="att-row${sev==='ok'?' ok':''}${act?' click':''}"
       style="--ac:var(--${sev==='ok'?'green':(sev==='crit'?'red':(sev==='warn'?'amber':'slate'))})"
       ${act?`role="link" tabindex="0" onclick="${act[1]}" onkeydown="if(event.key==='Enter'){${act[1]}}"`:''}>
       <span class="att-ic"><svg class="ic"><use href="#i-${ic}"/></svg></span>
       <span class="att-b"><span class="att-t">${title}</span><span class="att-s">${sub}</span></span>
-      <span class="att-m">${label?`<span class="att-tag">${label}</span>`:''}${act?`<span class="att-go">${act[0]}${CHEV}</span>`:''}</span></div>`;
+      <span class="att-m">${label?`<span class="att-tag">${label}</span>`:''}${act?`<span class="att-go">${act[0]}${CHEV}</span>`:''}</span></div>`});
   if((bud.critical||0)>0)A.push(attRow('crit','alert','Бюджеты на исходе',
     plural(bud.critical,'клиент','клиента','клиентов')+' с низким остатком бюджета','Критично',['Смотреть',"go('budgets')"]));
   if((dlg.waiting||0)>0)A.push(attRow(dlg.overdue?'crit':'warn','time','Клиенты ждут ответа',
@@ -2956,10 +2982,15 @@ async function renderDashboard(){
     plural(d.errors,'ошибка','ошибки','ошибок')+' в истории отправки сообщений','Критично',['Открыть',"go('reports')"]));
   if((wk.debt||0)>0)A.push(attRow('crit','file-list-2','Долги по отчётам',
     plural(wk.debt,'проект','проекта','проектов')+' не сдано за прошлую неделю','Критично',['Разобрать',"go('reports')"]));
-  a.innerHTML=A.length?A.join(''):emptyState('<svg class="ic"><use href="#i-check-double"/></svg>','Всё спокойно',
+  // Порядок строк — по важности, а не по тому, в каком порядке их дописывали в код.
+  // Раньше «Долги по отчётам» стояли последними, ниже справочных «Клиенты без чата»,
+  // хотя это единственное, из-за чего сюда заходят утром.
+  const ВЕС={crit:0,warn:1,info:2,ok:3};
+  A.sort((x,y)=>(ВЕС[x.sev]??9)-(ВЕС[y.sev]??9));
+  a.innerHTML=A.length?A.map(x=>x.html).join(''):emptyState('<svg class="ic"><use href="#i-check-double"/></svg>','Всё спокойно',
     'Бюджеты в порядке, клиентам отвечено, отчёты сданы. Заходи сюда утром — здесь появится то, что требует действий.',null);
   const tag=el('dashAlertTag');
-  if(tag){const crit=A.filter(x=>x.includes('var(--red)')).length;
+  if(tag){const crit=A.filter(x=>x.sev==='crit').length;
     tag.innerHTML=crit?`<span class="h3-tag" style="--ac:var(--red)"><svg class="ic"><use href="#i-alert"/></svg>критично</span>`
       :(A.length?`<span class="h3-tag" style="--ac:var(--amber)"><svg class="ic"><use href="#i-time"/></svg>${A.length}</span>`:'');}
 }
@@ -4501,7 +4532,7 @@ async function jobRun(key, startMethod, args, startText, doneText){
     if(p.unknown){toast('Задача не найдена — возможно, приложение перезапустили','err');return;}
     if(p.running){ if(p.note)setBusy(p.title+' — '+p.note); continue; }
     setBusy('');
-    if(p.error){toast(p.error,'err');return;}
+    if(p.error){errToast(new Error(p.error));return;}
     toast(doneText(p.result||{}),'ok');
     refresh();
     return;
@@ -5287,6 +5318,15 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-22',tag:'fix',title:'Шесть мест, где кабинет запирал человека или молчал',
+ sum:'Найдено сплошным разбором интерфейса: семь независимых проверок по файлу, каждая находка потом проверялась на опровержение',items:[
+  '<b>Кнопка «Тестовый отчёт» шлёт клиенту, а называется тестовой.</b> Отчёт уходит в привязанный чат реальным людям, и защиты от повторной отправки на ней не было — соседняя кнопка «Отправить заново» и предупреждала, и спрашивала, а эта нет. Два нажатия подряд давали клиенту два одинаковых сообщения. Теперь кнопка называет вещи своими именами, спрашивает про повтор и блокируется на время работы.',
+  '<b>Окно рассылки застывало после единственного обрыва связи.</b> Ни крестика, ни Escape, ни клика по подложке — человек оставался под полноэкранной подложкой с замершим «7 из 30» и выходил перезагрузкой страницы. Теперь три попытки восстановить связь, потом честное «связь прервалась, рассылка продолжается на сервере» и две кнопки. Escape и клик по фону закрывают окно в любой момент.',
+  '<b>На таймауте хостинга человек читал «Unexpected token».</b> Это случалось ровно на долгих операциях: отправке отчёта, предпросмотре, выгрузке в таблицу. Теперь пишет, что сервер не ответил вовремя и задача могла продолжить выполняться.',
+  '<b>Шапка таблицы уезжала вверх при прокрутке.</b> В «Бюджетах», «Журнале», «Чатах» и истории отправок на двадцатой строке уже не понять, где «Остаток», а где «Днев. бюджет». Теперь шапка остаётся на месте. На телефоне, где таблицы превращаются в карточки, ничего не изменилось.',
+  '<b>«Требует внимания» перечисляло дела в порядке написания кода.</b> Долги по отчётам стояли последними — ниже справочных «Клиенты без чата», хотя именно из-за долгов сюда и заходят утром. Теперь строки идут по важности. Заодно счётчик критичных перестал определять важность поиском названия цвета в разметке.',
+  '<b>В тёмной теме выпрыгивали белые календари и списки.</b> Браузер не знал, что тема тёмная, и рисовал свои элементы — календарь у поля даты, выпадающий список, полосы прокрутки — по светлой. Больше 60 полей в кабинете.'
+ ]},
 {date:'2026-08-22',tag:'fix',title:'Ещё шесть мест, где цифра была неправильной, а вопросов не вызывала',
  sum:'Вторая половина сплошного разбора. Ошибок не было видно ни в одном месте — ни красного, ни падений',items:[
   '<b>Досье писало «ни одной заявки» там, где заявки вообще не считаются.</b> Если у клиента не выбраны цели или счётчик недоступен, ноль заявок — это факт о нашем учёте, а не о рекламе. Теперь такие кампании в разбор не попадают, и прогноз «к концу месяца около нуля заявок» тоже не печатается.',
@@ -6004,15 +6044,36 @@ function openRunModal(){
   let m=document.getElementById('runModal');
   if(!m){m=document.createElement('div');m.id='runModal';
     m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999';
+    // Клик по подложке и Escape — обычные способы выйти из окна. Их не было ни одного.
+    m.addEventListener('click',ev=>{if(ev.target===m)closeRunModal();});
     document.body.appendChild(m);}
+  if(!openRunModal._esc){
+    openRunModal._esc=ev=>{if(ev.key==='Escape'&&el('runModal'))closeRunModal();};
+    document.addEventListener('keydown',openRunModal._esc);
+  }
   m.innerHTML=`<div style="background:var(--surface,#1b1e27);color:var(--ink,#e8eaf0);border-radius:16px;max-width:640px;width:92%;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.5)">
     <div style="padding:15px 20px;font-weight:700;font-size:16px;border-bottom:1px solid rgba(150,150,170,.18)"><svg class="ic"><use href="#i-send-plane"/></svg> Рассылка — прогресс <span id="runHead" class="muted" style="font-weight:400;font-size:13px"></span></div>
     <div id="runBody" style="padding:10px 20px;overflow:auto;flex:1"></div>
     <div id="runFoot" style="padding:12px 20px;border-top:1px solid rgba(150,150,170,.18);display:flex;gap:10px;align-items:center;justify-content:flex-end"></div></div>`;
   pollRun();
 }
+let RUN_FAILS=0;
 async function pollRun(){
-  let p;try{p=await api('run_weekly_progress');}catch(e){return;}
+  let p;
+  try{p=await api('run_weekly_progress');RUN_FAILS=0;}
+  catch(e){
+    // Раньше здесь стоял голый return: один обрыв связи — и окно застывало навсегда
+    // на «7 из 30», без крестика, без Escape, без клика по подложке. Выходили
+    // перезагрузкой страницы.
+    RUN_FAILS++;
+    if(RUN_FAILS<3){setTimeout(pollRun,3000);return;}
+    const F=el('runFoot');
+    if(F)F.innerHTML='<span class="muted" style="margin-right:auto;font-size:12.5px">'
+      +'Связь прервалась. Рассылка продолжается на сервере — окно можно закрыть.</span>'
+      +'<button class="btn" onclick="RUN_FAILS=0;pollRun()">Попробовать снова</button>'
+      +'<button class="btn primary" onclick="closeRunModal()">Закрыть</button>';
+    return;
+  }
   const H=el('runHead');if(H)H.textContent=(p.dry?'проба · ':'')+(p.total?('('+p.done+'/'+p.total+')'):'…');
   const ic=s=>s==='sent'?'<svg class="ic"><use href="#i-checkbox-circle"/></svg>':s==='dry'?'<svg class="ic"><use href="#i-flask"/></svg>':s==='error'?'<svg class="ic"><use href="#i-close-circle"/></svg>':s==='no_chat'?'<svg class="ic"><use href="#i-forbid-2"/></svg>':s==='skipped'?'<svg class="ic"><use href="#i-skip-forward"/></svg>':'•';
   const rows=(p.details||[]).slice().reverse().map(d=>{
@@ -7527,13 +7588,22 @@ async function doPreview(){
 
 async function doSendTest(){
   const login=el('rpClient').value;if(!login)return;
-  if(!(await askConfirm('Отправить тестовый отчёт в привязанный чат клиента?',{ok:'Отправить',title:'Тестовый отчёт',danger:true})))return;
+  // «Тест» — слово обманчивое: отчёт уходит в привязанный чат реальным людям.
+  // Соседняя кнопка «Отправить заново» это и пишет, и спрашивает про повтор;
+  // здесь не было ни того, ни другого, и два нажатия давали клиенту два
+  // одинаковых сообщения.
+  if(!(await askConfirm('Отправить отчёт в привязанный чат клиента?|Уйдёт реальным людям, не в песочницу.'.split('|').join(String.fromCharCode(10)),
+      {ok:'Отправить клиенту',title:'Отчёт клиенту',danger:true})))return;
+  if(!(await sendGuard(login)))return;
+  const btn=document.activeElement&&document.activeElement.tagName==='BUTTON'?document.activeElement:null;
+  if(btn)btn.disabled=true;
   try{const r=await api('send_test',login);
     if(r.status==='sent')toast('Отправлено в чатов: '+r.chats,'ok');
     else if(r.status==='no_chat')toast('У клиента нет привязанного чата','err');
     else toast('Пропущено: '+(r.reason||r.status),'err');
     if(RTAB==='hist')renderReports();
   }catch(e){}
+  finally{if(btn)btn.disabled=false;}
 }
 
 async function doResend(login,name){
@@ -7547,13 +7617,13 @@ async function doResend(login,name){
 }
 
 async function runFailedAgain(){
-  try{await api('run_weekly_start',true);}catch(e){toast(esc(e.message),'err');return;}
+  try{await api('run_weekly_start',true);}catch(e){errToast(e);return;}
   openRunModal();
 }
 
 async function runDry(){
   // проба: строит отчёты с прогрессом, но клиентам НЕ отправляет
-  try{await api('run_weekly_start',false,true);}catch(e){toast(esc(e.message),'err');return;}
+  try{await api('run_weekly_start',false,true);}catch(e){errToast(e);return;}
   openRunModal();
 }
 
@@ -7823,7 +7893,10 @@ async function drawerSave(){
   try{await api('save_client',DR_LOGIN,el('dName').value,collectGoals(),el('dAttr').value,dv?dv.value:null);toast('Сохранено','ok');DR_SNAP=null;closeDrawer(true);if(CURRENT==='clients')renderClients();}catch(e){}
 }
 async function drawerTest(){
-  if(!(await askConfirm('Отправить тестовый отчёт в чат клиента?',{ok:'Отправить',title:'Тестовый отчёт',danger:true})))return;
+  // То же самое, что и в doSendTest: кнопка называется «тестовой», а отчёт уходит клиенту.
+  if(!(await askConfirm('Отправить отчёт в чат клиента?|Уйдёт реальным людям, не в песочницу.'.split('|').join(String.fromCharCode(10)),
+      {ok:'Отправить клиенту',title:'Отчёт клиенту',danger:true})))return;
+  if(!(await sendGuard(DR_LOGIN)))return;
   try{const r=await api('send_test',DR_LOGIN);toast(r.status==='sent'?('Отправлено: '+r.chats):('Статус: '+(r.reason||r.status)),r.status==='sent'?'ok':'err');}catch(e){}
 }
 /* Слепок карточки клиента — чтобы поймать уход с несохранёнными правками.
