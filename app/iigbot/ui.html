@@ -666,6 +666,15 @@
   .cli-row{padding:12px 16px;border-bottom:1px solid var(--line-soft);cursor:pointer;
     transition:background .14s}
   .cli-row:last-child{border-bottom:0}
+  /* Колонка «Специалист» появляется только у наблюдателя и админа: специалистке
+     она бесполезна — там во всех строках стояла бы она сама. Просила Ксения:
+     в общем пуле не видно, к кому идти с вопросом по клиенту. */
+  .cli-panel.with-owner .cli-hdr,.cli-panel.with-owner .cli-row{
+    grid-template-columns:minmax(0,1.3fr) minmax(0,1.25fr) 132px 104px 116px 20px}
+  .cli-owner{min-width:0;display:flex;align-items:center;gap:6px;font-size:12px}
+  .cli-owner .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cli-owner.none{color:var(--muted)}
+  .cli-panel:not(.with-owner) .cli-owner{display:none}
   .cli-row:hover{background:var(--surface-2)}
   .cli-row:focus-visible{outline:2px solid var(--brand);outline-offset:-2px}
 
@@ -738,6 +747,9 @@
     .cli-goals .cli-bar{flex:1;margin:0}
     .cli-goals b,.cli-goals small{flex:0 0 auto}
     .cli-st{grid-area:st;justify-self:end}
+    /* На телефоне колонок нет — специалист становится отдельной строкой карточки */
+    .cli-panel.with-owner .cli-row{grid-template-areas:"who st" "owner owner" "link link" "goals goals"}
+    .cli-owner{grid-area:owner}
     .cli-arw{display:none}
     .cli-chips{width:100%}.cli-chips button{flex:1;padding:12px 6px;min-height:42px;font-size:12px}
     .cli-chips b{display:none}
@@ -985,6 +997,18 @@
   .notif-item:hover{background:var(--surface-2)}
   .notif-item.unread{background:color-mix(in srgb,var(--brand) 7%,transparent)}
   .notif-item.unread .notif-t{font-weight:700}
+  /* Крестик: убрать уведомление с глаз, не открывая его. Просила Ксения —
+     список копился и мешал видеть новое. Прячется у того, кто нажал:
+     часть уведомлений общие, удалять их насовсем нельзя. */
+  .notif-x-btn{flex:0 0 auto;align-self:flex-start;width:24px;height:24px;display:grid;
+    place-items:center;border:0;background:transparent;color:var(--muted);cursor:pointer;
+    border-radius:var(--r-1,6px);opacity:0;transition:opacity var(--t-fast,.12s),background var(--t-fast,.12s)}
+  .notif-item:hover .notif-x-btn,.notif-x-btn:focus-visible{opacity:1}
+  .notif-x-btn:hover{background:var(--surface-3);color:var(--ink)}
+  /* Крестик рисуем символом, а не иконкой: в спрайте простого креста нет,
+     а в шапках окон уже стоит именно × — пусть будет одинаково. */
+  .notif-x-btn{font-size:17px;line-height:1}
+  @media (hover:none){.notif-x-btn{opacity:.7}}   /* на телефоне наведения нет */
   .notif-ic{font-size:16px;flex:0 0 auto}
   .notif-t{font-size:13.5px;line-height:1.35}
   .notif-x{font-size:12.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis}
@@ -1933,7 +1957,7 @@
       <span class="notif-wrap">
         <button class="icon-btn" id="notifBtn" onclick="toggleNotif()" title="Уведомления"><svg class="ic"><use href="#i-notification-3"/></svg><span class="notif-badge" id="notifBadge" style="display:none">0</span></button>
         <div class="notif-drop" id="notifDrop">
-          <div class="notif-head"><b>Уведомления</b><button class="btn sm" onclick="notifReadAll()">Прочитать все</button></div>
+          <div class="notif-head"><b>Уведомления</b><span style="display:flex;gap:6px"><button class="btn sm" onclick="notifReadAll()">Прочитать все</button><button class="btn sm" onclick="notifHideAll()" title="Убрать все из списка">Убрать все</button></span></div>
           <div id="notifList"><div class="empty" style="padding:18px">загрузка…</div></div>
         </div>
       </span>
@@ -4361,12 +4385,28 @@ async function presetUndo(runId){
 /* ---------- CLIENTS ---------- */
 let CL_SORT={key:'added',dir:-1};   // по умолчанию — по дате добавления, новые сверху
 let CL_FILTER='', CL_PAGE=1, CL_PER=0;   // 0 = ещё не выбирали, подставим по ширине экрана
+// Колонка «Специалист» имеет смысл только тому, кто видит чужих клиентов:
+// специалистке в ней стояло бы её собственное имя во всех строках.
+let CL_OWNER_COL=false, CL_OWNER='';
+function clOwnerOptions(){
+  const были=new Map();
+  (CLIENTS||[]).forEach(c=>{if(c.owner)были.set(String(c.owner),c.owner_name||('#'+c.owner));});
+  const без=(CLIENTS||[]).filter(c=>!c.owner).length;
+  return [...были.entries()].sort((a,b)=>a[1].localeCompare(b[1],'ru'))
+    .map(([id,nm])=>`<option value="${esc(id)}"${CL_OWNER===id?' selected':''}>${esc(nm)}</option>`).join('')
+    + (без?`<option value="none"${CL_OWNER==='none'?' selected':''}>Не назначен (${без})</option>`:'');
+}
+function clOwnerFilter(v){CL_OWNER=v||'';CL_PAGE=1;drawClients();}
 const CL_CHEV='<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13.172 12 8.222 7.05 9.636 5.636 16 12l-6.364 6.364-1.414-1.414z"/></svg>';
 
 async function renderClients(){
   const host=el('v_clients');host.innerHTML=skeleton('rows',7);
   try{CLIENTS=await api('clients');rememberCounters(CLIENTS);}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   const isObs=(ME&&ME.role==='observer');
+  // Колонку показываем тому, кто видит чужих клиентов: наблюдателю (весь пул)
+  // и админу, если в его выдаче есть клиенты не одного человека.
+  CL_OWNER_COL=isObs||new Set(CLIENTS.map(c=>String(c.owner||''))).size>1;
+  if(!CL_OWNER_COL)CL_OWNER='';
   if(!CL_PER)CL_PER=isPhone()?10:25;
   const st=clStats();
   const tile=(col,ic,label,val,foot,filt)=>`
@@ -4399,18 +4439,23 @@ async function renderClients(){
         <button onclick="clFilter('ready')">Подключены<b>${st.ready}</b></button>
         <button onclick="clFilter('nochat')">Без чата<b>${st.nochat}</b></button>
         <button onclick="clFilter('setup')">Нужна настройка<b>${st.setup}</b></button>
+        <button onclick="clFilter('ext')">Сторонние<b>${st.ext}</b></button>
         <label class="chip" style="cursor:pointer;user-select:none" title="Прячет клиентов без расхода за последние три недели">
           <input type="checkbox" onchange="clHideDead(this.checked)" style="margin-right:6px"> без активности скрыть</label>
+        ${CL_OWNER_COL?`<select class="chip" id="clOwner" onchange="clOwnerFilter(this.value)"
+          title="Показать клиентов одного специалиста" style="cursor:pointer">
+          <option value="">Все специалисты</option>${clOwnerOptions()}</select>`:''}
       </div>
     </div>
     <div class="cli-cols">
-      <div class="panel cli-panel">
+      <div class="panel cli-panel${CL_OWNER_COL?' with-owner':''}">
         <div class="cli-cap"><b id="clCount"></b><span>Клик по карточке открывает настройки клиента</span></div>
         <div class="cli-hdr">
           <span onclick="clSort('name')">Клиент<i class="si" id="si_name"></i></span>
           <span onclick="clSort('chat')">Связи<i class="si" id="si_chat"></i></span>
           <span onclick="clSort('goals')">Цели<i class="si" id="si_goals"></i></span>
-          <span onclick="clSort('added')">Статус<i class="si" id="si_added"></i></span><span></span>
+          <span onclick="clSort('added')">Статус<i class="si" id="si_added"></i></span>
+          ${CL_OWNER_COL?`<span onclick="clSort('owner')">Специалист<i class="si" id="si_owner"></i></span>`:''}<span></span>
         </div>
         <div id="clBody"></div>
         <div class="cli-foot" id="clFoot"></div>
@@ -4495,6 +4540,8 @@ function clSortVal(c,key){
     case 'attr':return (c.attribution||'LSC').toLowerCase();
     case 'source':return (c.source||'').toLowerCase();
     case 'added':return (c.added_at||'');
+    // без владельца — в конец списка, а не в начало по пустой строке
+    case 'owner':return (c.owner_name||'яяяя').toLowerCase();
     default:return (c.name||'').toLowerCase();
   }
 }
@@ -4517,6 +4564,10 @@ function drawClients(){
     // «Без активности» — ноль расхода за три недели. Из 401 аккаунта Директа
     // реально ведётся четыре десятка, остальные мешают искать глазами.
     if(CL_HIDE_DEAD && !c.pinned && !(c.spent21>0))return false;
+    if(CL_OWNER){
+      if(CL_OWNER==='none'){if(c.owner)return false;}
+      else if(String(c.owner||'')!==CL_OWNER)return false;
+    }
     if(!CL_FILTER)return true;
     const st=clState(c);
     return CL_FILTER==='ready'?(st==='ready'||st==='ext'):(st===CL_FILTER);});
@@ -4527,7 +4578,7 @@ function drawClients(){
     const va=clSortVal(a,k),vb=clSortVal(b,k);
     const r=(typeof va==='number')?(va-vb):String(va).localeCompare(String(vb),'ru');
     return r*dir||String(a.name||'').localeCompare(String(b.name||''),'ru');});
-  ['name','chat','goals','added'].forEach(key=>{const e=el('si_'+key);if(e)e.textContent=(key===k)?(dir>0?' ▲':' ▼'):'';});
+  ['name','chat','goals','added','owner'].forEach(key=>{const e=el('si_'+key);if(e)e.textContent=(key===k)?(dir>0?' ▲':' ▼'):'';});
 
   const total=rows.length, pages=Math.max(1,Math.ceil(total/CL_PER));
   if(CL_PAGE>pages)CL_PAGE=pages;
@@ -4537,8 +4588,8 @@ function drawClients(){
   const b=el('clBody');
   if(!total){
     b.innerHTML=emptyState('<svg class="ic"><use href="#i-users"/></svg>',
-      (q||CL_FILTER)?'Никто не подошёл':'Пока пусто',
-      (q||CL_FILTER)?'Поменяй запрос или сними фильтр — под текущие условия клиентов нет.'
+      (q||CL_FILTER||CL_OWNER)?'Никто не подошёл':'Пока пусто',
+      (q||CL_FILTER||CL_OWNER)?'Поменяй запрос или сними фильтр — под текущие условия клиентов нет.'
                     :'Нажми «Подтянуть из Директа» или «Импорт config.json».',null);
     el('clFoot').innerHTML='';return;
   }
@@ -4564,6 +4615,9 @@ function drawClients(){
         <span class="cli-bar"><i style="width:${pct}%"></i></span>
         <small>${gs.length?(hid?(hid+' '+clPlural(hid,'скрыта','скрыто','скрыто')):'все в отчёте'):'целей нет'}</small></div>
       <div><span class="cli-st" style="--sc:var(--${sc[0]})">${sc[1]}</span></div>
+      ${CL_OWNER_COL?`<div class="cli-owner${c.owner_name?'':' none'}">${c.owner_name
+        ? `<span class="nm" title="${esc(c.owner_name)}">${esc(c.owner_name)}</span>`
+        : '<span class="nm">не назначен</span>'}</div>`:''}
       <div class="cli-arw">${CL_CHEV}</div>
       <div class="cli-note" id="note_${cssId(c.login)}">${c.note
         ? `<span class="txt" title="Изменить заметку" onclick="clNoteEdit('${esc(c.login)}',event)">${esc(c.note)}</span>`
@@ -4791,9 +4845,14 @@ async function renderChats(){
   CHATS=chats;
   setTimeout(()=>{if(MSG_Q&&MSG_Q.length>=3)msgSearch();},0);
   const opts=cls.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
-  const mineN=chats.filter(c=>c.login).length, freeN=chats.filter(c=>!c.login).length;
+  const mineN=chats.filter(c=>c.login&&!c.hidden).length, freeN=chats.filter(c=>!c.login&&!c.hidden).length;
   const F=CHAT_FILTER;
-  const shown=chats.filter(c=>F==='mine'?c.login:(F==='free'?!c.login:true));
+  // Скрытые не мешаются в остальных вкладках, но никуда не деваются: своя вкладка
+  // и возврат одной кнопкой. Просила Ксения — удалять чаты ей не дают, и правильно:
+  // запись не восстановить, пока в чате снова кто-нибудь не напишет.
+  const hidN=chats.filter(c=>c.hidden).length;
+  const shown=(F==='hidden'?chats.filter(c=>c.hidden)
+    :chats.filter(c=>!c.hidden&&(F==='mine'?c.login:(F==='free'?!c.login:true))));
   const tab=(k,label)=>`<span class="t ${F===k?'on':''}" onclick="CHAT_FILTER='${k}';renderChats()">${label}</span>`;
   // супервайзер привязывает чат СРАЗУ на специалиста (иначе проект закреплялся за тем, кто привязал)
   const isSup=ME&&(ME.role==='admin'||ME.role==='observer');
@@ -4820,7 +4879,7 @@ async function renderChats(){
       </div>
       <div id="msgRes" style="margin-top:12px"></div>
     </div></div>
-    <div class="tabs">${tab('mine','Мои ('+mineN+')')}${tab('free','Свободные ('+freeN+')')}${tab('all','Все видимые ('+chats.length+')')}</div>
+    <div class="tabs">${tab('mine','Мои ('+mineN+')')}${tab('free','Свободные ('+freeN+')')}${tab('all','Все видимые ('+(chats.length-hidN)+')')}${hidN?tab('hidden','Скрытые ('+hidN+')'):''}</div>
     <div class="panel"><div class="scrollx"><table>
       <thead><tr><th>Чат</th><th>ID</th><th>Тип</th><th>Статус</th><th>Привязка</th><th></th></tr></thead>
       <tbody>${shown.length?shown.map(c=>`
@@ -4828,7 +4887,7 @@ async function renderChats(){
           <td>${esc(c.title)}${c.login?'':' <span class="badge b-amber" style="font-size:10.5px">свободный</span>'}</td><td class="muted">${c.chat_id}</td><td>${esc(c.type||'')}</td>
           <td>${c.status==='active'?'<span class="badge b-green">активен</span>':'<span class="badge b-grey">удалён</span>'}</td>
           <td><select id="bind_${c.chat_id}"><option value="">— не привязан —</option>${opts}</select></td>
-          <td class="right"><button class="btn sm tinted" onclick="doBind(${c.chat_id})">Сохранить</button> <button class="btn sm" onclick="doDeleteChat(${c.chat_id})" title="Удалить чат из базы"><svg class="ic"><use href="#i-delete-bin"/></svg></button></td>
+          <td class="right"><button class="btn sm tinted" onclick="doBind(${c.chat_id})">Сохранить</button> <button class="btn sm" onclick="doHideChat(${c.chat_id},${c.hidden?'false':'true'})" title="${c.hidden?'Вернуть чат в список':'Убрать чат из своего списка — у других он останется'}">${c.hidden?'Вернуть':'Скрыть'}</button> <button class="btn sm" onclick="doDeleteChat(${c.chat_id})" title="Удалить чат из базы"><svg class="ic"><use href="#i-delete-bin"/></svg></button></td>
         </tr>`).join(''):'<tr><td colspan="7">'+(F==='mine'
       ? emptyState('<svg class="ic"><use href="#i-folder-5"/></svg>','У тебя пока нет проектов','Чаты, которые ещё никому не принадлежат, лежат во вкладке «Свободные» — привяжи оттуда, и клиент станет твоим.',{label:'Смотреть свободные',onclick:()=>{CHAT_FILTER='free';renderChats();}})
       : emptyState('<svg class="ic"><use href="#i-chat-3"/></svg>','Здесь пока пусто','Бот видит чат сразу, как его добавят в группу клиента. Нет чата — добавь бота в группу и напиши там любое сообщение.',{label:'Как подключить клиента',onclick:()=>openOnboard(),primary:false}))+'</td></tr>'}
@@ -4849,6 +4908,13 @@ async function doBind(chatId){
     }
     refresh();
   }catch(e){errToast(e);}
+}
+async function doHideChat(chatId,hide){
+  try{await api('chat_hide',chatId,hide);
+    toast(hide?'Чат убран из списка — вернуть можно во вкладке «Скрытые»':'Чат вернулся в список','ok');
+    if(hide)CHAT_FILTER=CHAT_FILTER;   // остаёмся там же, где были
+    refresh();
+  }catch(e){}
 }
 async function doDeleteChat(chatId){
   if(!(await askConfirm('Удалить чат '+chatId+' из базы? Привязка к клиенту тоже снимется.\n(Сам чат в Telegram это не трогает — бот просто забудет о нём.)',{ok:'Удалить чат',title:'Удаление чата',danger:true})))return;
@@ -5395,6 +5461,13 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-22',tag:'new',title:'Три вещи по просьбам Ксении',
+ sum:'Крестик на уведомлениях, колонка «Специалист» в клиентах и гибкость с чатами',items:[
+  '<b>Уведомление можно убрать крестиком.</b> Наведи на карточку — справа появится ×. Убирается только у тебя: часть уведомлений общие, и удаление насовсем убрало бы их у всех разом. Рядом с «Прочитать все» появилась кнопка «Убрать все».',
+  '<b>В списке клиентов появилась колонка «Специалист».</b> Видна тому, кто видит чужих клиентов — наблюдателю и администратору. Специалистке она ни к чему: там во всех строках стояла бы она сама. Колонку можно сортировать, а рядом с фильтрами появился выбор «Все специалисты» с отдельным пунктом «Не назначен».',
+  '<b>Чат можно скрыть, не удаляя.</b> Кнопка «Скрыть» рядом с «Сохранить». Скрытые уходят в свою вкладку, откуда возвращаются одной кнопкой, и у остальных сотрудников чат остаётся на месте. Удаление по-прежнему только у администратора, и не зря: удалённую запись не вернуть — она появится снова, только когда в чате кто-нибудь напишет.',
+  '<b>Появился фильтр «Сторонние».</b> Клиенты, которым отчёт носят руками, раньше считались вместе с подключёнными и отдельно не выбирались.'
+ ]},
 {date:'2026-08-22',tag:'new',title:'Первый слой нового визуального языка',
  sum:'Один блок стилей, ничего не переименовано, откат — удалить блок. Дальше пойдёт этапами',items:[
   '<b>Панели и кнопки стали плоскими.</b> Тень теперь значит «этот элемент над страницей и под ним можно проскроллить» — окно, выпадашка, подсказка. У панели, которая лежит в странице, тени быть не должно: она изображала подсветку от источника, которого нет. Тринадцать мест.',
@@ -8488,7 +8561,10 @@ async function loadNotif(render){
         '<span class="notif-ic">'+(NOTIF_IC[n.kind]||'•')+'</span>'+
         '<div style="flex:1;min-width:0"><div class="notif-t">'+esc(n.title)+'</div>'+
         (n.text?'<div class="notif-x">'+esc(n.text)+'</div>':'')+
-        '<div class="notif-d">'+fmtWhen(n.created_at)+'</div></div></div>').join('')
+        '<div class="notif-d">'+fmtWhen(n.created_at)+'</div></div>'+
+        '<button class="notif-x-btn" title="Убрать" aria-label="Убрать уведомление" '+
+        'onclick="event.stopPropagation();notifHide('+n.id+')">×</button>'+
+        '</div>').join('')
         :emptyState('<svg class="ic"><use href="#i-notification-3"/></svg>','Уведомлений нет','Здесь появятся долги по отчётам, клиенты без ответа и бюджеты на исходе.',null);
     }
   }catch(e){errToast(e);}
@@ -8503,6 +8579,19 @@ async function openNotif(id,link){
   NOTIF_OPEN=false;el('notifDrop').classList.remove('on');
   if(link&&NAMES[link])go(link);
   loadNotif(false);
+}
+async function notifHide(id){
+  // Убираем сразу на экране, не дожидаясь сервера: иначе список дёргается.
+  const b=event&&event.currentTarget;const карточка=b&&b.closest('.notif-item');
+  if(карточка)карточка.remove();
+  try{await api('notif_hide',id);}catch(e){}
+  loadNotif(false);
+}
+async function notifHideAll(){
+  if(!(await askConfirm('Убрать все уведомления из списка?',
+      {ok:'Убрать',title:'Уведомления'})))return;
+  try{await api('notif_hide',null);toast('Список очищен','ok');}catch(e){}
+  loadNotif(true);
 }
 async function notifReadAll(){
   try{await api('notif_read',null);toast('Все уведомления прочитаны','ok');}catch(e){}

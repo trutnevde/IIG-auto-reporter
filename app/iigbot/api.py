@@ -406,6 +406,9 @@ class Api:
     @safe
     def clients(self):
         binds = {b["login"]: b for b in self.db.list_bindings(self._owner())}
+        # Кто ведёт клиента. Наблюдатель видит всех сразу, и без этой колонки
+        # непонятно, к кому идти с вопросом — просила Ксения.
+        имена = {u["id"]: (u["name"] or u["email"]) for u in self.db.list_users()}
         out = []
         sent = self.db.last_send_map()
         pins = set(self._pins())
@@ -434,6 +437,8 @@ class Api:
                 "note": (c["note"] if "note" in c.keys() else None) or "",
                 "pinned": c["login"] in pins,
                 "spent21": round(расход.get(c["login"], 0)),
+                "owner": (c["owner"] if "owner" in c.keys() else None),
+                "owner_name": имена.get(c["owner"] if "owner" in c.keys() else None) or "",
             })
         return out
 
@@ -733,6 +738,7 @@ class Api:
     def chats(self):
         binds = {b["chat_id"]: b for b in self.db.list_bindings(self._owner())}
         names = {c["login"]: c["name"] for c in self.db.list_clients(self._owner())}
+        скрытые = set(self._chat_hidden())
         out = []
         for c in self._visible_chats():
             b = binds.get(c["chat_id"])
@@ -741,8 +747,33 @@ class Api:
                 "status": c["status"], "added_at": c["added_at"],
                 "login": b["login"] if b else None,
                 "client_name": names.get(b["login"]) if b else None,
+                "hidden": str(c["chat_id"]) in скрытые,
             })
         return out
+
+    def _chat_hidden(self):
+        raw = self.db.get_kv("chathide:{}".format(self.user["id"] if self.user else 0)) or ""
+        return [x for x in raw.split(",") if x]
+
+    @safe
+    def chat_hide(self, chat_id, hidden=True):
+        """Убрать чат из своего списка или вернуть обратно.
+
+        Удаление строки чата остаётся за администратором и не зря: бот сидит в
+        чатах вместе с клиентами, и удалённую запись не восстановить — вернётся
+        она только когда в чате снова что-то напишут. Скрытие делает то же, что
+        человеку и нужно (не мозолит глаза), но обратимо и своё у каждого.
+        """
+        cid = int(chat_id)
+        self._require_chat_visible(cid)
+        сп = self._chat_hidden()
+        ключ = str(cid)
+        if hidden and ключ not in сп:
+            сп.append(ключ)
+        elif not hidden and ключ in сп:
+            сп.remove(ключ)
+        self.db.set_kv("chathide:{}".format(self.user["id"] if self.user else 0), ",".join(сп))
+        return {"hidden": bool(hidden), "count": len(сп)}
 
     @safe
     def bind(self, chat_id, login):
@@ -3087,6 +3118,21 @@ class Api:
             self.db.mark_all_notif_read(self.user["id"])
         else:
             self.db.mark_notif_read(int(notif_id), self.user["id"])
+        return {"unread": self.db.unread_count(self.user["id"])}
+
+    @safe
+    def notif_hide(self, notif_id=None):
+        """Убрать уведомление из своего списка (или все сразу).
+
+        Именно убрать у себя, а не удалить: часть уведомлений общие, и
+        удаление насовсем убрало бы их у всех разом.
+        """
+        if not self.user:
+            return {"unread": 0}
+        if notif_id in (None, "", 0, "0"):
+            self.db.hide_all_notif(self.user["id"])
+        else:
+            self.db.hide_notif(int(notif_id), self.user["id"])
         return {"unread": self.db.unread_count(self.user["id"])}
 
     # ---------- бэкапы базы (админ) ----------

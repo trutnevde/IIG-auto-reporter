@@ -175,6 +175,7 @@ class Storage:
         ("ix_activity_chat",      "chat_activity(chat_id)"),
         ("ix_notif_kind",         "notifications(kind)"),
         ("ix_notifread_user",     "notif_read(user_id)"),
+        ("ix_notifhid_user",      "notif_hidden(user_id)"),
         ("ix_noteack_note",       "note_ack(note_id)"),
         ("ix_notereply_note",     "note_reply(note_id)"),
         ("ix_excuses_week",       "excuses(week)"),
@@ -518,6 +519,14 @@ class Storage:
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS notif_read (
                 notif_id INTEGER, user_id INTEGER, read_at TEXT,
+                PRIMARY KEY (notif_id, user_id)
+            )""")
+        # Убрать уведомление с глаз — своё дело каждого: часть уведомлений
+        # общие (to_user IS NULL), и удалять их насовсем нельзя, иначе один
+        # человек уберёт их у всех. Прячем по той же схеме, что и прочтение.
+        self.conn.execute(
+            """CREATE TABLE IF NOT EXISTS notif_hidden (
+                notif_id INTEGER, user_id INTEGER, at TEXT,
                 PRIMARY KEY (notif_id, user_id)
             )""")
         self.conn.commit()
@@ -1131,15 +1140,40 @@ class Storage:
         return self.conn.execute(
             """SELECT n.*, (a.user_id IS NOT NULL) AS is_read FROM notifications n
                LEFT JOIN notif_read a ON a.notif_id=n.id AND a.user_id=?
-               WHERE n.to_user=? OR n.to_user IS NULL
-               ORDER BY n.id DESC LIMIT ?""", (user_id, user_id, int(limit))).fetchall()
+               WHERE (n.to_user=? OR n.to_user IS NULL)
+                 AND NOT EXISTS (SELECT 1 FROM notif_hidden h
+                                 WHERE h.notif_id=n.id AND h.user_id=?)
+               ORDER BY n.id DESC LIMIT ?""",
+            (user_id, user_id, user_id, int(limit))).fetchall()
 
     def unread_count(self, user_id):
         return self.conn.execute(
             """SELECT COUNT(*) n FROM notifications n
                WHERE (n.to_user=? OR n.to_user IS NULL)
-                 AND NOT EXISTS (SELECT 1 FROM notif_read a WHERE a.notif_id=n.id AND a.user_id=?)""",
-            (user_id, user_id)).fetchone()["n"]
+                 AND NOT EXISTS (SELECT 1 FROM notif_read a WHERE a.notif_id=n.id AND a.user_id=?)
+                 AND NOT EXISTS (SELECT 1 FROM notif_hidden h WHERE h.notif_id=n.id AND h.user_id=?)""",
+            (user_id, user_id, user_id)).fetchone()["n"]
+
+    def hide_notif(self, notif_id, user_id):
+        """Убрать уведомление из своего списка. Заодно считаем прочитанным:
+        человек его закрыл, значит увидел."""
+        self.conn.execute("INSERT OR IGNORE INTO notif_hidden(notif_id,user_id,at) VALUES(?,?,?)",
+                          (int(notif_id), user_id, _now()))
+        self.conn.execute("INSERT OR IGNORE INTO notif_read(notif_id,user_id,read_at) VALUES(?,?,?)",
+                          (int(notif_id), user_id, _now()))
+        self.conn.commit()
+
+    def hide_all_notif(self, user_id):
+        """Убрать все, что сейчас видно."""
+        self.conn.execute(
+            """INSERT OR IGNORE INTO notif_hidden(notif_id,user_id,at)
+               SELECT n.id, ?, ? FROM notifications n
+               WHERE n.to_user=? OR n.to_user IS NULL""", (user_id, _now(), user_id))
+        self.conn.execute(
+            """INSERT OR IGNORE INTO notif_read(notif_id,user_id,read_at)
+               SELECT n.id, ?, ? FROM notifications n
+               WHERE n.to_user=? OR n.to_user IS NULL""", (user_id, _now(), user_id))
+        self.conn.commit()
 
     def mark_notif_read(self, notif_id, user_id):
         self.conn.execute("INSERT OR IGNORE INTO notif_read(notif_id,user_id,read_at) VALUES(?,?,?)",

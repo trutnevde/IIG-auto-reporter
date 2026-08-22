@@ -159,7 +159,9 @@ def test_каждый_метод_кому_то_запрещён_или_осоз�
         "excuse_add", "excuse_add_bulk", "excuse_remove",   # владелец клиента или супервайзер
         "set_client_note",                                   # он же
         "dialog_dismiss", "dialog_restore",                  # _require_chat_visible
-        "notif_read",                                        # только свои уведомления
+        "notif_read", "notif_hide",                          # только свои уведомления:
+        # notif_hide прячет запись у того, кто нажал, а не удаляет её —
+        # часть уведомлений общие, и удаление убрало бы их у всех разом
         "gsheets_clients", "copy_reports", "budgets_refresh",  # ограничены своим скоупом
         "history", "preset_runs", "preset_spec", "presets_list",
         "dossier_options", "report_options", "run_weekly_progress", "suggestions",
