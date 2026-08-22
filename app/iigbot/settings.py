@@ -211,6 +211,46 @@ ERROR_LOG_PATH = os.path.join(BASE_DIR, "iig_errors.log")
 LOG_MAX_BYTES = 1024 * 1024   # 1 МБ — дальше ротация, чтобы файл не рос вечно
 
 
+# ---- чистка секретов из любого текста, который может попасть на глаза ----
+_SCRUB_CACHE = {"значения": None}
+
+
+def _secret_values():
+    """Все значения из secrets.json, длиннее восьми знаков.
+
+    Читаем один раз и держим в памяти: чистка вызывается на каждой записи в
+    журнал, а перечитывать файл на каждой ошибке — верный способ получить
+    ошибку внутри обработчика ошибки.
+    """
+    if _SCRUB_CACHE["значения"] is None:
+        vals = []
+        try:
+            for v in (load_secrets() or {}).values():
+                if isinstance(v, str) and len(v) >= 8:
+                    vals.append(v)
+                    if ":" in v:            # токен бота: вторая половина сама по себе секрет
+                        хвост = v.split(":", 1)[1]
+                        if len(хвост) >= 8:
+                            vals.append(хвост)
+        except Exception:                                              # noqa: BLE001
+            vals = []
+        _SCRUB_CACHE["значения"] = sorted(set(vals), key=len, reverse=True)
+    return _SCRUB_CACHE["значения"]
+
+
+def scrub(text):
+    """Убрать из текста всё, что похоже на наши секреты.
+
+    Ставится на общий выход, а не по месту: точечные заплатки мы уже ставили,
+    и каждая новая строка кода заводила новую дырку.
+    """
+    t = str(text)
+    for v in _secret_values():
+        if v and v in t:
+            t = t.replace(v, "<секрет скрыт>")
+    return t
+
+
 def log_error(where, message):
     """Дописывает ошибку в iig_errors.log рядом с базой (BASE_DIR). Нужно, чтобы сбои —
     особенно в авто-рассылке на сервере, где консоли не видно, — можно было потом разобрать
@@ -228,7 +268,8 @@ def log_error(where, message):
         except OSError:
             pass
         stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        line = "{}\t{}\t{}\n".format(stamp, where, str(message).replace("\n", " ").replace("\t", " "))
+        чисто = scrub(message).replace("\n", " ").replace("\t", " ")
+        line = "{}\t{}\t{}\n".format(stamp, where, чисто)
         with open(ERROR_LOG_PATH, "a", encoding="utf-8") as f:
             f.write(line)
     except Exception:  # noqa: BLE001

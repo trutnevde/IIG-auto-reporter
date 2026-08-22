@@ -26,6 +26,24 @@ def _title(chat):
     return chat.get("title") or chat.get("username") or chat.get("first_name") or str(chat.get("id"))
 
 
+def is_our_person(msg, db, cfg):
+    """Наш ли это человек. В отличие от is_admin — закрыт по умолчанию.
+
+    is_admin при пустом списке админов пускает всех и вдобавок доверяет
+    администраторам группы, а администратором клиентского чата является
+    сотрудник клиента. Для команд, которые раскрывают данные агентства,
+    так нельзя: нет уверенности — нет доступа.
+    """
+    uid = (msg.get("from") or {}).get("id")
+    if not uid:
+        return False
+    try:
+        свои = db.our_telegram_ids(cfg.get("admin_user_ids"))
+    except Exception:                                                  # noqa: BLE001
+        return False
+    return uid in (свои or set())
+
+
 def is_admin(msg, tg, cfg):
     """Кому разрешён /bind. Если admin_user_ids не задан — разрешаем всем (с предупреждением)."""
     uid = (msg.get("from") or {}).get("id")
@@ -168,7 +186,6 @@ HELP = (
     "/bind <логин> — привязать этот чат к клиенту Директа (админ)\n"
     "/unbind — снять привязку (админ)\n"
     "/status — показать привязку этого чата\n"
-    "/chats — список всех известных чатов\n"
     "/help — это сообщение"
 )
 
@@ -225,7 +242,15 @@ def handle_message(msg, tg, db, cfg, bot_username):
     elif cmd == "/status":
         cmd_whereami(msg, tg, db)
     elif cmd == "/chats":
-        cmd_chats(msg, tg, db)
+        # Список чатов агентства — внутренние данные: домены клиентов и номера
+        # договоров в заголовках. Бот сидит в чатах вместе с клиентами.
+        if not is_our_person(msg, db, cfg):
+            print("[bot] /chats отклонён: uid={} chat={}".format(
+                (msg.get("from") or {}).get("id"), (msg.get("chat") or {}).get("id")))
+            tg.send_message(chat["id"], "Эта команда только для сотрудников агентства.")
+        else:
+            print("[bot] /chats от uid={}".format((msg.get("from") or {}).get("id")))
+            cmd_chats(msg, tg, db)
     elif cmd == "/help":
         tg.send_message(chat["id"], HELP)
 

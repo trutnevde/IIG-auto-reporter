@@ -253,7 +253,14 @@ def _find_goal_col(row, gid):
 
 
 # ---------- сбор кампаний (без «спящих») ----------
-def build_campaign_data(token, login, goal_defs, attribution, per, _post=None, _sleep=None):
+def build_campaign_data(token, login, goal_defs, attribution, per, _post=None, _sleep=None,
+                        allow_bare_conv=True):
+    """Сбор по кампаниям за неделю.
+
+    allow_bare_conv: брать ли «голое» поле Conversions, когда целей не задано.
+    Для отчёта клиенту — нельзя (там все цели счётчика подряд, включая
+    поведенческие), для конструктора и таблиц — можно, там так и задумано.
+    """
     goal_ids = [g["id"] for g in goal_defs]
 
     week_fields = ["CampaignId", "CampaignName", "Impressions", "Clicks", "Cost", "Conversions"]
@@ -305,7 +312,10 @@ def build_campaign_data(token, login, goal_defs, attribution, per, _post=None, _
                     key = _find_goal_col(r, gid)
                     if key:
                         obj["byGoal"][gid] = parse_num(r.get(key))
-            elif not goal_ids:
+            elif not goal_ids and allow_bare_conv:
+                # «Голое» поле Conversions — это ВСЕ цели счётчика, включая
+                # поведенческие. Берём его только там, где так и задумано
+                # (конструктор, досье, таблицы), но не в отчёте клиенту.
                 obj["conv"] = parse_num(r.get("Conversions"))
     if goal_ids:
         for obj in week.values():
@@ -383,10 +393,13 @@ def format_metrics(cost, imp, clicks, conv, by_goal, goal_defs, indent="", show_
     if goal_defs:
         out.append(p + "— Конверсии (по целям, суммарно): " + fmt_int(conv))
         goal_lines(key_defs)
+        out.append(p + "— CR: " + fmt_pct(cr))
+        out.append(p + "— CPA: " + fmt_money(cpa))
     else:
-        out.append(p + "— Конверсии: " + fmt_int(conv))
-    out.append(p + "— CR: " + fmt_pct(cr))
-    out.append(p + "— CPA: " + fmt_money(cpa))
+        # Целей не выбрано — считать нечего. Раньше здесь печатались конверсии
+        # по всем целям счётчика подряд, включая прокрутки и время на сайте,
+        # и клиент читал их как заявки. Молчать честнее, чем показать чужое.
+        out.append(p + "— Конверсии: цели для отчёта не выбраны")
     # справочный блок печатаем один раз (в «Итого по аккаунту»), иначе он дублируется в каждой кампании
     if show_extra and other_defs and by_goal and any(float(by_goal.get(g["id"], 0)) > 0 for g in other_defs):
         out.append(p + "— Дополнительные цели (в конверсии не входят):")
@@ -522,7 +535,10 @@ def build_for_login(token, db, login, intro, note, default_attr="LSCCD", _post=N
             pass
     attr = (c["attribution"] if c["attribution"] else None) or default_attr or "LSCCD"
     per = period()
-    camps = build_campaign_data(token, login, goal_defs, attr, per, _post=_post, _sleep=_sleep)
+    # Отчёт клиенту: «голые» конверсии Директа брать нельзя — там все цели
+    # счётчика подряд, включая прокрутки и время на сайте.
+    camps = build_campaign_data(token, login, goal_defs, attr, per, _post=_post,
+                                _sleep=_sleep, allow_bare_conv=False)
     text = build_message(c["name"] or login, goal_defs, camps, per, intro, note)
     return text, camps, per
 
@@ -545,15 +561,25 @@ def send_for_login(token, tg, db, login, intro, note, default_attr="LSCCD", dry_
         return {"status": status, "reason": " · ".join(reasons), "reasons": reasons}
     if dry_run:
         return {"status": "dry", "chats": len(chats), "campaigns": len(camps)}
-    sent = 0
+    sent, failed, last_err = 0, 0, None
     for b in chats:
         try:
             tg.send_message(b["chat_id"], text)
-            db.log_send(login, b["chat_id"], per["date_from"], per["date_to"], "sent")
+            db.log_send(login, b["chat_id"], per["date_from"], per["date_to"], "sent",
+                        message_ids=getattr(tg, "last_message_ids", None))
             sent += 1
         except Exception as e:  # noqa: BLE001
+            failed += 1
+            last_err = str(e)
             db.log_send(login, b["chat_id"], per["date_from"], per["date_to"], "error", str(e))
-    return {"status": "sent", "chats": sent, "campaigns": len(camps)}
+    # Статус по РЕЗУЛЬТАТУ, а не по факту попытки. Раньше здесь всегда стояло
+    # 'sent', и когда падали все чаты, окно прогресса, тост и запись в аудит
+    # хором сообщали об успешной отправке, которой не было.
+    if sent == 0:
+        return {"status": "error", "reason": last_err or "не отправлено ни в один чат",
+                "chats": 0, "failed": failed, "campaigns": len(camps)}
+    return {"status": "sent", "chats": sent, "failed": failed,
+            "chats_total": sent + failed, "campaigns": len(camps)}
 
 
 def run_weekly(token, tg, db, intro, note, default_attr="LSCCD", on_progress=None, logins=None, dry_run=False):
@@ -607,6 +633,10 @@ def run_weekly(token, tg, db, intro, note, default_attr="LSCCD", on_progress=Non
             continue
         if res["status"] == "sent":
             results["sent"] += 1
+        elif res["status"] == "error":
+            # Без этой ветки провалившийся клиент не попадал ни в один счётчик:
+            # строка в окне краснела, а итог показывал «отправлено N, ошибок 0».
+            results["errors"] += 1
         elif res["status"] == "dry":
             results["dry"] += 1
         elif res["status"] == "skipped":

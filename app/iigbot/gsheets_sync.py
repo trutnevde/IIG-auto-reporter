@@ -51,8 +51,14 @@ def notify(results):
         if not r:
             print("Оповещение: {} в выгрузке не участвовал — пропуск.".format(login))
             continue
-        if not r.get("ok"):
-            print("Оповещение: {} выгрузился с ошибкой — не пишу.".format(login))
+        # Трёх условий мало по отдельности: ok=true бывает и при нуле записанных
+        # строк — если ни один лист-лента не распознан (клиент переименовал
+        # вкладку), errors остаётся нулём, и клиенту каждый день уходило
+        # «в таблице свежие данные» поверх нетронутой таблицы.
+        плохо = (not r.get("ok")) or r.get("errors") or not r.get("tabs")
+        if плохо:
+            print("Оповещение: {} — не пишу (ok={}, ошибок {}, листов {}).".format(
+                login, r.get("ok"), r.get("errors"), len(r.get("tabs") or [])))
             continue
         text = ("Отчёт обновлён — в таблице свежие данные по рекламе.\n\n"
                 "https://docs.google.com/spreadsheets/d/{}".format(r.get("sheet_id") or ""))

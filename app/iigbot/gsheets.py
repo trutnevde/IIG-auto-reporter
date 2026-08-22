@@ -1098,10 +1098,11 @@ def goals_for_login(token, login):
     счётчики из настроек кампаний → их цели."""
     from . import yandex, metrika
     goals, seen = [], set()
-    try:
-        counters = yandex.get_campaign_counters(token, login)
-    except Exception:  # noqa: BLE001
-        counters = []
+    # Отказ Директа здесь глушить нельзя: без счётчиков не будет ни одной цели,
+    # разрезы запишутся без конверсий, и клиент получит «свежие данные» с
+    # пустым столбцом заявок. Пусть исключение дойдёт до вызывающего — он
+    # поставит ok=false, и оповещение клиенту не уйдёт.
+    counters = yandex.get_campaign_counters(token, login)
     for cid in counters:
         try:
             gs = metrika.get_counter_goals(token, cid)

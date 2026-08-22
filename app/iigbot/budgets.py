@@ -162,10 +162,12 @@ def working_pool(db, logins=None):
 def collect(db, token, on_progress=None, _post=None, _sleep=None, logins=None):
     """Обновляет таблицу budgets по рабочему пулу. logins — только эти клиенты. Возвращает сводку."""
     pool = working_pool(db, logins=logins)
+    balances_ok = True
     try:
         balances = get_balances(token, pool, _post=_post)
     except Exception as e:  # noqa: BLE001 — нет доступа к v4: работаем без баланса
         balances = {}
+        balances_ok = False
         from .settings import log_error
         log_error("budgets.balance", e)
     names = {c["login"]: (c["name"] or c["login"]) for c in db.list_clients("all")}
@@ -174,6 +176,8 @@ def collect(db, token, on_progress=None, _post=None, _sleep=None, logins=None):
 
     def _one(login):
         """Сбор по одному клиенту (сетевые запросы) — без работы с БД, чтобы гонять параллельно."""
+        # balances_ok важен: без него отказ Директа по балансам неотличим от
+        # честного «у клиента нет общего счёта», и оба дают статус 'ok'.
         row = {"login": login, "name": names.get(login) or login,
                "balance": None, "currency": "RUB", "cost7": 0.0, "cost21": 0.0,
                "rate": 0.0, "days_left": None, "camps_total": 0, "camps_on": 0,
@@ -199,6 +203,12 @@ def collect(db, token, on_progress=None, _post=None, _sleep=None, logins=None):
                     row["days_left"] = round(row["balance"] / rate, 1)
                     row["status"] = ("critical" if row["days_left"] < CRIT_DAYS
                                      else "warning" if row["days_left"] < WARN_DAYS else "ok")
+                elif row["balance"] is None and not balances_ok:
+                    # Директ не отдал балансы вообще. Это не «нет счёта» — это
+                    # мы не знаем. Красить в зелёное нельзя: именно так 17.07
+                    # пять критичных клиентов стали «ок» и алерты промолчали.
+                    row["status"] = "error"
+                    row["note"] = "Директ не отдал балансы — состояние неизвестно"
                 elif row["balance"] is None:
                     row["status"] = "ok" if camps["pay_stopped"] == 0 else "warning"
                     row["note"] = "баланс недоступен (нет общего счёта или прав)"
@@ -209,6 +219,10 @@ def collect(db, token, on_progress=None, _post=None, _sleep=None, logins=None):
         except Exception as e:  # noqa: BLE001
             row["status"] = "error"
             row["note"] = str(e)[:300]
+            # Прежние цифры не затираем нулями. Иначе клиент, по которому сбор
+            # упал, везде становится «без активности»: пропадает из списка по
+            # галке, не попадает в детектор простоя и сдвигает медиану бенчмарка.
+            row["_keep_costs"] = True
         return row
 
     # параллельно: сбор упирается в сеть (Директ), 5 потоков дают ~4-5x ускорение
@@ -219,8 +233,19 @@ def collect(db, token, on_progress=None, _post=None, _sleep=None, logins=None):
             rows.append(row)
             if on_progress:
                 on_progress(i, len(pool), {"login": row["login"], "status": row["status"]})
+    прежние = {b["login"]: b for b in db.list_budgets()}
     for row in rows:
         login = row["login"]
+        if row.pop("_keep_costs", False):
+            было = прежние.get(login)
+            if было is not None:
+                for поле in ("cost7", "cost21", "rate", "balance", "currency",
+                             "days_left", "camps_total", "camps_on",
+                             "camps_pay_stopped", "daily_budget"):
+                    try:
+                        row[поле] = было[поле]
+                    except (KeyError, IndexError):
+                        pass
         if row.pop("_active", False):
             res["active"] += 1
         if row["status"] == "critical":
@@ -241,7 +266,13 @@ def collect(db, token, on_progress=None, _post=None, _sleep=None, logins=None):
                                         "budgets", dedup_key=True)
             except Exception:  # noqa: BLE001
                 pass
-    db.set_kv("budgets_updated", dt.datetime.now().isoformat(timespec="seconds"))
+    # Метку свежести ставим только если сбор был ПОЛНЫМ и без отказа балансов.
+    # Частичный сбор «по своим клиентам» раньше сдвигал 12-часовое окно
+    # агентского сбора, и общий обход мог не состояться сутки.
+    res["balances_ok"] = balances_ok
+    res["partial"] = logins is not None
+    if logins is None and balances_ok:
+        db.set_kv("budgets_updated", dt.datetime.now().isoformat(timespec="seconds"))
     return res
 
 

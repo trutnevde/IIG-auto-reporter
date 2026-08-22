@@ -95,8 +95,12 @@ def _periodic_tick(base):
     if _due("dialog_alert_last", 3):   # каждые ~3 часа: «клиент ждёт ответа больше суток»
         base.db.set_kv("dialog_alert_last", now)
         threading.Thread(target=_dialog_job, args=(base,), daemon=True).start()
-    if _due("backup_last", 24):      # суточный бэкап БД (WAL-safe) с ротацией
-        base.db.set_kv("backup_last", now)
+    # Окно считаем по ПОПЫТКЕ (чтобы не запускать копию каждые пять минут при
+    # постоянных сбоях), а «когда была последняя удачная» пишет сама задача.
+    # Раньше метка успеха ставилась до работы: упавшая копия выглядела как
+    # состоявшаяся, и следующая попытка откладывалась на сутки.
+    if _due("backup_try", 24):       # суточный бэкап БД (WAL-safe) с ротацией
+        base.db.set_kv("backup_try", now)
         threading.Thread(target=_backup_job, args=(base,), daemon=True).start()
     # еженедельная сводка работодателю: понедельник с 10:00, не чаще раза в 5 дней
     import datetime as _dt
@@ -109,7 +113,7 @@ def _periodic_tick(base):
 def _autosync_job(base):
     """Суточное авто-обновление: список клиентов Директа + цели привязанных (пресет ключевых,
     ручные галочки не трогаются — та же логика, что у кнопок). Итог — в Журнал."""
-    from .settings import log_error
+    from .settings import log_error, scrub
     try:
         r1 = base.sync_clients()
         r2 = base.metrika_goals_bulk()
@@ -135,12 +139,12 @@ def _autosync_job(base):
                 log_error("backup_cloud", r3.get("note") or "выполнено")
                 if not r3.get("ok") and not r3.get("skipped"):
                     base.db.add_notification(None, "system", "Копия наружу не ушла",
-                                             r3.get("note") or "причина неизвестна",
+                                             scrub(r3.get("note") or "причина неизвестна"),
                                              "errlog", dedup_key=True)
             except Exception as e3:  # noqa: BLE001
                 log_error("backup_cloud", "сбой: {}".format(e3))
                 base.db.add_notification(None, "system", "Копия наружу не ушла",
-                                         str(e3)[:200], "errlog", dedup_key=True)
+                                         scrub(e3)[:200], "errlog", dedup_key=True)
             if not res.get("ok"):
                 base.db.add_notification(None, "system", "База повреждена",
                                          "Проверка целостности не прошла — нужен откат из копии",
@@ -172,7 +176,7 @@ def _release_notify(base, ui_html):
 
 def _dialog_job(base):
     """Уведомления «клиент ждёт ответа больше суток» владельцам проектов."""
-    from .settings import log_error
+    from .settings import log_error, scrub
     try:
         n = base._dialog_alerts()
         if n:
@@ -183,17 +187,26 @@ def _dialog_job(base):
 
 def _backup_job(base):
     """Суточный бэкап БД: целостная копия (sqlite backup API) + ротация 14 копий."""
-    from .settings import log_error
+    import time as _t
+    from .settings import log_error, scrub
     try:
         name = base._make_backup(keep=14)
+        base.db.set_kv("backup_last", _t.time())     # метка УСПЕХА, не попытки
         log_error("backup", "ок: " + name)
     except Exception as e:  # noqa: BLE001
         log_error("backup", "сбой: {}".format(e))
+        # Молчащий сбой копии — худшее, что может случиться: узнаём о нём в тот
+        # день, когда копия понадобилась. Поэтому громко, в кабинет.
+        try:
+            base.db.add_notification(None, "system", "Копия базы не сделана",
+                                     scrub(e)[:200], "errlog", dedup_key=True)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _digest_job(base):
     """Понедельничная сводка работодателю (покрытие, долги, деньги, нагрузка). Итог — в Журнал."""
-    from .settings import log_error
+    from .settings import log_error, scrub
     try:
         r = base.digest_send()
         d = r.get("data") or {}
@@ -217,9 +230,22 @@ def _budgets_job(base):
         except Exception:  # noqa: BLE001
             tg = None
         res = B.collect_and_alert(base.db, token, tg=tg)
-        log_error("budgets", "ок: пул {}, активных {}, критичных {}, предупреждений {}, ошибок {}".format(
+        плохо = (res.get("balances_ok") is False)
+        log_error("budgets", "{}: пул {}, активных {}, критичных {}, предупреждений {}, ошибок {}{}".format(
+            "СБОЙ" if плохо else "ок",
             res.get("clients"), res.get("active"), res.get("critical"),
-            res.get("warning"), res.get("errors")))
+            res.get("warning"), res.get("errors"),
+            " — Директ не отдал балансы, состояние клиентов неизвестно" if плохо else ""))
+        if плохо:
+            # Раньше этот случай выглядел в журнале как «ок: критичных 0» — ровно
+            # так 17.07 пять клиентов с кончающимися деньгами стали «в порядке».
+            try:
+                base.db.add_notification(None, "system", "Бюджеты не проверены",
+                                         "Директ не отдал балансы: состояние клиентов "
+                                         "неизвестно, алерты о деньгах могли не уйти",
+                                         "budgets", dedup_key=True)
+            except Exception:  # noqa: BLE001
+                pass
     except Exception as e:  # noqa: BLE001
         log_error("budgets", "сбой: {}".format(e))
 

@@ -113,7 +113,10 @@ class Telegram:
             if reply_markup and i == len(parts) - 1:
                 params["reply_markup"] = reply_markup
             result = self._call("sendMessage", params)
-            mid = ((result or {}).get("result") or {}).get("message_id")
+            # _call уже разворачивает конверт и возвращает data["result"].
+            # Разворачивать второй раз нельзя: mid всегда получался None,
+            # список номеров оставался пустым, и отмена отправки не работала.
+            mid = (result or {}).get("message_id")
             if mid:
                 self.last_message_ids.append(mid)
             if len(parts) > 1:
@@ -137,7 +140,8 @@ class Telegram:
                                 files={"document": (filename, data)},
                                 timeout=max(180, self.timeout))
             except (requests.RequestException, OSError) as e:
-                last = "сеть: {}".format(e)
+                # Адрес запроса содержит токен, а текст ошибки requests его цитирует.
+                last = "сеть: {}".format(self._redact(e))
                 time.sleep(min(2 ** attempt, 8))
                 continue
             try:
@@ -153,7 +157,8 @@ class Telegram:
                 last = "429 (retry_after={})".format(ra)
                 time.sleep(ra + 0.5)
                 continue
-            raise TelegramError("sendDocument: {} {}".format(d.get("error_code"), d.get("description")))
+            raise TelegramError("sendDocument: {} {}".format(
+                d.get("error_code"), self._redact(d.get("description"))))
         raise TelegramError("sendDocument: не удалось ({})".format(last))
 
     def chat_ok(self, chat_id):

@@ -4305,7 +4305,7 @@ class Api:
             if n["to_user"] in (uid, None):
                 msgs.append({"id": n["id"], "text": n["text"], "kind": n["kind"],
                              "created_at": n["created_at"], "acks": n["acks"],
-                             "replies": replies.get(n["id"], [])})
+                             "replies": [r for r in replies.get(n["id"], []) if r.get("user_id") == uid]})
         cov, tot, snt = self._coverage_for(obl, mon, nxt)
         return {
             "user": {"id": u["id"], "name": u["name"] or u["email"], "email": u["email"],

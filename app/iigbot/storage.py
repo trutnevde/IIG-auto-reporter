@@ -1108,11 +1108,16 @@ class Storage:
     # ---------- уведомления кабинета ----------
     def add_notification(self, to_user, kind, title, text=None, link=None, dedup_key=None):
         """Создать уведомление. dedup_key — если такое же уже есть за сутки, не дублируем."""
+        import datetime as _dt
         if dedup_key:
             row = self.conn.execute(
                 "SELECT id FROM notifications WHERE kind=? AND title=? AND COALESCE(to_user,-1)=? "
-                "AND created_at > datetime('now','-1 day')",
-                (kind, title, (to_user if to_user is not None else -1))).fetchone()
+                # Сравниваем в одном формате: наши записи идут через isoformat
+                # с 'T', а datetime('now') даёт пробел. 'T' больше пробела, и
+                # окно растягивалось до 48 часов — напоминания приходили через день.
+                "AND created_at > ?",
+                (kind, title, (to_user if to_user is not None else -1),
+                 (_dt.datetime.now() - _dt.timedelta(days=1)).isoformat(timespec="seconds"))).fetchone()
             if row:
                 return row["id"]
         cur = self.conn.execute(
@@ -1219,12 +1224,16 @@ class Storage:
     def all_note_replies(self):
         """Все ответы разом (для списка сообщений наблюдателя) → {note_id: [ {text,user_name,created_at} ]}."""
         rows = self.conn.execute(
-            """SELECT r.note_id, r.text, r.created_at, u.name AS user_name FROM note_reply r
-               LEFT JOIN users u ON u.id=r.user_id ORDER BY r.id""").fetchall()
+            """SELECT r.note_id, r.user_id, r.text, r.created_at, u.name AS user_name
+               FROM note_reply r LEFT JOIN users u ON u.id=r.user_id ORDER BY r.id""").fetchall()
         out = {}
         for r in rows:
+            # user_id обязателен: карточка специалиста фильтрует ответы по автору,
+            # а по имени фильтровать нельзя — у пользователя без имени LEFT JOIN
+            # даёт NULL, и тёзки склеиваются в одного.
             out.setdefault(r["note_id"], []).append(
-                {"text": r["text"], "user_name": r["user_name"], "created_at": r["created_at"]})
+                {"text": r["text"], "user_id": r["user_id"],
+                 "user_name": r["user_name"], "created_at": r["created_at"]})
         return out
 
     # ---------- бюджеты ----------
@@ -1317,7 +1326,8 @@ class Storage:
     def sent_logins_between(self, iso_from, iso_to):
         """Множество логинов, по которым была УСПЕШНАЯ отправка в окне [from,to)."""
         rows = self.conn.execute(
-            "SELECT DISTINCT login FROM send_log WHERE status='sent' AND sent_at>=? AND sent_at<?",
+            "SELECT DISTINCT login FROM send_log WHERE status='sent' AND undone_at IS NULL "
+            "AND sent_at>=? AND sent_at<?",
             (iso_from, iso_to)).fetchall()
         return {r["login"] for r in rows}
 
@@ -1366,7 +1376,8 @@ class Storage:
         По одному last_send_at на четыреста клиентов — четыреста обращений к базе;
         разделу «Сторонние» нужна вся картина сразу."""
         rows = self.conn.execute(
-            "SELECT login, MAX(sent_at) m FROM send_log WHERE status='sent' GROUP BY login").fetchall()
+            "SELECT login, MAX(sent_at) m FROM send_log WHERE status='sent' "
+            "AND undone_at IS NULL GROUP BY login").fetchall()
         out = {r["login"]: r["m"] for r in rows}
         if logins is None:
             return out
@@ -1375,7 +1386,8 @@ class Storage:
 
     def last_send_at(self, login):
         r = self.conn.execute(
-            "SELECT MAX(sent_at) m FROM send_log WHERE login=? AND status='sent'", (login,)).fetchone()
+            "SELECT MAX(sent_at) m FROM send_log WHERE login=? AND status='sent' "
+            "AND undone_at IS NULL", (login,)).fetchone()
         return r["m"] if r else None
 
     # ---------- bindings ----------
