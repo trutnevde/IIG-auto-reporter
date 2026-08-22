@@ -117,11 +117,18 @@ def main():
     # иначе ночная выгрузка размечала бы столбцы иначе, чем кнопка «Выгрузить».
     links, col_map = None, None
     try:
+        from .settings import load_app_config
         from .storage import Storage
-        db = Storage()
+        # Storage требует путь. Раньше он вызывался пустым, TypeError глотался
+        # соседним except, и ночная выгрузка молча шла ТОЛЬКО по названиям таблиц —
+        # то есть игнорировала и привязки ссылкой, и ручную разметку столбцов,
+        # заданные в кабинете. Расхождение с кнопкой «Выгрузить» списывали на Google.
+        db = Storage(load_app_config()["db_path"])
         links, col_map = db.client_sheets(), db.sheet_cols()
+        print("Привязок из базы: {}, разметок столбцов: {}".format(
+            len(links or {}), len(col_map or {})))
     except Exception as e:  # noqa: BLE001 — без базы синк всё равно работает по названиям
-        print("База недоступна ({}), иду только по названиям таблиц".format(str(e)[:80]))
+        print("База недоступна ({}), иду только по названиям таблиц".format(str(e)[:120]))
     print("Старт выгрузки в Google-таблицы{}…".format(" (+ разрезы)" if do_break else ""))
     res = G.sync_all(token, log=print, do_breakdowns=do_break, links=links, col_map=col_map)
     ok = sum(1 for r in res if r.get("ok"))

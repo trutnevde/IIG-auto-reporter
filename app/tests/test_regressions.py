@@ -194,3 +194,82 @@ def test_импорт_своего_чата_проходит(api_for, db, client
     res = api_for("user").import_chat_history(payload)
     assert res.get("ok"), res.get("error")
     assert "не в вашем доступе" not in json.dumps(res, ensure_ascii=False)
+
+
+# ─────────── Фильтр по кампании на разрезе «Аккаунт» ───────────
+def _пустой_отчёт(**поверх):
+    """Минимальный res для to_text — только то, что функция действительно читает."""
+    res = {
+        "level": "account", "level_label": "Аккаунт", "attribution": "LSC",
+        "date_from": "2026-08-01", "date_to": "2026-08-07", "segments": [],
+        "use_conv": False, "goals": [], "rows": [], "n_total": 0, "n_shown": 0,
+        "totals": {"cost": 1000.0, "imp": 100, "clicks": 10, "ctr": 10.0,
+                   "cpc": 100.0, "conv": 0, "cr": 0.0, "cpa": 0.0},
+    }
+    res.update(поверх)
+    return res
+
+
+def test_отброшенный_фильтр_по_кампании_виден_в_тексте():
+    """Разрез «Аккаунт» не знает поля CampaignId — фильтр применить нельзя.
+
+    Раньше он выбрасывался молча: человек выбирал одну кампанию, получал цифры
+    по всему аккаунту и читал их как цифры по кампании. Расхождение в разы.
+    """
+    from iigbot import report_custom as RC
+    т = RC.to_text("логин", "Клиент", _пустой_отчёт(campaign_filter_dropped="777"))
+    assert "НЕ ПРИМЕНЁН" in т, "об отброшенном фильтре нигде не сказано:\n" + т
+
+
+def test_применённый_фильтр_по_кампании_тоже_назван():
+    from iigbot import report_custom as RC
+    т = RC.to_text("логин", "Клиент",
+                   _пустой_отчёт(level="campaign", level_label="Кампании",
+                                 campaign_filter="777"))
+    assert "только кампания 777" in т, т
+
+
+def test_чистый_отчёт_ничего_не_приписывает():
+    from iigbot import report_custom as RC
+    т = RC.to_text("логин", "Клиент", _пустой_отчёт())
+    assert "ФИЛЬТР" not in т and "только кампания" not in т, т
+
+
+def test_фильтр_не_уходит_в_запрос_на_разрезе_аккаунта():
+    """Слать CampaignId в отчёт по аккаунту нельзя: Директ ответит 400, а наш
+    обработчик припишет ложную подсказку про срезы. Проверяем сам код сборки."""
+    import inspect
+
+    from iigbot import report_custom as RC
+    исходник = inspect.getsource(RC.build)
+    assert 'campaign and level != "account"' in исходник, (
+        "условие на фильтр по кампании изменилось — проверьте, не уходит ли "
+        "CampaignId в отчёт по аккаунту")
+    assert "campaign_filter_dropped" in исходник, (
+        "отброшенный фильтр перестал попадать в ответ")
+
+
+def test_выгрузка_кладётся_в_папку_пользователя():
+    """Файл должен лечь туда, откуда маршрут его отдаёт — в подпапку по id.
+
+    Проверка структурная: сам вызов требует Директа. Если кто-то вернёт плоскую
+    папку reports/, скачивание сломается для всех, кроме администратора, — и
+    заодно вернётся утечка чужих выгрузок по угаданному имени.
+    """
+    import inspect
+
+    from iigbot.api import Api
+    исходник = inspect.getsource(Api.report_export_xlsx)
+    assert 'os.path.join(BASE_DIR, "reports", str(' in исходник, (
+        "выгрузка снова пишется в общую папку — маршрут её не найдёт")
+
+
+def test_маршрут_скачивания_смотрит_только_в_свою_папку():
+    import inspect
+
+    from iigbot import web
+    исходник = inspect.getsource(web.create_app)
+    начало = исходник.index("def download_xlsx")
+    кусок = исходник[начало:начало + 1400]
+    assert 'str(g.user.get("id"))' in кусок, (
+        "маршрут скачивания перестал ограничиваться папкой пользователя")

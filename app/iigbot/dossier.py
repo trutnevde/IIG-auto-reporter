@@ -140,7 +140,14 @@ def build_cut(token, login, ck, a_from, a_to, b_from, b_to,
     ckey = "conv" if has_conv else "clicks"
     rows = _pair(_rows_by_name(ca), _rows_by_name(cb), ckey)
     rows = [r for r in rows if r["now"]["cost"] > 0 or r["was"]["cost"] > 0][:12]
-    cut = {"key": ck, "label": label, "has_conv": has_conv, "compare_by": ckey, "rows": rows}
+    # Итог по ВСЕМУ разрезу (до среза в двенадцать строк) — для честной доли лидера.
+    полный = 0
+    try:
+        полный = float((ca.get("totals") or {}).get(ckey) or 0)
+    except (TypeError, ValueError):
+        полный = 0
+    cut = {"key": ck, "label": label, "has_conv": has_conv, "compare_by": ckey,
+           "rows": rows, "total_now": полный}
     cut["summary"] = cut_summary({"compare_by": ckey}, cut)
     return cut
 
@@ -403,7 +410,9 @@ def happened_items(res):
                         "text": "{}: {} — {} против {}.".format(
                             g["name"], _chg(g["pct"]), R.fmt_int(g["now"]), R.fmt_int(g["was"]))})
 
-    if res["wasted"]:
+    # Про «не дала ни одной заявки» можно говорить, только если заявки вообще
+    # измеряются. Иначе это утверждение не о рекламе, а о нашем учёте.
+    if res.get("has_conv") and res["wasted"]:
         w = res["wasted"][0]
         out.append({"tone": "bad", "icon": "error-warning",
                     "text": "«{}» израсходовала {} и не дала ни одной заявки — разбираем.".format(
@@ -417,7 +426,7 @@ def happened_items(res):
                         _plural(b["now"]["conv"], "заявке", "заявках", "заявках"))})
 
     f = res["forecast"]
-    if f:
+    if f and res.get("has_conv"):
         out.append({"tone": "flat", "icon": "line-chart",
                     "text": "При текущем темпе ({} в день) к концу месяца выйдет около {} {} при расходе ~{}.".format(
                         round(f["per_day_conv"], 1), R.fmt_int(f["conv"]),
@@ -432,8 +441,10 @@ def cut_summary(res, cut):
         return ""
     kk = cut["compare_by"]
     top = max(rows, key=lambda r: r["now"][kk])
-    total = sum(r["now"][kk] for r in rows) or 1
-    share = top["now"][kk] / total * 100
+    # Знаменатель — весь разрез, а не показанные двенадцать строк. В «Географии»
+    # и «Поисковых запросах» строк сотни, и доля от верхушки завышена в разы.
+    total = cut.get("total_now") or (sum(r["now"][kk] for r in rows) or 1)
+    share = min(100.0, top["now"][kk] / total * 100)
     unit = "заявок" if kk == "conv" else "переходов"
     txt = "Больше всего {} даёт «{}» — {:.0f}% от всех".format(unit, _short(top["name"], 30), share)
     if cut["has_conv"]:

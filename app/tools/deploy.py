@@ -102,21 +102,58 @@ def main():
         return cli.exec_command(c)[1].read().decode("utf-8", "replace").strip()
 
     def откат():
-        """Вернуть файлы из копии. Сам не падает: если связь оборвалась, об этом
-        надо сказать словами, а не трассировкой поверх исходной ошибки."""
+        """Вернуть файлы из копии и сказать, сколько вернулось на самом деле.
+
+        Раньше здесь стоял `|| true`: любая неудача копирования гасилась, и слово
+        «ОТКАЧЕНО» печаталось даже когда не вернулся ни один файл. Считаем по
+        факту и сверяем с составом снимка, а не с длиной списка на заливку —
+        в снимке могло не быть модуля, добавленного этим же выкатом.
+        """
         try:
-            for m in UPLOAD:
-                run("cp -p {}/{}/{} {}/{} 2>/dev/null || true".format(BAK, stamp, m, PKG, m))
+            есть = [x for x in run("ls -1 {}/{} 2>/dev/null".format(BAK, stamp)).split("\n") if x.strip()]
+            вернулось = 0
+            for m in есть:
+                out = run("cp -p {}/{}/{} {}/{} && echo ДА".format(BAK, stamp, m, PKG, m))
+                if "ДА" in out:
+                    вернулось += 1
             run("touch {}/tmp/restart.txt".format(BASE))
-            print("   откачено из {}/{}".format(BAK, stamp))
+            if вернулось == 0:
+                print("   ОТКАТ НЕ СОСТОЯЛСЯ: не вернулся ни один файл из {}/{}".format(BAK, stamp))
+                print("   Разберитесь вручную ДО того, как уйдёте: на боевой сейчас "
+                      "смесь старого и нового кода.")
+            else:
+                print("   откачено {} из {} файлов снимка {}".format(вернулось, len(есть), stamp))
         except Exception as e:                                          # noqa: BLE001
             print("   ОТКАТ НЕ ВЫПОЛНЕН: {}".format(str(e)[:120]))
             print("   Верните вручную: скопируйте {}/{}/* в {} и троньте {}/tmp/restart.txt"
                   .format(BAK, stamp, PKG, BASE))
 
+    # Что уезжает на боевую и что лежит в репозитории — должно совпадать.
+    # Именно расхождение здесь дало трёхдневную «выкаченную» правку, которой
+    # на сервере не было. Выкат не останавливаем (мусор в корне не должен
+    # блокировать работу), но говорим громко и пишем в VERSION.
+    грязь = subprocess.run(["git", "status", "--porcelain", "--", "app/iigbot", "app/docs"],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", cwd=REPO).stdout.strip()
+    незапушено = subprocess.run(["git", "rev-list", "--count", "@{u}..HEAD"],
+                                capture_output=True, text=True, cwd=REPO).stdout.strip() or "0"
+    состояние = []
+    if грязь:
+        состояние.append("dirty")
+        print("\n   ВНИМАНИЕ: незакоммиченные правки едут на боевую:")
+        for l in грязь.split("\n")[:12]:
+            print("      {}".format(l))
+    if незапушено not in ("0", ""):
+        состояние.append("unpushed:" + незапушено)
+        print("\n   ВНИМАНИЕ: {} коммит(ов) не запушено — в GitHub этого кода нет,"
+              " а ночная выгрузка таблиц берёт код оттуда".format(незапушено))
+
     шаг(2, "Копия того, что сейчас на сервере -> {}/{}".format(BAK, stamp))
     run("mkdir -p {}/{}".format(BAK, stamp))
-    for n in UPLOAD:
+    # VERSION кладём в снимок вместе с кодом: без него откат возвращает старый
+    # код, но оставляет версию нового коммита — и кабинет, и кнопка «Откатить
+    # выкат» показывают неправду о том, что стоит на бою.
+    for n in UPLOAD + ["VERSION"]:
         run("cp -p {}/{} {}/{}/{} 2>/dev/null || true".format(PKG, n, BAK, stamp, n))
     run("ls -1d {}/*/ 2>/dev/null | head -n -{} | xargs -r rm -rf".format(BAK, KEEP_BACKUPS))
 
@@ -168,7 +205,8 @@ def main():
               " import iigbot.gsheets, iigbot.storage, iigbot.report, iigbot.dossier,"
               " iigbot.api, iigbot.backup_cloud, iigbot.telegram_api, iigbot.bot,"
               " iigbot.budgets, iigbot.presets, iigbot.yandex, iigbot.metrika,"
-              " iigbot.sysinfo; print('импорт ок')\" 2>&1".format(PKG, mods))
+              " iigbot.sysinfo, iigbot.cli, iigbot.run_weekly, iigbot.sync_clients,"
+              " iigbot.gsheets_sync; print('импорт ок')\" 2>&1".format(PKG, mods))
     print("   {}".format(out))
     if "импорт ок" not in out:
         откат()
@@ -180,6 +218,7 @@ def main():
     with sftp.open(PKG + "/VERSION", "w") as f:
         f.write(json.dumps({"commit": коммит,
                             "at": datetime.datetime.now().isoformat(timespec="seconds"),
+                            "state": "+".join(состояние) or "clean",
                             "files": UPLOAD}, ensure_ascii=False))
     with sftp.open(BASE + "/tmp/restart.txt", "w") as f:
         f.write("deploy {}\n".format(int(time.time())))

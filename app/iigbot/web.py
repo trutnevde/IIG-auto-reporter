@@ -110,6 +110,36 @@ def _periodic_tick(base):
         threading.Thread(target=_digest_job, args=(base,), daemon=True).start()
 
 
+def _reports_trim(дней=14):
+    """Убрать старые выгрузки .xlsx.
+
+    Выгрузки — это выписки по клиентам: расход, кампании, запросы. Они копились
+    без срока: самый старый файл пролежал больше месяца. Скачивают их сразу
+    после создания, хранить дальше незачем.
+    """
+    import time
+    from .settings import BASE_DIR, log_error
+    корень = os.path.join(BASE_DIR, "reports")
+    if not os.path.isdir(корень):
+        return 0
+    рубеж = time.time() - дней * 86400
+    убрано = 0
+    for путь, _dirs, файлы in os.walk(корень):
+        for f in файлы:
+            if not f.lower().endswith(".xlsx"):
+                continue
+            полный = os.path.join(путь, f)
+            try:
+                if os.path.getmtime(полный) < рубеж:
+                    os.remove(полный)
+                    убрано += 1
+            except OSError:
+                pass
+    if убрано:
+        log_error("reports_trim", "удалено старых выгрузок: {}".format(убрано))
+    return убрано
+
+
 def _autosync_job(base):
     """Суточное авто-обновление: список клиентов Директа + цели привязанных (пресет ключевых,
     ручные галочки не трогаются — та же логика, что у кнопок). Итог — в Журнал."""
@@ -131,6 +161,7 @@ def _autosync_job(base):
             base.db.cpu_trim()
             base.db.exp_metric_trim()
             base.db.chat_messages_trim()
+            _reports_trim()
             # копия наружу: суточная копия лежит на том же диске и от потери
             # сервера не спасает, поэтому раз в сутки увозим базу на Google-диск
             try:
@@ -413,9 +444,18 @@ def create_app(api=None):
         fn = os.path.basename(name)
         if not fn.lower().endswith(".xlsx") or fn != name:
             return jsonify({"ok": False, "error": "bad filename"}), 400
-        path = os.path.join(BASE_DIR, "reports", fn)
+        # Только из своей подпапки. Раньше отдавался любой файл из общей папки
+        # по имени, а имена предсказуемы: логин клиента, разрез и даты.
+        своя = os.path.join(BASE_DIR, "reports", str(g.user.get("id")))
+        path = os.path.join(своя, fn)
         if not os.path.isfile(path):
-            return jsonify({"ok": False, "error": "файл не найден (сгенерируй отчёт заново)"}), 404
+            # Выгрузки, сделанные до появления подпапок, лежат в общей: отдаём
+            # их только администратору, чтобы старые ссылки не отвалились разом.
+            старый = os.path.join(BASE_DIR, "reports", fn)
+            if g.user.get("role") == "admin" and os.path.isfile(старый):
+                path = старый
+            else:
+                return jsonify({"ok": False, "error": "файл не найден (сгенерируй отчёт заново)"}), 404
         from flask import send_file
         return send_file(path, as_attachment=True, download_name=fn,
                          mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

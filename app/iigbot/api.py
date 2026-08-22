@@ -1511,7 +1511,10 @@ class Api:
         from . import report_custom as RC
         from .settings import BASE_DIR
         res = self._report_build(login, level, date_from, date_to, attribution, limit, segments, date_grain, campaign, goal_ids)
-        folder = os.path.join(BASE_DIR, "reports")
+        # Своя подпапка на пользователя: раньше все выгрузки лежали в общей, а
+        # маршрут скачивания отдавал любой файл по имени любому вошедшему —
+        # имена предсказуемы (логин клиента, разрез, даты).
+        folder = os.path.join(BASE_DIR, "reports", str((self.user or {}).get("id") or "agency"))
         os.makedirs(folder, exist_ok=True)
         safe_login = re.sub(r"[^A-Za-z0-9_.-]", "_", str(login))
         fn = "report_{}_{}_{}_{}.xlsx".format(safe_login, level or "campaign", res["date_from"], res["date_to"])
@@ -2454,7 +2457,15 @@ class Api:
         token = load_secrets()["yandex_oauth_token"]
         goals = self._metrika_goals_for(login).get("goals", [])
         gc = G.client(readonly=False)
-        sid, domain = self._find_client_sheet(gc, c["name"])
+        # Привязка ссылкой сильнее поиска по названию — так обещает интерфейс,
+        # и так уже сделано в sheet_columns. Раньше здесь искали только по
+        # названию: читали одну таблицу, писали в другую.
+        sid = self.db.client_sheets().get(login)
+        domain = None
+        if sid:
+            domain = (c["name"] or login)
+        else:
+            sid, domain = self._find_client_sheet(gc, c["name"])
         if not sid:
             raise RuntimeError("Не нашёл Google-таблицу «Auto-Reporter ОТЧЕТ …» для клиента {} "
                                "(домен из карточки: {})".format(c["name"] or login, c["name"]))
@@ -2485,7 +2496,15 @@ class Api:
         # цели клиента — чтобы разрезы считали конверсии как лента «по неделям» (сходятся)
         goals = self._metrika_goals_for(login).get("goals", [])
         gc = G.client(readonly=False)
-        sid, domain = self._find_client_sheet(gc, c["name"])
+        # Привязка ссылкой сильнее поиска по названию — так обещает интерфейс,
+        # и так уже сделано в sheet_columns. Раньше здесь искали только по
+        # названию: читали одну таблицу, писали в другую.
+        sid = self.db.client_sheets().get(login)
+        domain = None
+        if sid:
+            domain = (c["name"] or login)
+        else:
+            sid, domain = self._find_client_sheet(gc, c["name"])
         if not sid:
             raise RuntimeError("Не нашёл Google-таблицу «Auto-Reporter ОТЧЕТ …» для клиента {}"
                                .format(c["name"] or login))

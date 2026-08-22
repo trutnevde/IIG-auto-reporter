@@ -4486,13 +4486,19 @@ async function jobRun(key, startMethod, args, startText, doneText){
   try{
     const r=await api(startMethod, ...(args||[]));
     if(r&&r.already_running){toast('Уже выполняется: '+(r.title||'задача'),'err');return;}
+    // Сервер отвечает {busy:true} когда идёт ДРУГАЯ операция. Раньше этот ответ
+    // не читался: интерфейс шёл опрашивать прогресс и показывал результат
+    // прошлого запуска как успех текущего — «Выгружено: строк 812» при
+    // нетронутой таблице.
+    if(r&&r.busy){toast(r.error||('Сейчас идёт другая операция: '+(r.title||'')),'err');return;}
   }catch(e){return;}
   toast(startText);
   setBusy(startText);              // сразу, не дожидаясь первого ответа о ходе дела
   for(;;){
     await new Promise(s=>setTimeout(s,1500));
     let p; try{p=await api('job_progress',key);}catch(e){return;}
-    if(p.unknown)return;
+    // Индикатор не гасим: он может показывать чужую, реально идущую задачу.
+    if(p.unknown){toast('Задача не найдена — возможно, приложение перезапустили','err');return;}
     if(p.running){ if(p.note)setBusy(p.title+' — '+p.note); continue; }
     setBusy('');
     if(p.error){toast(p.error,'err');return;}
@@ -5281,6 +5287,17 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-22',tag:'fix',title:'Ещё шесть мест, где цифра была неправильной, а вопросов не вызывала',
+ sum:'Вторая половина сплошного разбора. Ошибок не было видно ни в одном месте — ни красного, ни падений',items:[
+  '<b>Досье писало «ни одной заявки» там, где заявки вообще не считаются.</b> Если у клиента не выбраны цели или счётчик недоступен, ноль заявок — это факт о нашем учёте, а не о рекламе. Теперь такие кампании в разбор не попадают, и прогноз «к концу месяца около нуля заявок» тоже не печатается.',
+  '<b>Доля лидера в досье считалась от двенадцати показанных строк, а не от всех.</b> В разрезах «География» и «Поисковые запросы» строк сотни, и «даёт 40% расхода» на деле означало 40% от верхушки. Доля теперь считается от всего разреза.',
+  '<b>Фильтр по кампании на разрезе «Аккаунт» молча пропадал.</b> Человек выбирал одну кампанию, а получал цифры по всему аккаунту — и нигде об этом не говорилось. Теперь на этом разрезе выбор кампании гасится, а если фильтр всё-таки не применился, об этом написано прямо в шапке отчёта и в тексте для клиента.',
+  '<b>Выгрузки .xlsx лежали в общей папке и отдавались по имени любому вошедшему.</b> Имена предсказуемые: логин клиента, разрез, даты. Теперь у каждого своя папка, чужое не отдаётся, а сами выгрузки убираются через две недели — самая старая пролежала больше месяца.',
+  '<b>Кабинет показывал результат прошлого запуска как свежий.</b> Когда сервер отвечал «идёт другая операция», интерфейс этого не читал: шёл смотреть прогресс и рапортовал «Выгружено: строк 812» при нетронутой таблице.',
+  '<b>Привязка таблицы ссылкой не учитывалась при записи.</b> Читали из привязанной, писали в найденную по названию. Кнопка «Открыть таблицу» вела в один файл, данные уезжали в другой.',
+  '<b>Кнопка «Отменить» после закрытия долга не отменяла ничего.</b> Читала поле, которого в ответе нет.',
+  '<b>Откат выката мог отрапортовать об откате, которого не было.</b> Сбой копирования гасился, и слово «откачено» печаталось даже когда не вернулся ни один файл. Заодно откат теперь возвращает и номер версии — раньше код откатывался, а версия оставалась от нового.'
+ ]},
 {date:'2026-08-22',tag:'fix',title:'Сплошной разбор: восемь мест, где система врала молча',
  sum:'Ничего не падало и никто не ругался — просто результат был неверный, а выглядел правильным',items:[
   '<b>«Отправлено» рапортовалось по факту попытки, а не результата.</b> Если падали все чаты клиента, окно прогресса, всплывающее сообщение и запись в журнале хором сообщали об успешной отправке. Теперь статус считается по результату, а провалившийся клиент попадает в счётчик ошибок — раньше он не попадал ни в один, и итог показывал «отправлено N, ошибок 0» при красных строках.',
@@ -6057,7 +6074,7 @@ async function renderBuilder(clientOpts){
         <input type="search" class="pick-s" placeholder="Поиск по названию или логину…" oninput="pickFilter(this,'rbClient')">
         <select id="rbClient" onchange="rbLoadCampaigns();rbLoadGoals();rbUpdateSend()">${clientOpts||'<option>нет клиентов</option>'}</select></div>
         <div class="field"><label>Кампания (фильтр)</label><select id="rbCampaign"><option value="">Все кампании</option></select></div>
-        <div class="field"><label>Базовый разрез</label><select id="rbLevel">${lv}</select></div>
+        <div class="field"><label>Базовый разрез</label><select id="rbLevel" onchange="rbLevelChanged()">${lv}</select></div>
         <div class="field"><label>Модель атрибуции</label><select id="rbAttr">${at}</select></div>
         <div class="field"><label>Дата с</label><input id="rbFrom" type="date" value="${f(mon)}"></div>
         <div class="field"><label>Дата по</label><input id="rbTo" type="date" value="${f(sun)}"></div>
@@ -6108,6 +6125,7 @@ async function rbApplyDraft(){
   if(d.client&&cl&&[...cl.options].some(o=>o.value===d.client))cl.value=d.client;
   await rbLoadCampaigns();
   if(d.campaign){const cc=el('rbCampaign');if(cc&&[...cc.options].some(o=>o.value===d.campaign))cc.value=d.campaign;}
+  rbLevelChanged();   // пресет ставит разрез напрямую, onchange при этом не срабатывает
   await rbLoadGoals();
   if(d.goals&&d.goals.length)document.querySelectorAll('#rbGoals .rbg').forEach(c=>{const g=d.goals.find(x=>x.id===c.value);if(g)c.checked=g.on;});
   rbUpdateSend();
@@ -6126,6 +6144,7 @@ async function rbLoadCampaigns(){
     sel.innerHTML='<option value="">Все кампании ('+cs.length+')</option>'+cs.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   }catch(e){sel.innerHTML='<option value="">Все кампании</option>';}
   sel.disabled=false;
+  rbLevelChanged();   // разрез мог быть «Аккаунт» — там фильтр по кампании не работает
 }
 // Номер счётчика рядом с названием: у клиентов бывают счётчики-клоны, и тогда в списке
 // подряд идут четыре одинаковых «Клик по кнопке Позвонить» — различить их иначе нельзя.
@@ -6187,6 +6206,19 @@ async function doReportQuery(){
   try{const r=await api('report_query',...p);RB_LAST=r;RB_SORT={key:'cost',dir:-1};el('rbResult').innerHTML=rbShell(r);rbDrawTable();}
   catch(e){el('rbResult').innerHTML=errBlock(e);}
 }
+/* Разрез «Аккаунт» не умеет фильтр по кампании: Директ не знает там такого поля.
+   Раньше выбор просто молча выбрасывался, и человек читал цифры по всему
+   аккаунту как цифры по одной кампании. Гасим сам выбор, чтобы вопроса не было. */
+function rbLevelChanged(){
+  const lvl=el('rbLevel')&&el('rbLevel').value;
+  const c=el('rbCampaign');
+  if(c){
+    const аккаунт=(lvl==='account');
+    c.disabled=аккаунт;
+    if(аккаунт&&c.value){c.value='';toast('Разрез «Аккаунт» не поддерживает фильтр по кампании — фильтр снят','err');}
+    c.title=аккаунт?'Недоступно на разрезе «Аккаунт»':'';
+  }
+}
 function rbShell(r){
   let head=`<div style="margin-bottom:8px"><b>${esc(r.client_name)}</b> · ${esc(r.level_label)}`;
   if(r.segments&&r.segments.length)head+=` · +${r.segments.length} срез(а)`;
@@ -6194,6 +6226,10 @@ function rbShell(r){
   if(!r.use_conv)head+=' · <span class="muted">конверсии для этого разреза недоступны</span>';
   else if(!r.by_goals)head+=' · <span class="muted">конверсии — суммарные (без целей)</span>';
   else if(r.goals&&r.goals.length)head+=' · <span class="muted">конверсии разбиты по целям — <svg class="ic"><use href="#i-focus-3"/></svg> колонки справа</span>';
+  // Судьба фильтра по кампании — крупно и на видном месте: раньше он на разрезе
+  // «Аккаунт» просто пропадал, и человек читал весь аккаунт как одну кампанию.
+  if(r.campaign_filter_dropped)head+=' · <b style="color:var(--red)">фильтр по кампании НЕ применён (разрез «Аккаунт» его не поддерживает)</b>';
+  else if(r.campaign_filter)head+=' · <span class="muted">только кампания '+esc(r.campaign_filter)+'</span>';
   head+='</div>';
   const toolbar=`<div style="display:flex;gap:10px;align-items:center;margin:0 0 10px;flex-wrap:wrap"><input type="search" id="rbSearch" placeholder="фильтр по строкам…" style="min-width:220px" oninput="rbDrawTable()"><span class="muted" id="rbCount"></span></div>`;
   return head+toolbar+'<div id="rbTable"></div>';
@@ -8073,11 +8109,14 @@ async function supExcuse(loginEnc,btn){
     if(!reason.trim()){toast('Без причины закрыть нельзя','err');return;}
   }
   try{
-    await api('excuse_add',login,kind,reason);
+    const добавлено=await api('excuse_add',login,kind,reason);
     // обратимо: вместо допроса «уверен?» даём отмену
     toast('Долг закрыт: '+name,'ok',{label:'Отменить',fn:async()=>{
-      try{const l=await api('supervision');const ex=(l.excused||[]).find(x=>x.login===login);
-        if(ex)await api('excuse_remove',ex.id);}catch(e){}
+      // Раньше номер закрытия искали в поле l.excused, которого у supervision
+      // нет вовсе (он отдаёт {agency, rows}) — кнопка «Отменить» не отменяла
+      // ничего ни разу. Номер возвращает сам excuse_add, искать не нужно.
+      try{ if(добавлено&&добавлено.id) await api('excuse_remove',добавлено.id);
+           else toast('Не удалось отменить: закрытие не вернуло номер','err'); }catch(e){}
       renderSupervision();}});
     renderSupervision();
   }catch(e){}

@@ -142,8 +142,15 @@ def build(token, login, level, date_from, date_to, attribution=None, goal_defs=N
 
     # фильтр по одной кампании (для «выгрузить одну кампанию и разбить внутри»)
     fltrs = None
+    фильтр_отброшен = None
     if campaign and level != "account":
         fltrs = [{"Field": "CampaignId", "Operator": "IN", "Values": [str(campaign)]}]
+    elif campaign:
+        # Отчёт по аккаунту не знает поля CampaignId: отправишь — Директ вернёт
+        # 400, а наш обработчик припишет ложную подсказку про срезы. Поэтому
+        # фильтр не применяем, но и не прячем: раньше он исчезал молча, и
+        # человек читал цифры по всему аккаунту как цифры по одной кампании.
+        фильтр_отброшен = str(campaign)
 
     # Reports API: массив Goals не может быть длиннее 10. При >10 выбранных целей (частый случай —
     # у клиента много автоцелей) запрашиваем БАТЧАМИ по 10 и склеиваем столбцы целей по строкам
@@ -286,6 +293,8 @@ def build(token, login, level, date_from, date_to, attribution=None, goal_defs=N
         "date_from": date_from, "date_to": date_to,
         "rows": out_rows, "totals": _metrics(t_imp, t_clk, t_cost, t_conv),
         "n_total": n_total, "n_shown": len(out_rows),
+        "campaign_filter": str(campaign) if (campaign and not фильтр_отброшен) else None,
+        "campaign_filter_dropped": фильтр_отброшен,
     }
 
 
@@ -294,6 +303,12 @@ def to_text(login, client_name, res, top=25):
     seg_note = ""
     if res.get("segments"):
         seg_note = " · срезы: " + ", ".join(SEGMENTS[s][1] for s in res["segments"])
+    # Отброшенный фильтр обязан быть виден в самом тексте: человек выбирал одну
+    # кампанию, а получал весь аккаунт — и раньше об этом нигде не говорилось.
+    if res.get("campaign_filter_dropped"):
+        seg_note += " · ФИЛЬТР ПО КАМПАНИИ НЕ ПРИМЕНЁН (разрез «Аккаунт» его не поддерживает)"
+    elif res.get("campaign_filter"):
+        seg_note += " · только кампания " + str(res["campaign_filter"])
     L = [
         "Отчёт: {} ({})".format(client_name or login, login),
         "Разрез: {} · Атрибуция: {} · Период: {} — {}{}".format(

@@ -129,3 +129,53 @@ def test_чужой_сайт_не_дёрнет_апи(client):
     r = client.post("/api/me", json=[])
     assert r.status_code in (400, 403, 404), (
         "метод отработал без заголовка своей страницы: {}".format(r.status_code))
+
+
+# ─────────── Выгрузки .xlsx: только своё ───────────
+def _войти(client, db, monkeypatch, email, роль="user"):
+    from iigbot import auth, web
+    uid = db.create_user(email, auth.hash_password("тест-пароль-12345"), name=email, role=роль)
+    monkeypatch.setattr(web, "_apis", {})
+    r = client.post("/api/login", json=[email, "тест-пароль-12345"], headers={"X-IIG": "1"})
+    assert (r.get_json() or {}).get("ok"), "вход не прошёл: " + r.get_data(as_text=True)[:200]
+    return uid
+
+
+def _положить_выгрузку(sandbox_fs, uid, имя="report_клиент_campaign_2026-08-01_2026-08-07.xlsx"):
+    import os
+    папка = os.path.join(str(sandbox_fs), "reports", str(uid))
+    os.makedirs(папка, exist_ok=True)
+    путь = os.path.join(папка, имя)
+    with open(путь, "wb") as f:
+        f.write(b"PK\x03\x04test")
+    return имя
+
+
+def test_своя_выгрузка_скачивается(app, client, db, monkeypatch, sandbox_fs):
+    uid = _войти(client, db, monkeypatch, "хозяин@test.local")
+    имя = _положить_выгрузку(sandbox_fs, uid)
+    r = client.get("/download/xlsx/" + имя)
+    assert r.status_code == 200, "свой же файл не отдался: {}".format(r.status_code)
+
+
+def test_чужая_выгрузка_не_скачивается(app, client, db, monkeypatch, sandbox_fs):
+    """Имена выгрузок предсказуемы: логин клиента, разрез и даты. Раньше маршрут
+    отдавал любой файл из общей папки любому вошедшему — то есть данные чужих
+    клиентов уходили по угаданному имени."""
+    имя = _положить_выгрузку(sandbox_fs, 999999)
+    _войти(client, db, monkeypatch, "посторонний@test.local")
+    r = client.get("/download/xlsx/" + имя)
+    assert r.status_code == 404, "отдалась чужая выгрузка: {}".format(r.status_code)
+
+
+def test_выгрузка_без_входа_не_отдаётся(app, client, sandbox_fs):
+    имя = _положить_выгрузку(sandbox_fs, 1)
+    r = client.get("/download/xlsx/" + имя)
+    assert r.status_code == 401, r.status_code
+
+
+def test_обход_пути_в_имени_выгрузки_отвергается(app, client, db, monkeypatch, sandbox_fs):
+    _войти(client, db, monkeypatch, "любопытный@test.local")
+    for имя in ("../../secrets.json", "..%2Fconfig.json", r"..\config.json.xlsx"):
+        r = client.get("/download/xlsx/" + имя)
+        assert r.status_code in (400, 404), "{} -> {}".format(имя, r.status_code)
