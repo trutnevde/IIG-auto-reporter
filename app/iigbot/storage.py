@@ -433,6 +433,20 @@ class Storage:
             # бэкфилл существующих: лучшая доступная оценка — updated_at
             self.conn.execute("UPDATE clients SET added_at=updated_at WHERE added_at IS NULL")
             self.conn.commit()
+        mcols = {r["name"] for r in self.conn.execute("PRAGMA table_info(chat_messages)")}
+        if mcols and "text_low" not in mcols:   # поиск по-русски: см. touch_chat_activity
+            self.conn.execute("ALTER TABLE chat_messages ADD COLUMN text_low TEXT")
+            self.conn.commit()
+        scols = {r["name"] for r in self.conn.execute("PRAGMA table_info(send_log)")}
+        if scols and "by_user" not in scols:   # кто нажал «отправить»: в истории было видно только «отправлено»
+            self.conn.execute("ALTER TABLE send_log ADD COLUMN by_user INTEGER")
+            self.conn.commit()
+        if scols and "message_ids" not in scols:   # id сообщений в Telegram — чтобы отправку можно было отменить
+            self.conn.execute("ALTER TABLE send_log ADD COLUMN message_ids TEXT")
+            self.conn.commit()
+        if scols and "undone_at" not in scols:     # когда отменили; строка остаётся, чтобы было видно, что так было
+            self.conn.execute("ALTER TABLE send_log ADD COLUMN undone_at TEXT")
+            self.conn.commit()
         acols = {r["name"] for r in self.conn.execute("PRAGMA table_info(chat_activity)")}
         if acols and "wait_off_at" not in acols:   # снят с ожидания ответа: на каком сообщении клиента
             self.conn.execute("ALTER TABLE chat_activity ADD COLUMN wait_off_at TEXT")
@@ -462,6 +476,18 @@ class Storage:
             self.conn.commit()
         # активность в чатах клиентов: кто последний писал — клиент, мы или бот-отчёт.
         # Нужно, чтобы видеть «клиент спросил, а мы не ответили N часов».
+        self.conn.execute(
+            """CREATE TABLE IF NOT EXISTS chat_messages (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id   INTEGER NOT NULL,
+                at        TEXT NOT NULL,
+                kind      TEXT,            -- client | our | bot
+                name      TEXT,
+                text      TEXT,
+                text_low  TEXT             -- тот же текст в нижнем регистре, для поиска
+            )""")
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_chat_messages ON chat_messages(chat_id, at)")
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS chat_activity (
                 chat_id        INTEGER PRIMARY KEY,
@@ -961,9 +987,24 @@ class Storage:
 
     # ---------- активность в чатах (кто кому не ответил) ----------
     def touch_chat_activity(self, chat_id, kind, name=None, text=None):
-        """Зафиксировать сообщение в чате. kind: 'client' | 'our' | 'bot'."""
+        """Зафиксировать сообщение в чате. kind: 'client' | 'our' | 'bot'.
+
+        Заодно кладём сообщение в chat_messages. Раньше хранился только текст
+        ПОСЛЕДНЕГО сообщения клиента, и он затирался следующим — искать по
+        переписке было физически не в чем. Через эту функцию проходит всё:
+        и живые сообщения из вебхука, и импорт выгрузки Telegram Desktop,
+        поэтому история наберётся и задним числом, если выгрузку загрузят.
+        """
         self.conn.execute("INSERT OR IGNORE INTO chat_activity(chat_id) VALUES(?)", (chat_id,))
         now = _now()
+        if text:
+            # Отдельная колонка в нижнем регистре нужна из-за SQLite: его LIKE и
+            # lower() приводят регистр только у латиницы, поэтому «Лендинг» не
+            # находился по запросу «лендинг». Питон кириллицу приводит правильно.
+            т = str(text)[:2000]
+            self.conn.execute(
+                "INSERT INTO chat_messages(chat_id,at,kind,name,text,text_low) "
+                "VALUES(?,?,?,?,?,?)", (chat_id, now, kind, name, т, т.lower()))
         if kind == "client":
             self.conn.execute(
                 "UPDATE chat_activity SET last_client_at=?, last_client_name=?, last_client_text=?, "
@@ -977,6 +1018,33 @@ class Storage:
         else:
             self.conn.execute("UPDATE chat_activity SET last_bot_at=?, updated_at=? WHERE chat_id=?",
                               (now, now, chat_id))
+        self.conn.commit()
+
+    def chat_search(self, query, chat_ids=None, limit=60):
+        """Найти сообщения по куску текста. chat_ids=None — без ограничения."""
+        q = "%{}%".format(str(query or "").strip().lower())
+        sql = ("SELECT m.*, c.title AS chat_title FROM chat_messages m "
+               "LEFT JOIN chats c ON c.chat_id=m.chat_id "
+               "WHERE COALESCE(m.text_low, LOWER(m.text)) LIKE ? ")
+        args = [q]
+        if chat_ids is not None:
+            ids = [int(x) for x in chat_ids]
+            if not ids:
+                return []
+            sql += "AND m.chat_id IN ({}) ".format(",".join("?" * len(ids)))
+            args += ids
+        sql += "ORDER BY m.at DESC LIMIT ?"
+        args.append(int(limit))
+        return [dict(r) for r in self.conn.execute(sql, args).fetchall()]
+
+    def chat_messages_count(self):
+        return self.conn.execute("SELECT COUNT(*) FROM chat_messages").fetchone()[0]
+
+    def chat_messages_trim(self, keep_days=180):
+        """Полгода переписки хватает для поиска; дальше это просто вес базы."""
+        import datetime as _dt
+        edge = (_dt.datetime.now() - _dt.timedelta(days=keep_days)).isoformat()
+        self.conn.execute("DELETE FROM chat_messages WHERE at < ?", (edge,))
         self.conn.commit()
 
     def list_chat_activity(self):
@@ -1343,10 +1411,39 @@ class Storage:
         return self.conn.execute("SELECT * FROM bindings WHERE login=?", (login,)).fetchall()
 
     # ---------- send log ----------
-    def log_send(self, login, chat_id, period_from, period_to, status, error=None):
-        self.conn.execute(
-            "INSERT INTO send_log(login,chat_id,period_from,period_to,status,error,sent_at) "
-            "VALUES(?,?,?,?,?,?,?)",
-            (login, chat_id, period_from, period_to, status, error, _now()),
+    def log_send(self, login, chat_id, period_from, period_to, status, error=None,
+                 by_user=None, message_ids=None):
+        """Запись об отправке. Возвращает её номер — по нему делается отмена."""
+        import json as _j
+        cur = self.conn.execute(
+            "INSERT INTO send_log(login,chat_id,period_from,period_to,status,error,sent_at,"
+            "by_user,message_ids) VALUES(?,?,?,?,?,?,?,?,?)",
+            (login, chat_id, period_from, period_to, status, error, _now(),
+             by_user, _j.dumps(list(message_ids or []))),
         )
+        self.conn.commit()
+        return cur.lastrowid
+
+    def sends_today(self, login):
+        """Успешные отправки этому клиенту за сегодня.
+
+        Нужно, чтобы предупредить о повторе: привычная реакция «кажется, не прошло —
+        нажму ещё раз» приводила к тому, что клиент получал второй одинаковый отчёт.
+        """
+        import datetime as _d
+        день = _d.date.today().isoformat()
+        rows = self.conn.execute(
+            "SELECT s.*, u.name AS who FROM send_log s LEFT JOIN users u ON u.id=s.by_user "
+            "WHERE s.login=? AND s.status='sent' AND s.undone_at IS NULL "
+            "AND substr(s.sent_at,1,10)=? ORDER BY s.id DESC", (login, день)).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_send(self, send_id):
+        row = self.conn.execute(
+            "SELECT s.*, u.name AS who FROM send_log s LEFT JOIN users u ON u.id=s.by_user "
+            "WHERE s.id=?", (int(send_id),)).fetchone()
+        return dict(row) if row else None
+
+    def mark_send_undone(self, send_id):
+        self.conn.execute("UPDATE send_log SET undone_at=? WHERE id=?", (_now(), int(send_id)))
         self.conn.commit()

@@ -97,7 +97,14 @@ class Telegram:
         return self._call("getUpdates", params, http_timeout=t + 15, retries=1)
 
     def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+        """Отправить текст. Длинный режется на части — Telegram не берёт больше 4096.
+
+        Возвращает ответ на ПОСЛЕДНЮЮ часть (как было), но заодно складывает номера
+        всех отправленных сообщений в self.last_message_ids: без них нельзя отменить
+        отправку, а отменять надо все части, а не только последнюю.
+        """
         result = None
+        self.last_message_ids = []
         parts = split_text(text)
         for i, part in enumerate(parts):
             params = {"chat_id": chat_id, "text": part, "disable_web_page_preview": True}
@@ -106,9 +113,16 @@ class Telegram:
             if reply_markup and i == len(parts) - 1:
                 params["reply_markup"] = reply_markup
             result = self._call("sendMessage", params)
+            mid = ((result or {}).get("result") or {}).get("message_id")
+            if mid:
+                self.last_message_ids.append(mid)
             if len(parts) > 1:
                 time.sleep(0.4)
         return result
+
+    def delete_message(self, chat_id, message_id):
+        """Удалить своё сообщение. Telegram разрешает это боту в течение 48 часов."""
+        return self._call("deleteMessage", {"chat_id": chat_id, "message_id": int(message_id)})
 
     def send_document(self, chat_id, filename, data, caption=None):
         """Отправить файл в чат. Отдельно от _call: файлы уходят multipart-ом, а не JSON-ом.

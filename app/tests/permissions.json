@@ -89,6 +89,12 @@
   "observer": "разрешено",
   "user": "отказано"
  },
+ "chat_search": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "разрешено"
+ },
  "chats": {
   "admin": "разрешено",
   "agency": "разрешено",
@@ -527,6 +533,12 @@
   "observer": "разрешено",
   "user": "разрешено"
  },
+ "pin_toggle": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
  "pool_clients": {
   "admin": "разрешено",
   "agency": "разрешено",
@@ -689,11 +701,23 @@
   "observer": "отказано",
   "user": "разрешено"
  },
+ "send_check": {
+  "admin": "отказано",
+  "agency": "разрешено",
+  "observer": "разрешено",
+  "user": "отказано"
+ },
  "send_test": {
   "admin": "отказано",
   "agency": "разрешено",
   "observer": "отказано",
   "user": "отказано"
+ },
+ "send_undo": {
+  "admin": "разрешено",
+  "agency": "разрешено",
+  "observer": "отказано",
+  "user": "разрешено"
  },
  "set_client_note": {
   "admin": "разрешено",

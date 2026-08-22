@@ -163,6 +163,10 @@ def test_каждый_метод_кому_то_запрещён_или_осоз�
         "gsheets_clients", "copy_reports", "budgets_refresh",  # ограничены своим скоупом
         "history", "preset_runs", "preset_spec", "presets_list",
         "dossier_options", "report_options", "run_weekly_progress", "suggestions",
+        # Проверен руками 22.08.2026: роль не проверяется намеренно, зато поиск
+        # сужается до чатов вызывающего — специалист видит только свою переписку,
+        # наблюдатель и админ всю. Это сильнее ролевой проверки.
+        "chat_search",
     }
     now = build_matrix(api_for, ctx)
     everyone = {n for n, row in now.items()

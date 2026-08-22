@@ -408,6 +408,11 @@ class Api:
         binds = {b["login"]: b for b in self.db.list_bindings(self._owner())}
         out = []
         sent = self.db.last_send_map()
+        pins = set(self._pins())
+        # «Без активности» — это клиент, у которого за три недели ноль расхода
+        # или которого вообще нет в бюджетах. Из 401 аккаунта Директа реально
+        # ведётся четыре десятка, остальные — архив и шум, и они мешают искать.
+        расход = {b["login"]: (b["cost21"] or 0) for b in self.db.list_budgets()}
         for c in self.db.list_clients(self._owner()):
             b = binds.get(c["login"])
             try:
@@ -426,6 +431,9 @@ class Api:
                 "last_sent": sent.get(c["login"]),
                 # для ссылки в Метрику: нужен номер счётчика, а не сами цели
                 "counter": self._counter_of(c["login"], goals),
+                "note": (c["note"] if "note" in c.keys() else None) or "",
+                "pinned": c["login"] in pins,
+                "spent21": round(расход.get(c["login"], 0)),
             })
         return out
 
@@ -1131,11 +1139,16 @@ class Api:
         else:
             rows = []
         names = {c["login"]: c["name"] for c in self.db.list_clients(self._owner())}
+        who = {u["id"]: (u["name"] or u["email"]) for u in self.db.list_users()}
         return [{
             "sent_at": r["sent_at"], "login": r["login"], "client_name": names.get(r["login"], r["login"]),
             "chat_title": self._chat_title(r["chat_id"]) if r["chat_id"] else None,
             "period_from": r["period_from"], "period_to": r["period_to"],
             "status": r["status"], "error": r["error"],
+            # кто нажал «отправить»: раньше в истории было видно только «отправлено»
+            "who": who.get(r["by_user"] if "by_user" in r.keys() else None),
+            "undone": bool(("undone_at" in r.keys()) and r["undone_at"]),
+            "send_id": r["id"],
         } for r in rows]
 
     # ---------- конструктор отчётов ----------
@@ -1216,12 +1229,119 @@ class Api:
         if not chats:
             raise RuntimeError("Клиент не привязан ни к одному чату")
         tg = self._tg_client()
-        sent = 0
+        sent, записи = 0, []
+        who = self.user["id"] if self.user else None
         for b in chats:
             tg.send_message(b["chat_id"], res["text"])
-            self.db.log_send(login, b["chat_id"], res["date_from"], res["date_to"], "sent")
+            записи.append(self.db.log_send(
+                login, b["chat_id"], res["date_from"], res["date_to"], "sent",
+                by_user=who, message_ids=getattr(tg, "last_message_ids", None)))
             sent += 1
-        return {"sent": sent}
+        # Номера записей возвращаем наружу: по ним кабинет предлагает отменить
+        # отправку, пока человек ещё смотрит на экран.
+        return {"sent": sent, "send_ids": записи}
+
+    @safe
+    def send_check(self, login):
+        """Уходил ли этому клиенту отчёт сегодня (и от кого).
+
+        Привычная реакция «кажется, не прошло — нажму ещё раз» приводила к тому,
+        что клиент получал второй одинаковый отчёт. Теперь кабинет спрашивает.
+        """
+        self._require_owned(login)
+        было = self.db.sends_today(login)
+        return {"today": len(было),
+                "last": ({"at": было[0]["sent_at"], "who": было[0].get("who")} if было else None)}
+
+    @safe
+    def send_undo(self, send_id):
+        """Отменить отправку: удалить сообщения из чата клиента.
+
+        Telegram разрешает боту удалять свои сообщения 48 часов, так что отмена
+        настоящая — сообщение исчезает и у клиента. Запись в истории остаётся
+        помеченной: скрывать факт отправки нельзя, иначе история врёт.
+        """
+        self._require_write()
+        rec = self.db.get_send(send_id)
+        if not rec:
+            raise RuntimeError("Отправка не найдена")
+        self._require_owned(rec["login"])
+        if rec.get("undone_at"):
+            return {"already": True, "note": "эта отправка уже отменена"}
+        import json as _j
+        try:
+            ids = _j.loads(rec.get("message_ids") or "[]")
+        except ValueError:
+            ids = []
+        if not ids:
+            raise RuntimeError("Нечего отменять: номера сообщений не сохранены "
+                               "(отправка сделана до появления этой возможности)")
+        tg = self._tg_client()
+        удалено, не_вышло = 0, 0
+        for mid in ids:
+            try:
+                tg.delete_message(rec["chat_id"], mid)
+                удалено += 1
+            except Exception:                                          # noqa: BLE001
+                не_вышло += 1
+        self.db.mark_send_undone(send_id)
+        self._audit("report", rec["login"], "отправка отменена, удалено сообщений: {}".format(удалено))
+        return {"deleted": удалено, "failed": не_вышло,
+                "note": ("отчёт удалён из чата клиента" if не_вышло == 0 else
+                         "удалено {} из {}: остальные Telegram уже не отдаёт "
+                         "(прошло больше 48 часов)".format(удалено, len(ids)))}
+
+    # ── 7: закреплённые клиенты ──
+    def _pins(self):
+        raw = self.db.get_kv("pins:{}".format(self.user["id"] if self.user else 0)) or ""
+        return [x for x in raw.split(",") if x]
+
+    @safe
+    def pin_toggle(self, login):
+        """Закрепить клиента наверху списка или снять закрепление.
+
+        У каждого есть три-пять проектов, которые смотрят каждый день, а в общем
+        списке они тонут в алфавите. Закрепления свои у каждого сотрудника.
+        """
+        self._require_owned(login)
+        pins = self._pins()
+        if login in pins:
+            pins.remove(login)
+            стало = False
+        else:
+            pins.append(login)
+            стало = True
+        self.db.set_kv("pins:{}".format(self.user["id"] if self.user else 0), ",".join(pins))
+        return {"pinned": стало, "count": len(pins)}
+
+    @safe
+    def chat_search(self, query, limit=60):
+        """Поиск по переписке с клиентами.
+
+        Ищет только в тех чатах, которые видны вызывающему: у специалиста это
+        чаты его клиентов и свободные, у наблюдателя и админа — все.
+
+        История ведётся с 22.08.2026 — раньше текст сообщений нигде не хранился,
+        затирался последний. Задним числом её можно набрать, загрузив выгрузку
+        из Telegram Desktop в разделе «Чаты».
+        """
+        q = str(query or "").strip()
+        if len(q) < 3:
+            raise RuntimeError("Слишком короткий запрос: нужно хотя бы три знака")
+        s = self._owned_set()
+        ids = None
+        if s is not None:
+            свои = {b["chat_id"] for b in self.db.list_bindings(self._owner())}
+            ids = list(свои)
+        rows = self.db.chat_search(q, chat_ids=ids, limit=limit)
+        КТО = {"client": "клиент", "our": "мы", "bot": "бот"}
+        return {"rows": [{"chat_id": r["chat_id"], "chat": r.get("chat_title") or str(r["chat_id"]),
+                          "at": r["at"], "kind": КТО.get(r["kind"], r["kind"] or ""),
+                          "name": r.get("name") or "", "text": r.get("text") or ""}
+                         for r in rows],
+                "total": self.db.chat_messages_count(),
+                "hint": "История переписки ведётся с 22.08.2026. Более раннее можно "
+                        "добрать, загрузив выгрузку из Telegram Desktop в разделе «Чаты»."}
 
     @safe
     def dossier_options(self):

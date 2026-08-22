@@ -126,6 +126,7 @@ def _autosync_job(base):
             res = base._integrity_run()
             base.db.cpu_trim()
             base.db.exp_metric_trim()
+            base.db.chat_messages_trim()
             # копия наружу: суточная копия лежит на том же диске и от потери
             # сервера не спасает, поэтому раз в сутки увозим базу на Google-диск
             try:

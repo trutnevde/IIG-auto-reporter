@@ -35,9 +35,18 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 APPDIR = os.path.join(REPO, "app")
 LOCAL = os.path.join(APPDIR, "iigbot")
 
-UPLOAD = ["report.py", "report_custom.py", "dossier.py", "api.py", "storage.py",
-          "gsheets.py", "gsheets_sync.py", "web.py", "import_config.py",
-          "backup_cloud.py", "ui.html"]
+def _пакет():
+    """Все файлы пакета. Раньше здесь был список из одиннадцати имён, и это дважды
+    вышло боком: правку клали в модуль, которого в списке нет, выкат её молча не
+    увозил, а мы считали, что увёз. Так на боевой три дня прожила незакрытая утечка
+    токена бота — код был починен, но остался на ноутбуке.
+
+    Теперь заливается весь пакет: лишний трафик — мегабайт, цена ошибки — боевая.
+    """
+    return sorted(f for f in os.listdir(LOCAL) if f.endswith((".py", ".html")))
+
+
+UPLOAD = _пакет()
 
 # Куски, без которых боевая страница считается сломанной. Список пополняется,
 # когда выкатывается что-то, чью пропажу нельзя заметить глазами.
@@ -93,9 +102,17 @@ def main():
         return cli.exec_command(c)[1].read().decode("utf-8", "replace").strip()
 
     def откат():
-        for m in UPLOAD:
-            run("cp -p {}/{}/{} {}/{} 2>/dev/null || true".format(BAK, stamp, m, PKG, m))
-        run("touch {}/tmp/restart.txt".format(BASE))
+        """Вернуть файлы из копии. Сам не падает: если связь оборвалась, об этом
+        надо сказать словами, а не трассировкой поверх исходной ошибки."""
+        try:
+            for m in UPLOAD:
+                run("cp -p {}/{}/{} {}/{} 2>/dev/null || true".format(BAK, stamp, m, PKG, m))
+            run("touch {}/tmp/restart.txt".format(BASE))
+            print("   откачено из {}/{}".format(BAK, stamp))
+        except Exception as e:                                          # noqa: BLE001
+            print("   ОТКАТ НЕ ВЫПОЛНЕН: {}".format(str(e)[:120]))
+            print("   Верните вручную: скопируйте {}/{}/* в {} и троньте {}/tmp/restart.txt"
+                  .format(BAK, stamp, PKG, BASE))
 
     шаг(2, "Копия того, что сейчас на сервере -> {}/{}".format(BAK, stamp))
     run("mkdir -p {}/{}".format(BAK, stamp))
@@ -103,17 +120,25 @@ def main():
         run("cp -p {}/{} {}/{}/{} 2>/dev/null || true".format(PKG, n, BAK, stamp, n))
     run("ls -1d {}/*/ 2>/dev/null | head -n -{} | xargs -r rm -rf".format(BAK, KEEP_BACKUPS))
 
-    шаг(3, "Заливка кода")
+    шаг(3, "Заливка кода ({} файлов пакета)".format(len(UPLOAD)))
+    менялись = []
     for n in UPLOAD:
         lp = os.path.join(LOCAL, n)
         sz = os.path.getsize(lp)
+        try:
+            было = sftp.stat(PKG + "/" + n).st_size
+        except IOError:
+            было = -1
         sftp.put(lp, PKG + "/" + n)
         got = sftp.stat(PKG + "/" + n).st_size
-        print("   {:<18} {:>7} -> {:>7} {}".format(n, sz, got, "ок" if got == sz else "НЕ СОШЛОСЬ"))
         if got != sz:
+            print("   {:<20} {:>8} -> {:>8} НЕ СОШЛОСЬ".format(n, sz, got))
             откат()
-            print("   ОТКАЧЕНО")
             sys.exit(4)
+        if было != sz:
+            менялись.append(n)
+            print("   {:<20} {:>8} -> {:>8} обновлён".format(n, было if было >= 0 else 0, sz))
+    print("   изменилось файлов: {} из {}".format(len(менялись), len(UPLOAD)))
 
     шаг(4, "Заливка документации (api.py читает эти файлы с диска)")
     run("mkdir -p {}/docs/generated".format(APPREMOTE))
@@ -141,7 +166,9 @@ def main():
     out = run("cd {}/.. && /usr/bin/python3 -c \"import ast;"
               " [ast.parse(open(p,encoding='utf-8').read()) for p in [{}]];"
               " import iigbot.gsheets, iigbot.storage, iigbot.report, iigbot.dossier,"
-              " iigbot.api, iigbot.backup_cloud; print('импорт ок')\" 2>&1".format(PKG, mods))
+              " iigbot.api, iigbot.backup_cloud, iigbot.telegram_api, iigbot.bot,"
+              " iigbot.budgets, iigbot.presets, iigbot.yandex, iigbot.metrika,"
+              " iigbot.sysinfo; print('импорт ок')\" 2>&1".format(PKG, mods))
     print("   {}".format(out))
     if "импорт ок" not in out:
         откат()

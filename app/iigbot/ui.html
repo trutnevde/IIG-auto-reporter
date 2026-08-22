@@ -1124,6 +1124,24 @@
     text-decoration:none;flex:none}
   .go-ext a:hover{color:var(--brand);border-color:color-mix(in srgb, var(--brand) 45%, var(--line))}
   .go-ext .ic{width:13px;height:13px}
+
+  /* закрепление, заметка, поиск по переписке */
+  .cli-pin{border:0;background:transparent;cursor:pointer;color:var(--line);padding:2px;line-height:0}
+  .cli-pin:hover{color:var(--amber)}
+  .cli-pin.on{color:var(--amber)}
+  .cli-note{grid-column:1/-1;display:flex;gap:8px;align-items:center;margin-top:6px}
+  .cli-note input{flex:1;font-size:12.5px;padding:5px 9px}
+  .cli-note .txt{font-size:12.5px;color:var(--muted);flex:1;cursor:text;
+    border-bottom:1px dashed var(--line);padding:2px 0}
+  .cli-note .txt:hover{color:var(--text);border-bottom-color:var(--brand)}
+  .msg-hit{border:1px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:8px;
+    background:var(--surface)}
+  .msg-hit .top{display:flex;gap:8px;align-items:baseline;font-size:12px;color:var(--muted);
+    margin-bottom:4px;flex-wrap:wrap}
+  .msg-hit .top b{color:var(--text);font-size:12.5px}
+  .msg-hit .body{font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+  .msg-hit mark{background:color-mix(in srgb, var(--amber) 35%, transparent);color:inherit;
+    border-radius:3px;padding:0 2px}
   .lab-tabs{display:flex;gap:6px;margin:0 0 16px;border-bottom:1px solid var(--line)}
   .lab-tab{border:0;background:transparent;cursor:pointer;padding:9px 15px;font-size:13.5px;
     color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
@@ -4273,6 +4291,8 @@ async function renderClients(){
         <button onclick="clFilter('ready')">Подключены<b>${st.ready}</b></button>
         <button onclick="clFilter('nochat')">Без чата<b>${st.nochat}</b></button>
         <button onclick="clFilter('setup')">Нужна настройка<b>${st.setup}</b></button>
+        <label class="chip" style="cursor:pointer;user-select:none" title="Прячет клиентов без расхода за последние три недели">
+          <input type="checkbox" onchange="clHideDead(this.checked)" style="margin-right:6px"> без активности скрыть</label>
       </div>
     </div>
     <div class="cli-cols">
@@ -4384,12 +4404,19 @@ function drawClients(){
   const q=(el('clSearch').value||'').toLowerCase();
   let rows=CLIENTS.filter(c=>{
     if(q&&!(String(c.name).toLowerCase().includes(q)||String(c.login).toLowerCase().includes(q)
-        ||String(c.chat_title||'').toLowerCase().includes(q)))return false;
+        ||String(c.chat_title||'').toLowerCase().includes(q)
+        ||String(c.note||'').toLowerCase().includes(q)))return false;
+    // «Без активности» — ноль расхода за три недели. Из 401 аккаунта Директа
+    // реально ведётся четыре десятка, остальные мешают искать глазами.
+    if(CL_HIDE_DEAD && !c.pinned && !(c.spent21>0))return false;
     if(!CL_FILTER)return true;
     const st=clState(c);
     return CL_FILTER==='ready'?(st==='ready'||st==='ext'):(st===CL_FILTER);});
   const k=CL_SORT.key,dir=CL_SORT.dir;
-  rows.sort((a,b)=>{const va=clSortVal(a,k),vb=clSortVal(b,k);
+  rows.sort((a,b)=>{
+    // закреплённые всегда сверху, какая бы сортировка ни стояла
+    if(!!a.pinned!==!!b.pinned)return a.pinned?-1:1;
+    const va=clSortVal(a,k),vb=clSortVal(b,k);
     const r=(typeof va==='number')?(va-vb):String(va).localeCompare(String(vb),'ru');
     return r*dir||String(a.name||'').localeCompare(String(b.name||''),'ru');});
   ['name','chat','goals','added'].forEach(key=>{const e=el('si_'+key);if(e)e.textContent=(key===k)?(dir>0?' ▲':' ▼'):'';});
@@ -4419,7 +4446,10 @@ function drawClients(){
         : `<div class="t"><svg class="ic"><use href="#i-chat-3"/></svg><span class="muted">— не привязан</span></div><small class="no">Чат не подключён</small>`);
     return `<div class="cli-row" tabindex="0" role="button" onclick="openClient('${esc(c.login)}')"
         onkeydown="if(event.key==='Enter')openClient('${esc(c.login)}')">
-      <div class="cli-who">${clAvatar(c)}<div class="cli-nm"><b>${esc(c.name)}</b><small>${esc(c.login)} ${goExt(c.login)}</small></div></div>
+      <div class="cli-who">
+        <button class="cli-pin${c.pinned?' on':''}" title="${c.pinned?'Открепить':'Закрепить наверху'}"
+          onclick="clPin('${esc(c.login)}',event)"><svg class="ic"><use href="#i-focus-3"/></svg></button>
+        ${clAvatar(c)}<div class="cli-nm"><b>${esc(c.name)}</b><small>${esc(c.login)} ${goExt(c.login)}</small></div></div>
       <div class="cli-link">${link}</div>
       <div class="cli-goals" style="--gc:${gcol}">
         <b>${act} <span class="muted" style="font-weight:600">/ ${gs.length}</span></b>
@@ -4427,6 +4457,9 @@ function drawClients(){
         <small>${gs.length?(hid?(hid+' '+clPlural(hid,'скрыта','скрыто','скрыто')):'все в отчёте'):'целей нет'}</small></div>
       <div><span class="cli-st" style="--sc:var(--${sc[0]})">${sc[1]}</span></div>
       <div class="cli-arw">${CL_CHEV}</div>
+      <div class="cli-note" id="note_${cssId(c.login)}">${c.note
+        ? `<span class="txt" title="Изменить заметку" onclick="clNoteEdit('${esc(c.login)}',event)">${esc(c.note)}</span>`
+        : `<span class="txt muted" title="Добавить заметку" onclick="clNoteEdit('${esc(c.login)}',event)">+ заметка</span>`}</div>
     </div>`;}).join('');
 
   const pg=[];
@@ -4642,6 +4675,7 @@ async function renderChats(){
   const host=el('v_chats');host.innerHTML=skeleton('rows',6);
   let chats,cls;try{chats=await api('chats');cls=await api('clients');rememberCounters(cls);}catch(e){host.innerHTML=errBlock(e,()=>refresh());return;}
   CHATS=chats;
+  setTimeout(()=>{if(MSG_Q&&MSG_Q.length>=3)msgSearch();},0);
   const opts=cls.map(c=>`<option value="${esc(c.login)}">${esc(c.name)} (${esc(c.login)})</option>`).join('');
   const mineN=chats.filter(c=>c.login).length, freeN=chats.filter(c=>!c.login).length;
   const F=CHAT_FILTER;
@@ -4664,6 +4698,14 @@ async function renderChats(){
   host.innerHTML=`
     <h2 class="title">Чаты</h2><p class="sub">Чаты появляются автоматически, когда бота туда добавляют. «Свободные» — чаты без привязки: их видят все специалисты, пока никто не забрал (привязал → клиент закрепился за тобой).</p>
     ${supBar}
+    <div class="panel" style="margin-bottom:14px"><div class="body">
+      <div class="cli-tools" style="margin:0">
+        <input id="msgQ" class="cli-search" type="search" placeholder="Поиск по переписке с клиентами…"
+          value="${esc(MSG_Q)}" onkeydown="if(event.key==='Enter')msgSearch()">
+        <button class="btn sm primary" onclick="msgSearch()"><svg class="ic"><use href="#i-search-2"/></svg> Найти</button>
+      </div>
+      <div id="msgRes" style="margin-top:12px"></div>
+    </div></div>
     <div class="tabs">${tab('mine','Мои ('+mineN+')')}${tab('free','Свободные ('+freeN+')')}${tab('all','Все видимые ('+chats.length+')')}</div>
     <div class="panel"><div class="scrollx"><table>
       <thead><tr><th>Чат</th><th>ID</th><th>Тип</th><th>Статус</th><th>Привязка</th><th></th></tr></thead>
@@ -4673,7 +4715,7 @@ async function renderChats(){
           <td>${c.status==='active'?'<span class="badge b-green">активен</span>':'<span class="badge b-grey">удалён</span>'}</td>
           <td><select id="bind_${c.chat_id}"><option value="">— не привязан —</option>${opts}</select></td>
           <td class="right"><button class="btn sm tinted" onclick="doBind(${c.chat_id})">Сохранить</button> <button class="btn sm" onclick="doDeleteChat(${c.chat_id})" title="Удалить чат из базы"><svg class="ic"><use href="#i-delete-bin"/></svg></button></td>
-        </tr>`).join(''):'<tr><td colspan="6">'+(F==='mine'
+        </tr>`).join(''):'<tr><td colspan="7">'+(F==='mine'
       ? emptyState('<svg class="ic"><use href="#i-folder-5"/></svg>','У тебя пока нет проектов','Чаты, которые ещё никому не принадлежат, лежат во вкладке «Свободные» — привяжи оттуда, и клиент станет твоим.',{label:'Смотреть свободные',onclick:()=>{CHAT_FILTER='free';renderChats();}})
       : emptyState('<svg class="ic"><use href="#i-chat-3"/></svg>','Здесь пока пусто','Бот видит чат сразу, как его добавят в группу клиента. Нет чата — добавь бота в группу и напиши там любое сообщение.',{label:'Как подключить клиента',onclick:()=>openOnboard(),primary:false}))+'</td></tr>'}
       </tbody></table></div></div>`;
@@ -5239,6 +5281,18 @@ function guideTab(t){GTAB=t;GQ='';renderGuide();}
 /* ---------- ЧТО НОВОГО (патчноуты) ---------- */
 // Полная история изменений, свежие сверху. tag: major | feature | fix | hotfix.
 const CHANGELOG=[
+{date:'2026-08-22',tag:'new',title:'Восемь бытовых вещей',
+ sum:'Мелочи, которые делались руками по многу раз в день',items:[
+  '<b>Предупреждение о повторной отправке.</b> Если этому клиенту отчёт уже уходил сегодня, кабинет скажет когда и от кого, прежде чем отправлять второй. Раньше привычная реакция «кажется, не прошло — нажму ещё раз» приводила к тому, что клиент получал два одинаковых сообщения.',
+  '<b>Отмена отправки в течение 30 секунд.</b> После отправки внизу висит кнопка «Отменить». Отмена настоящая: сообщение удаляется и у клиента — Telegram разрешает боту убирать свои сообщения. В истории запись остаётся с пометкой «отменено»: скрывать факт отправки нельзя, иначе история врёт.',
+  '<b>В истории видно, кто отправлял.</b> Новая колонка «Кто». У отправленного по расписанию так и написано.',
+  '<b>Клиента можно закрепить наверху списка.</b> Булавка слева от названия. Закрепление своё у каждого сотрудника и держится при любой сортировке.',
+  '<b>Заметка пишется прямо из списка.</b> Раньше надо было открыть карточку, написать, закрыть. Заметка ищется вместе с названием и логином.',
+  '<b>Галка «без активности скрыть».</b> Прячет клиентов, у которых за три недели ноль расхода. Из 401 аккаунта Директа реально ведутся четыре десятка, остальные — архив, и они мешают искать глазами.',
+  '<b>Поиск по переписке с клиентами.</b> В разделе «Чаты». Раньше хранился только текст последнего сообщения, и он затирался следующим — искать было физически не в чем. Теперь переписка сохраняется, история ведётся с 22.08.2026. Более раннее добирается загрузкой выгрузки из Telegram Desktop. Специалист ищет только по своим чатам, наблюдатель — по всем.',
+  '<b>Кнопка «Закрыть все долги недели».</b> Поштучно и по одному сотруднику это уже было; не хватало варианта, когда неделя выпала целиком — праздники, переезд, авария у Яндекса. Каждая причина по-прежнему снимается по отдельности.',
+  '<b>Попутно: поиск по-русски работал через раз.</b> SQLite приводит регистр только у латиницы, поэтому «Лендинг» с большой буквы не находился по запросу «лендинг». Теперь текст хранится ещё и в нижнем регистре, и регистр не мешает.',
+ ]},
 {date:'2026-08-22',tag:'new',title:'Кнопки «Директ» и «Метрика» рядом с клиентом',
  sum:'Логин копировали руками и искали нужный аккаунт в интерфейсе Яндекса',items:[
   '<b>Рядом с логином клиента появились две иконки.</b> Рупор открывает его кампании в Яндекс.Директе, график — счётчик в Метрике. Обе открываются в новой вкладке и не мешают клику по самой карточке.',
@@ -5899,12 +5953,12 @@ function histTable(h){
     '</select>'+
     '<a class="btn sm" href="/download/export/history.csv" title="Выгрузить историю в CSV (Excel)"><svg class="ic"><use href="#i-download-2"/></svg> Экспорт CSV</a>'+
     '<span class="muted" style="font-size:12.5px">«Отправить снова» — повторно шлёт недельный отчёт клиенту в чат.</span></div>';
-  if(!(h||[]).length)return head+'<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th><th></th></tr></thead><tbody><tr><td colspan="6">'+emptyState('<svg class="ic"><use href="#i-inbox-2"/></svg>','Отчёты ещё не отправлялись','Здесь появится история: кому, когда и с каким результатом ушёл отчёт. Отсюда же можно переотправить или выгрузить в CSV.',{label:'Собрать пробный отчёт',onclick:()=>setRtab('prev')})+'</td></tr></tbody></table></div>';
+  if(!(h||[]).length)return head+'<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Кто</th><th>Статус</th><th></th></tr></thead><tbody><tr><td colspan="7">'+emptyState('<svg class="ic"><use href="#i-inbox-2"/></svg>','Отчёты ещё не отправлялись','Здесь появится история: кому, когда и с каким результатом ушёл отчёт. Отсюда же можно переотправить или выгрузить в CSV.',{label:'Собрать пробный отчёт',onclick:()=>setRtab('prev')})+'</td></tr></tbody></table></div>';
   if(!list.length)return head+emptyState('<svg class="ic"><use href="#i-search-2"/></svg>','Под фильтр ничего не попало','Сбрось поиск или выбери другой статус.',{label:'Сбросить фильтры',onclick:()=>{remember('hist',{status:'',q:''});refresh();}});
   const badge=s=>s==='sent'?'<span class="badge b-green">отправлено</span>':(s==='error'?'<span class="badge b-red">ошибка</span>':'<span class="badge b-grey">'+esc(s)+'</span>');
   const canSend=!(ME&&ME.role==='observer');
-  return head+'<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Статус</th><th></th></tr></thead><tbody>'+
-    st.rows.map(r=>`<tr><td class="nowrap">${esc(fmtDT(r.sent_at))}</td><td>${esc(r.client_name)}</td><td>${r.chat_title?esc(r.chat_title):'<span class="muted">—</span>'}</td><td class="muted nowrap">${esc(fmtD(r.period_from))} — ${esc(fmtD(r.period_to))}</td><td>${badge(r.status)}${r.error?(' <span class="muted">'+esc(r.error)+'</span>'):''}</td>`+
+  return head+'<div class="scrollx"><table><thead><tr><th>Дата</th><th>Клиент</th><th>Чат</th><th>Период</th><th>Кто</th><th>Статус</th><th></th></tr></thead><tbody>'+
+    st.rows.map(r=>`<tr><td class="nowrap">${esc(fmtDT(r.sent_at))}</td><td>${esc(r.client_name)}</td><td>${r.chat_title?esc(r.chat_title):'<span class="muted">—</span>'}</td><td class="muted nowrap">${esc(fmtD(r.period_from))} — ${esc(fmtD(r.period_to))}</td><td class="nowrap">${r.who?esc(r.who):'<span class="muted">по расписанию</span>'}</td><td>${badge(r.status)}${r.undone?' <span class="badge b-gray">отменено</span>':''}${r.error?(' <span class="muted">'+esc(r.error)+'</span>'):''}</td>`+
       `<td class="right">${canSend?('<button class="btn sm" onclick="doResend(\''+esc(r.login)+'\',\''+esc(r.client_name||r.login)+'\')" title="Отправить недельный отчёт заново"><svg class="ic"><use href="#i-refresh"/></svg> Отправить снова</button>'):''}</td></tr>`).join('')+
     '</tbody></table></div>'+pagerHtml('hist',st,'отправок');
 }
@@ -6186,7 +6240,10 @@ async function doReportSend(){
   const p=rbParams();if(!p[0])return;
   if(!RB_BOUND.has(p[0])){toast('Клиент не привязан к чату — отправка недоступна','err');return;}
   if(!(await askConfirm('Отправить этот отчёт в привязанный чат клиента? Уйдёт реальным людям в чате.',{ok:'Отправить клиенту',title:'Отправка отчёта',danger:true})))return;
-  try{const r=await api('report_send',...p);toast('Отправлено в чатов: '+r.sent,'ok');}catch(e){}
+  if(!(await sendGuard(p[0])))return;
+  try{const r=await api('report_send',...p);
+    offerUndo(r.send_ids, p[0]);
+  }catch(e){}
 }
 
 /* ---------- БЮДЖЕТЫ ---------- */
@@ -7141,6 +7198,109 @@ function goExt(login, opts){
   return out+'</span>';
 }
 
+/* ── повторная отправка и отмена ──
+   Привычная реакция «кажется, не прошло — нажму ещё раз» приводила к тому, что
+   клиент получал второй одинаковый отчёт. Спрашиваем заранее, а после отправки
+   30 секунд держим кнопку отмены: Telegram разрешает боту удалять свои сообщения,
+   так что отмена настоящая — отчёт исчезает и у клиента. */
+async function sendGuard(login, name){
+  let ch; try{ch=await api('send_check',login);}catch(e){return true;}   // не смогли проверить — не мешаем
+  if(!ch.today) return true;
+  const кто=(ch.last&&ch.last.who)?(', отправил '+ch.last.who):'';
+  const когда=(ch.last&&ch.last.at)?fmtDT(ch.last.at):'сегодня';
+  // askConfirm и toast пишут через textContent: экранировать здесь нельзя,
+  // иначе человек увидит на экране &amp; вместо амперсанда
+  return await askConfirm(
+    'Этому клиенту отчёт уже уходил сегодня в '+когда+кто+
+    '.\nОтправить ещё раз? Клиент получит второе одинаковое сообщение.',
+    {ok:'Всё равно отправить', title:'Отчёт уже отправляли'});
+}
+
+let UNDO_TIMER=null;
+function offerUndo(ids, name){
+  const list=(ids||[]).filter(Boolean);
+  if(!list.length)return;
+  let сек=30;
+  const tick=()=>{
+    toast('Отчёт ушёл клиенту '+(name||'')+' · отмена через '+сек+' сек','ok',
+      {label:'Отменить', fn:()=>{clearInterval(UNDO_TIMER);undoSends(list);}});
+    if(--сек<0)clearInterval(UNDO_TIMER);
+  };
+  clearInterval(UNDO_TIMER); tick(); UNDO_TIMER=setInterval(tick,10000);
+}
+async function undoSends(ids){
+  let ok=0,note='';
+  for(const id of ids){
+    try{const r=await api('send_undo',id); if(!r.already){ok++;note=r.note||note;} }catch(e){}
+  }
+  toast(ok?('Отправка отменена: '+note):'Отменить не вышло', ok?'ok':'err');
+}
+
+/* Закрепление своё у каждого сотрудника: у всех есть три-пять проектов,
+   которые смотрят каждый день, а в общем списке они тонут в алфавите. */
+async function clPin(login, ev){
+  if(ev)ev.stopPropagation();
+  try{
+    const r=await api('pin_toggle',login);
+    const c=CLIENTS.find(x=>x.login===login); if(c)c.pinned=r.pinned;
+    drawClients();
+  }catch(e){}
+}
+/* Заметка прямо из строки: раньше надо было открыть карточку, написать, закрыть. */
+function clNoteEdit(login, ev){
+  if(ev)ev.stopPropagation();
+  const box=el('note_'+cssId(login)); if(!box)return;
+  const c=CLIENTS.find(x=>x.login===login)||{};
+  box.innerHTML=`<input id="ni_${cssId(login)}" value="${esc(c.note||'')}"
+      placeholder="Заметка по проекту — видна всем причастным"
+      onclick="event.stopPropagation()"
+      onkeydown="event.stopPropagation();if(event.key==='Enter')clNoteSave('${esc(login)}');if(event.key==='Escape')drawClients()">
+    <button class="btn sm primary" onclick="event.stopPropagation();clNoteSave('${esc(login)}')">Сохранить</button>
+    <button class="btn sm" onclick="event.stopPropagation();drawClients()">Отмена</button>`;
+  const i=el('ni_'+cssId(login)); if(i){i.focus();i.select();}
+}
+async function clNoteSave(login){
+  const i=el('ni_'+cssId(login)); if(!i)return;
+  const txt=i.value;
+  try{
+    await api('set_client_note',login,txt);
+    const c=CLIENTS.find(x=>x.login===login); if(c)c.note=txt;
+    toast(txt.trim()?'Заметка сохранена':'Заметка убрана','ok');
+    drawClients();
+  }catch(e){}
+}
+function cssId(s){return String(s).replace(/[^A-Za-z0-9_-]/g,'_');}
+
+/* Поиск по переписке. До 22.08.2026 текст сообщений нигде не хранился — затирался
+   последний, — поэтому история начинается с этой даты. Более раннее добирается
+   загрузкой выгрузки из Telegram Desktop. */
+let MSG_Q='';
+async function msgSearch(){
+  const box=el('msgRes'); const q=(el('msgQ').value||'').trim();
+  MSG_Q=q;
+  if(q.length<3){box.innerHTML='<div class="muted" style="font-size:13px">Нужно хотя бы три знака.</div>';return;}
+  box.innerHTML=skeleton('rows',3);
+  let r; try{r=await api('chat_search',q,60);}catch(e){box.innerHTML=errBlock(e,()=>msgSearch());return;}
+  if(!r.rows.length){
+    box.innerHTML=emptyState('<svg class="ic"><use href="#i-search-2"/></svg>','Ничего не нашлось',
+      esc(r.hint),null);
+    return;
+  }
+  const мет=t=>{
+    const i=String(t).toLowerCase().indexOf(q.toLowerCase());
+    if(i<0)return esc(t);
+    return esc(t.slice(0,i))+'<mark>'+esc(t.slice(i,i+q.length))+'</mark>'+esc(t.slice(i+q.length));
+  };
+  box.innerHTML=`<div class="muted" style="font-size:12.5px;margin-bottom:8px">
+      Нашлось ${r.rows.length}${r.rows.length>=60?' (показаны первые 60)':''} из ${r.total} сообщений. ${esc(r.hint)}</div>`
+    + r.rows.map(m=>`<div class="msg-hit">
+        <div class="top"><b>${esc(m.chat)}</b><span>${esc(m.kind)}${m.name?(' · '+esc(m.name)):''}</span>
+          <div class="grow"></div><span>${esc(fmtDT(m.at)||'')}</span></div>
+        <div class="body">${мет(m.text)}</div></div>`).join('');
+}
+
+let CL_HIDE_DEAD=false;
+function clHideDead(on){CL_HIDE_DEAD=!!on;CL_PAGE=1;drawClients();}
 let GS_ALL=[];
 async function gsLinkLoad(){
   const login=el('gsLinkClient')&&el('gsLinkClient').value;
@@ -7327,6 +7487,7 @@ async function doSendTest(){
 async function doResend(login,name){
   if(!(await askConfirm('Отправить недельный отчёт по «'+name+'» заново?\nУйдёт в привязанный чат клиента — реальным людям.',{ok:'Отправить клиенту',title:'Повторная отправка',danger:true})))return;
   toast('Собираю и отправляю…');
+  if(!(await sendGuard(login,name)))return;
   try{const r=await api('resend_report',login);
     toast(r.status==='sent'?('Отправлено в чатов: '+r.chats):('Статус: '+(r.reason||r.status)),r.status==='sent'?'ok':'err');
     if(RTAB==='hist')renderReports();
@@ -7785,6 +7946,8 @@ async function renderSupervision(){
     <div class="cli-tools">
       <button class="btn sm" onclick="supExportDebts()" title="Список долгов в файл — для планёрки">
         <svg class="ic"><use href="#i-download-2"/></svg> Выгрузить долги</button>
+      <button class="btn sm" onclick="supExcuseWeek()" title="Закрыть ВСЕ долги недели по всем сотрудникам одной причиной">
+        <svg class="ic"><use href="#i-check-double"/></svg> Закрыть все долги недели</button>
     </div>
     <div class="cards" style="margin-bottom:16px">
       <div class="card"><div class="card-k">Покрытие агентства</div><div class="card-v" style="color:${a.coverage>=100?'var(--green)':a.coverage>=50?'var(--amber)':'var(--red)'}">${a.coverage==null?'—':a.coverage+'%'}</div><div class="card-s">${a.sent_total} сдано · ${a.excused_total} уважит. из ${a.bound_total}</div></div>
@@ -7914,6 +8077,34 @@ async function supExcuseAll(userId){
   try{
     const r=await api('excuse_add_bulk',logins,kind,reason);
     toast('Закрыто долгов: '+r.closed+(r.errors.length?(', ошибок '+r.errors.length):''),'ok');
+    renderSupervision();
+  }catch(e){}
+}
+/* Закрыть все долги недели разом по всему агентству.
+   Поштучно и по сотруднику это уже было; не хватало варианта «неделя выпала
+   целиком» — праздники, переезд, авария у Яндекса. Действие обратимое:
+   каждая уважительная причина снимается по отдельности. */
+async function supExcuseWeek(){
+  const rows=(SUP_LAST&&SUP_LAST.rows)||[];
+  const все=[];
+  rows.forEach(r=>(r.missing||[]).forEach(m=>все.push(m)));
+  if(!все.length){toast('Долгов нет — закрывать нечего','err');return;}
+  const kind=await askChoice(
+    'Закрыть ВСЕ долги недели одной причиной? Это '+все.length+' '+
+    clPlural(все.length,'обязательство','обязательства','обязательств')+
+    ' у '+rows.filter(r=>(r.missing||[]).length).length+' сотрудников.',
+    EXCUSE_KINDS,{title:'Закрыть все долги недели'});
+  if(!kind)return;
+  let reason=null;
+  if(kind==='other'){
+    reason=await askText('Причина — одна на все '+все.length+':','',
+      {ok:'Закрыть долги',title:'Уважительная причина'});
+    if(reason===null)return;
+    if(!reason.trim()){toast('Без причины закрыть нельзя','err');return;}
+  }
+  try{
+    const r=await api('excuse_add_bulk',все.map(m=>m.login),kind,reason);
+    toast('Закрыто долгов: '+r.closed+(r.errors&&r.errors.length?(', ошибок '+r.errors.length):''),'ok');
     renderSupervision();
   }catch(e){}
 }
